@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#154C43"/>
+  <!-- باب مقوّس: «على بابك» -->
+  <path d="M146 420V232a110 110 0 0 1 220 0v188z" fill="#FBF7EF"/>
+  <path d="M182 420V236a74 74 0 0 1 148 0v184z" fill="#0E362F"/>
+  <path d="M256 162v258" stroke="#154C43" stroke-width="6"/>
+  <circle cx="300" cy="316" r="13" fill="#CF9A3E"/>
+  <!-- شنطة تسوّق على العتبة -->
+  <rect x="104" y="420" width="304" height="26" rx="13" fill="#CF9A3E"/>
+  <path d="M232 112a24 24 0 0 1 48 0" fill="none" stroke="#CF9A3E" stroke-width="10" stroke-linecap="round"/>
+</svg>
