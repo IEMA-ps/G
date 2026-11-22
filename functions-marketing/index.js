@@ -21,7 +21,6 @@ const publicAlias=profile=>'مسوّق '+String(profile.referralCode||'').slice(
 
 // Idempotent and role-preserving. No client needs permission to promote itself or change its code.
 exports.ensureMarketerDefaults=onDocumentWritten('users/{uid}',async event=>{
-  if(!event.data.after.exists) return;
   const uid=event.params.uid;
   await db.runTransaction(async tx=>{
     const ref=db.doc(`users/${uid}`),snap=await tx.get(ref);
@@ -37,6 +36,7 @@ exports.ensureMarketerDefaults=onDocumentWritten('users/{uid}',async event=>{
     if(!user.referralCode) patch.referralCode=code;
     if(user.loyaltyPoints===undefined) patch.loyaltyPoints=0;
     if(!existing.exists) tx.create(registry,{uid,createdAt:FieldValue.serverTimestamp()});
+    if(user.leaderboardOptIn!==true) tx.delete(db.doc(`marketerPublicStats/${uid}`));
     if(Object.keys(patch).length) tx.update(ref,patch);
   });
 });
