@@ -35,6 +35,17 @@ export function feeSnapshot(m,subtotal){
   return {commissionModel:MODEL,commissionTermsVersion:1,commissionPayer:'MERCHANT',commissionPercent:2,commissionBase:base,commissionAmount:Math.round(base*2)/100,commissionBasis:'GOODS_AFTER_MERCHANT_DISCOUNTS_EXCLUDES_DELIVERY'};
 }
 export const marketerPercentFor = (p,settings) => p?.marketerPercent!=null ? p.marketerPercent : (settings?.marketerSubPercent!=null ? settings.marketerSubPercent : 10);
+// Marketer-code offer: 6 months of the PROFILE plan for a fixed price, only for merchants
+// attributed to a marketer (they entered a valid marketer code at registration). One use per merchant.
+export const MARKETER_OFFER = { id:'MARKETER_PROFILE_6M', planId:'profile_6m_v2', kind:'PROFILE', months:6, price:300 };
+export const marketerOfferOn = settings => settings?.marketerOfferEnabled===true;
+export function marketerOfferFor(m,p,settings){
+  if(!marketerOfferOn(settings) || !m?.marketerId || m.marketerOfferUsed) return null;
+  if(!isNewMerchant(m) || !isNewPlan(p) || p.active===false) return null;
+  if((p.id||p._id)!==MARKETER_OFFER.planId || p.kind!==MARKETER_OFFER.kind || p.months!==MARKETER_OFFER.months) return null;
+  if(hasTerm(m) && modeOf(m)!==MARKETER_OFFER.kind) return null;
+  return {offerId:MARKETER_OFFER.id,price:MARKETER_OFFER.price,listPrice:p.price};
+}
 export const millisOf = value => typeof value?.toMillis==='function'?value.toMillis():Number(value);
 export function cairoMonth(ms){
   const value=millisOf(ms);
