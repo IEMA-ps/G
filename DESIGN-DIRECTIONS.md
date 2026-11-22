@@ -1,14 +1,16 @@
-# Visual directions for review, not production
+# Final identity: direction A and logo 01
 
-Base: main ef6595ed21c06a45c2e77f4216038659ae732fc8.
+The owner selected direction A and logo concept 01 (the threshold), then approved implementation on 22 November 2026.
 
-Use ?design=a for the warm neighborhood direction, or ?design=b for the city-service direction. With no parameter the app keeps its original published appearance. Theme scripts only change visual assets, decorative category icons, CSS and install metadata. They do not alter account roles, prices, commissions, content, catalog records or transactions.
+The final app uses the warm tomato/cream theme and IBM Plex Sans Arabic by default, without a design query parameter. The former preview loader and both optional theme folders are removed. The logo concept sources remain in designs/logo-review as a record of the selection. Final assets are logo.svg, logo-reverse.svg, brand-lockup.svg, icon.svg and the root install PNGs.
 
-A: warm tomato and cream, IBM Plex Sans Arabic, generous curved surfaces, open product cards, floating navigation. New house/door logo.
-B: midnight and citron, Noto Sans Arabic, defined product cards, compact squared controls, fixed utility navigation. New geometric door/arrival logo.
+The new identity is applied to the login/loading screen, shared app header and components, Arabic install manifest, 192/512px icons, maskable icon, iPhone icon and favicons. The marketer post and story generator uses the same logo, palette and font. Sharing still opens a composer for review; nothing is posted automatically.
 
-Each direction has an SVG mark, 192/512 icons, a maskable 512 icon, 180 iPhone icon and a direction-specific Arabic manifest. Existing copy is retained. All colors, spacing and typography are review proposals, not user-confirmed brand preferences.
+Validation before merge:
+- Remote release files checked against the tested source.
+- Customer home, categories, product, cart, account and marketer dashboard rendered with an isolated catalog fixture. Merchant, delivery and admin dashboards also rendered. Layout checks at 320, 390, 820 and 1440px found no horizontal page overflow or page JS errors.
+- Existing regression checks passed: defaults and preserved profile fields, 0/5/10/30 tier progress, unchanged 20/10/10 plan rates, category aliases, search reset and logout/session reset.
+- Local Chrome manifest/install checks passed and the new 16-resource shell cached. Protected preview installability is not a substitute for the public production check.
+- New marketer post and story PNGs rendered and inspected with a demo referral code.
 
-Local mocked-Firebase rendering covers customer home, category browsing, product modal, cart, profile and marketer dashboard. Test screenshots use a catalog snapshot and demo account values. The home preview sets the snapshot's first six products as popular only in the test harness to expose the product-card treatment. No live product flags were changed. Some original product image links fail and show the app's normal fallback. Screenshots are not evidence of production data changes.
-
-Still required before release: user direction choice; all-role screen-by-screen review; production font and image loading checks; touch/keyboard interactions and narrow-device checks; branding updates to generated marketing material after the chosen direction; icon safe-zone and manifest validation; customer and marketer regression tests; removal or conversion of the review-only switch into the chosen final identity. Do not merge this branch just to preview a design.
+No catalog, price, account role, commission, Firebase rule or billing change is part of this release. No live order is placed by the visual tests. Customer regression uses a fixture; the existing marketer test login is used for the live production check. Final public deployment verification follows the merge.
