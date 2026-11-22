@@ -3285,14 +3285,14 @@ function subOrderCard(s, forAdminOrMerchant=true){
     // ملاحظة: انتقال "جاري التوصيل" → "تم التسليم" بقى مسؤولية مندوب التوصيل نفسه بعد التسليم الفعلي، مش التاجر
   }[s.status] || [];
   return `<div class="order-card">
-    <div class="top-row"><span class="oid">#${s.id}</span><span class="status-pill ${pillCls}">${st.label}</span></div>
+    <div class="top-row"><span class="oid">#${s.id}</span><span class="status-pill ${pillCls}"><i class="fa-solid ${s.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':s.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':s.status==='PREPARING'?'fa-box-open':s.status==='ACCEPTED'?'fa-check':'fa-clock'}"></i> ${st.label}</span></div>
     <div class="date">${fmtDate(s.createdAt)}</div>
     <div class="divider" style="margin:10px 0"></div>
     <p style="font-size:12.5px;margin:0 0 4px"><i class="fa-solid fa-user"></i> ${esc(s.customerName)} · ${esc(s.customerPhone)}</p>
     <p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-location-dot"></i> ${esc(s.deliveryAddress)}</p>
     ${s.deliveryAgentName?`<p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-motorcycle"></i> مسند لمندوب: ${esc(s.deliveryAgentName)}</p>`:''}
     ${s.cancelReason?`<p style="font-size:12px;color:var(--danger);margin:0 0 8px"><i class="fa-solid fa-circle-info"></i> سبب الإلغاء: ${esc(s.cancelReason)}</p>`:''}
-    ${(s.items||[]).map(it=>`<div class="row-between" style="font-size:12.5px;margin-bottom:4px"><span>${esc(it.productTitle)} × ${it.quantity}</span><span>${fmtMoney(it.price*it.quantity)}</span></div>`).join('')}
+    ${(s.items||[]).map(it=>`<div class="row-between order-item"><span><span class="qty-badge">${it.quantity}×</span> ${esc(it.productTitle)}</span><span>${fmtMoney(it.price*it.quantity)}</span></div>`).join('')}
     <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(s.subtotal)}</span></div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${nextActions.map(([st2,label,cls])=>{
@@ -3410,7 +3410,7 @@ function renderMerchantProducts(){
       <div class="card" style="display:flex;gap:10px;align-items:center${p.isActive===false?';opacity:.55':''}">
         <div class="thumb" style="width:56px;height:56px;border-radius:10px;background:var(--teal-tint) center/cover no-repeat;background-image:url('${esc(p.imageUrl||'')}');flex-shrink:0"></div>
         <div style="flex:1;min-width:0">
-          <b style="font-size:13.5px">${esc(p.title)}</b>
+          <b class="prod-title" style="font-size:13.5px">${esc(p.title)}</b>
           <div style="font-size:12px;color:var(--ink-soft)">${fmtMoney(p.price)}${flashActive(p)?` <span style="color:var(--danger);font-weight:700">⏰ ${fmtMoney(p.flashPrice)} (ينتهي خلال ${flashLeft(p)})</span>`:''} · مخزون <span style="color:${p.stock<=0?'var(--danger)':p.stock<=5?'var(--warning)':'inherit'};font-weight:${p.stock<=5?'800':'400'}">${p.stock}</span>${p.stock<=0?' <span style="color:var(--danger)">(نفذ)</span>':p.stock<=5?' <span style="color:var(--warning)">(منخفض)</span>':''} ${p.isActive===false?' · <span style="color:var(--danger)">متوقف</span>':''}</div>
         </div>
         <button class="icon-btn" style="background:${p.isActive===false?'var(--success-tint);color:var(--success)':'var(--gold-tint);color:var(--warning)'}" onclick="toggleProductActive('${p.id}',${p.isActive!==false})" title="${p.isActive===false?'تفعيل':'إلغاء تفعيل'}"><i class="fa-solid ${p.isActive===false?'fa-toggle-off':'fa-toggle-on'}"></i></button>
@@ -3531,15 +3531,15 @@ function renderMerchantReports(){
 
   return `
     <div class="stat-grid">
-      <div class="stat-card"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">إجمالي المبيعات (مكتمل)</div></div>
-      <div class="stat-card"><div class="num">${fmtMoney(avgOrderValue)}</div><div class="lbl">متوسط قيمة الطلب</div></div>
-      <div class="stat-card"><div class="num">${delivered.length}</div><div class="lbl">طلبات مكتملة</div></div>
-      <div class="stat-card"><div class="num" style="color:${cancelRate>15?'var(--danger)':'inherit'}">${cancelRate}%</div><div class="lbl">نسبة الإلغاء/الرفض</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-sack-dollar"></i><div class="num">${fmtMoney(revenue)}</div><div class="lbl">إجمالي المبيعات (مكتمل)</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-receipt"></i><div class="num">${fmtMoney(avgOrderValue)}</div><div class="lbl">متوسط قيمة الطلب</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-circle-check"></i><div class="num">${delivered.length}</div><div class="lbl">طلبات مكتملة</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-triangle-exclamation"></i><div class="num" style="color:${cancelRate>15?'var(--danger)':'inherit'}">${cancelRate}%</div><div class="lbl">نسبة الإلغاء/الرفض</div></div>
     </div>
     <div class="section-head"><h3>الأكثر مبيعًا</h3></div>
     ${topProducts.length? `<div class="list-gap">${topProducts.map((p,i)=>`
       <div class="card row-between">
-        <div><b style="font-size:13.5px">${i+1}. ${esc(p.title)}</b><div style="font-size:12px;color:var(--ink-soft);margin-top:3px">تم بيع ${p.qty} قطعة</div></div>
+        <div><b style="font-size:13.5px"><span class="rank-chip">${i+1}</span> ${esc(p.title)}</b><div style="font-size:12px;color:var(--ink-soft);margin-top:3px">تم بيع ${p.qty} قطعة</div></div>
         <b style="font-size:13px;color:var(--teal)">${fmtMoney(p.revenue)}</b>
       </div>`).join('')}</div>` : emptyState('fa-box-open','لا توجد طلبات مكتملة بعد','')}
     ${cancelRate>15?`<div class="hint-box" style="border-color:var(--danger);background:var(--danger-tint);color:var(--danger);margin-top:16px"><i class="fa-solid fa-triangle-exclamation"></i> نسبة الإلغاء عندك مرتفعة نسبيًا، حاول تراجع أسباب الإلغاء في تفاصيل الطلبات وتقلل منها.</div>`:''}
@@ -3557,11 +3557,11 @@ function renderMerchantProfile(){
     </div>
     <div class="section-head"><h3>بيانات المتجر</h3></div>
     <div class="card list-gap" style="gap:10px">
-      <div class="row-between"><span style="color:var(--ink-soft);font-size:13px">المسؤول</span><b style="font-size:13px">${esc(m.managerName)}</b></div>
-      <div class="row-between"><span style="color:var(--ink-soft);font-size:13px">الهاتف</span><b style="font-size:13px">${esc(m.phone)}</b></div>
-      <div class="row-between"><span style="color:var(--ink-soft);font-size:13px">واتساب</span><b style="font-size:13px">${esc(m.whatsappNumber)}</b></div>
-      <div class="row-between"><span style="color:var(--ink-soft);font-size:13px">النشاط</span><b style="font-size:13px">${esc(m.activityType)}</b></div>
-      <div class="row-between"><span style="color:var(--ink-soft);font-size:13px">العنوان</span><b style="font-size:13px">${esc(m.address)}</b></div>
+      <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-user"></i> المسؤول</span><b style="font-size:13px">${esc(m.managerName)}</b></div>
+      <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-phone"></i> الهاتف</span><b style="font-size:13px">${esc(m.phone)}</b></div>
+      <div class="row-between"><span class="info-lbl"><i class="fa-brands fa-whatsapp"></i> واتساب</span><b style="font-size:13px">${esc(m.whatsappNumber)}</b></div>
+      <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-briefcase"></i> النشاط</span><b style="font-size:13px">${esc(m.activityType)}</b></div>
+      <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-location-dot"></i> العنوان</span><b style="font-size:13px">${esc(m.address)}</b></div>
     </div>
     ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">الأرقام والعنوان واللوكيشن في الصفحة التعريفية متاحة للزوار بدون تسجيل دخول بعد اعتماد الاشتراك وإعداد صلاحيات القراءة.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}" target="_blank" rel="noopener">معاينة الصفحة</a></div>`:''}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
@@ -4251,7 +4251,7 @@ function renderAdminProducts(){
       return `<div class="card admin-catalog-row" style="${p.isActive===false?'opacity:.55':''}">
         <div class="thumb admin-catalog-thumb" style="background:var(--teal-tint) center/cover no-repeat;background-image:url('${esc(p.imageUrl||'')}')"></div>
         <div class="admin-catalog-info">
-          <b style="font-size:13.5px">${esc(p.title)}</b>
+          <b class="prod-title" style="font-size:13.5px">${esc(p.title)}</b>
           <div style="font-size:12px;color:var(--ink-soft)">${fmtMoney(p.price)} · مخزون ${p.stock}${p.isActive===false?' · <span style="color:var(--danger)">متوقف</span>':''}</div>
           <div style="font-size:11.5px;color:var(--ink-soft)"><i class="fa-solid fa-shop"></i> ${esc(m?m.businessName:'—')}</div>
         </div>
@@ -4460,8 +4460,8 @@ function renderAdminReports(){
 
   return `
     <div class="stat-grid">
-      <div class="stat-card"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">إجمالي المبيعات (مكتمل)</div></div>
-      <div class="stat-card"><div class="num">${delivered.length}</div><div class="lbl">طلبات مكتملة</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-sack-dollar"></i><div class="num">${fmtMoney(revenue)}</div><div class="lbl">إجمالي المبيعات (مكتمل)</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-circle-check"></i><div class="num">${delivered.length}</div><div class="lbl">طلبات مكتملة</div></div>
       <div class="stat-card"><div class="num">${S.allMerchants.filter(m=>m.status==='ACTIVE').length}</div><div class="lbl">تاجر نشط</div></div>
       <div class="stat-card"><div class="num">${cancelled}</div><div class="lbl">طلبات ملغية/مرفوضة</div></div>
     </div>
