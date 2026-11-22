@@ -270,6 +270,35 @@ img{max-width:100%; display:block;}
 }
 .nav-sep{display:none;}
 
+/* ---------- ديسكتوب: واجهة العميل (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+@media (min-width:1024px){
+  body[data-role="customer"]{background:var(--paper);}
+  body[data-role="customer"] #appRoot{max-width:1240px; box-shadow:none;}
+  body[data-role="customer"] #appShell{display:flex; flex-direction:column;}
+  body[data-role="customer"] #topbar{order:0; padding:16px 32px;}
+  body[data-role="customer"] #topbar .tb-title{font-size:20px;}
+  body[data-role="customer"] #bottomNav{order:1; position:sticky; top:68px; bottom:auto; left:auto; transform:none; width:100%; max-width:none; justify-content:center; gap:6px; border:none; border-bottom:1px solid var(--line); padding:8px 32px; border-radius:0; margin:0; box-shadow:none; z-index:19;}
+  body[data-role="customer"] .nav-btn{flex:none; flex-direction:row; gap:8px; padding:9px 18px; border-radius:999px; font-size:14px;}
+  body[data-role="customer"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="customer"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="customer"] .nav-btn .badge{position:static; margin:0 4px 0 0;}
+  body[data-role="customer"] #searchBar{order:2; padding:16px 32px 4px;}
+  body[data-role="customer"] #searchBar .box{max-width:640px; margin:0 auto;}
+  body[data-role="customer"] #mainContent{order:3; padding:24px 32px 56px;}
+  body[data-role="customer"] .product-grid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:18px;}
+  body[data-role="customer"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:16px; align-items:start;}
+  body[data-role="customer"] .cat-scroll{flex-wrap:wrap; overflow:visible;}
+  body[data-role="customer"] .banner-strip .banner{flex:1; min-width:0; padding:28px;}
+  body[data-role="customer"][data-tab="cart"] #mainContent, body[data-role="customer"][data-tab="checkout"] #mainContent, body[data-role="customer"][data-tab="orderDetail"] #mainContent,
+  body[data-role="customer"][data-tab="orderDone"] #mainContent, body[data-role="customer"][data-tab="profile"] #mainContent, body[data-role="customer"][data-tab="addresses"] #mainContent,
+  body[data-role="customer"][data-tab="notifications"] #mainContent{max-width:780px; width:100%; margin:0 auto;}
+  body[data-role="customer"][data-tab="cart"] .list-gap, body[data-role="customer"][data-tab="checkout"] .list-gap, body[data-role="customer"][data-tab="profile"] .list-gap,
+  body[data-role="customer"][data-tab="orderDetail"] .list-gap, body[data-role="customer"][data-tab="addresses"] .list-gap, body[data-role="customer"][data-tab="notifications"] .list-gap{display:flex; flex-direction:column;}
+  body[data-role="customer"] #modalRoot{align-items:center;}
+  body[data-role="customer"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="customer"] #toast{bottom:32px;}
+}
+
 /* ---------- modal ---------- */
 #modalRoot{position:fixed; inset:0; z-index:60; display:flex; align-items:flex-end; justify-content:center;}
 #modalRoot.hidden{display:none;}
