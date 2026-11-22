@@ -1,7 +1,7 @@
 // Service Worker لتطبيق «على بابك»: يخزّن هيكل التطبيق لتشغيل أسرع وصفحة بديلة عند انقطاع الإنترنت.
 // لا يخزّن أي طلبات لـ Firebase أو Google (البيانات دايمًا طازجة من الخادم).
 // عند تعديل index.html غيّر رقم VERSION ليتحدّث الكاش عند المستخدمين.
-const VERSION = 'v2';
+const VERSION = 'v3-marketer-fixes';
 const CACHE = 'alababak-' + VERSION;
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
