@@ -237,6 +237,37 @@ img{max-width:100%; display:block;}
 .row-between{display:flex; align-items:center; justify-content:space-between;}
 .fab{position:fixed; bottom:78px; left:50%; transform:translateX(-146px); background:var(--gold); color:#2A1D06; width:52px; height:52px; border-radius:50%; border:none; box-shadow:var(--shadow); font-size:19px; z-index:19;}
 
+
+/* ---------- ديسكتوب: لوحة الأدمن (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+.nav-extra{display:none;}
+@media (min-width:1024px){
+  body[data-role="admin"]{background:var(--paper);}
+  body[data-role="admin"] #appRoot{max-width:none; margin:0; box-shadow:none; background:var(--paper);}
+  body[data-role="admin"] #appShell{margin-right:250px;}
+  body[data-role="admin"] #topbar{padding:16px 36px;}
+  body[data-role="admin"] #topbar .tb-title{font-size:20px;}
+  body[data-role="admin"] #mainContent{width:100%; max-width:1240px; margin:0 auto; padding:28px 36px 48px;}
+  body[data-role="admin"] #bottomNav{top:0; bottom:0; right:0; left:auto; transform:none; width:250px; max-width:none; flex-direction:column; justify-content:flex-start; gap:2px; overflow-y:auto; border-top:none; border-left:1px solid var(--line); padding:20px 12px; border-radius:0; margin:0; box-shadow:none; height:auto;}
+  body[data-role="admin"] #bottomNav::before{content:'على بابك'; display:block; font-weight:800; font-size:20px; color:var(--teal); padding:4px 14px 18px;}
+  body[data-role="admin"] .nav-btn{flex:none; flex-direction:row; justify-content:flex-start; gap:12px; padding:11px 14px; border-radius:12px; font-size:14px; text-align:right;}
+  body[data-role="admin"] .nav-btn i{font-size:16px; width:20px; text-align:center;}
+  body[data-role="admin"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="admin"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="admin"] .nav-btn .badge{position:static; margin:0 6px 0 0;}
+  body[data-role="admin"] .nav-extra{display:flex;}
+  body[data-role="admin"] .nav-sep{display:block; height:1px; background:var(--line); margin:10px 8px;}
+  body[data-role="admin"] .a-shortcut{display:none;}
+  body[data-role="admin"][data-tab="a_settings"] #mainContent, body[data-role="admin"][data-tab="a_dbsetup"] #mainContent{max-width:860px;}
+  body[data-role="admin"] .stat-grid{grid-template-columns:repeat(4,1fr); gap:16px;}
+  body[data-role="admin"] .stat-card{padding:20px;}
+  body[data-role="admin"] .stat-card .num{font-size:28px;}
+  body[data-role="admin"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; align-items:start;}
+  body[data-role="admin"] #modalRoot{align-items:center;}
+  body[data-role="admin"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="admin"] #toast{bottom:32px;}
+}
+.nav-sep{display:none;}
+
 /* ---------- modal ---------- */
 #modalRoot{position:fixed; inset:0; z-index:60; display:flex; align-items:flex-end; justify-content:center;}
 #modalRoot.hidden{display:none;}
@@ -1931,12 +1962,20 @@ function renderShell(){
     ['a_merchants','fa-shop','التجار', ()=>S.allMerchants.filter(m=>m.status==='PENDING').length],
     ['a_categories','fa-tags','الأقسام'], ['a_products','fa-box','المنتجات'], ['a_orders','fa-receipt','الطلبات'], ['a_users','fa-users','الأعضاء']
   ];
+  document.body.dataset.role = S.role||''; document.body.dataset.tab = S.tab||'';
+  // روابط إضافية للأدمن بتظهر في القائمة الجانبية على الديسكتوب بس (مخفية على الموبايل)
+  const adminExtra = S.role==='admin' ? ['sep',
+    ['a_recurring','fa-repeat','الطلبات الأسبوعية'], ['a_settlements','fa-sack-dollar','الكشوف والتسويات'],
+    ['a_agents','fa-motorcycle','مناديب التوصيل'], ['a_subscriptions','fa-gem','الاشتراكات والباقات'],
+    ['a_marketers','fa-bullhorn','المسوّقون'], ['a_coupons','fa-ticket','أكواد الخصم'], ['a_reports','fa-chart-pie','التقارير'],
+    ...(isSuperAdmin() ? [['a_settings','fa-gear','الإعدادات'], ['a_dbsetup','fa-database','قاعدة البيانات'], ['a_audit','fa-clock-rotate-left','سجل النشاط']] : [])
+  ] : [];
   bn.innerHTML = navItems.map(([tab,icon,label,badgeFn])=>{
     const badge = badgeFn ? badgeFn() : 0;
     return `<button class="nav-btn ${S.tab===tab?'active':''}" onclick="go('${tab}')">
       <span style="position:relative"><i class="fa-solid ${icon}"></i>${badge>0?`<span class="badge">${badge}</span>`:''}</span>
       <span>${label}</span></button>`;
-  }).join('');
+  }).join('') + adminExtra.map(x=>x==='sep' ? '<div class="nav-sep nav-extra"></div>' : `<button class="nav-btn nav-extra ${S.tab===x[0]?'active':''}" onclick="go('${x[0]}')"><span style="position:relative"><i class="fa-solid ${x[1]}"></i></span><span>${x[2]}</span></button>`).join('');
 
   _shellBusy = true;
   renderMain();
@@ -3585,17 +3624,17 @@ function renderAdminDashboard(){
       const st=ORDER_STATUS[o.status]||{};
       return `<div class="order-card"><div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}">${st.label}</span></div><div class="date">${fmtDate(o.createdAt)} · ${esc(o.customerName)}</div><div class="row-between" style="margin-top:8px"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div></div>`;
     }).join('')}</div>` : emptyState('fa-receipt','لا توجد طلبات بعد','')}
-    <button class="btn btn-primary" style="margin-top:16px" onclick="go('a_settlements')"><i class="fa-solid fa-sack-dollar"></i> الكشوف والتسويات للتجار</button>
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_recurring')"><i class="fa-solid fa-repeat"></i> الطلبات الأسبوعية</button>
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_agents')"><i class="fa-solid fa-motorcycle"></i> إدارة مناديب التوصيل</button>
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_subscriptions')"><i class="fa-solid fa-gem"></i> الاشتراكات والباقات${(S.allSubs||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allSubs||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_marketers')"><i class="fa-solid fa-bullhorn"></i> المسوّقون وعمولاتهم${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_coupons')"><i class="fa-solid fa-ticket"></i> أكواد الخصم والكوبونات</button>
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_reports')"><i class="fa-solid fa-chart-pie"></i> تقارير المنصة الشاملة</button>
+    <button class="btn btn-primary a-shortcut" style="margin-top:16px" onclick="go('a_settlements')"><i class="fa-solid fa-sack-dollar"></i> الكشوف والتسويات للتجار</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_recurring')"><i class="fa-solid fa-repeat"></i> الطلبات الأسبوعية</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_agents')"><i class="fa-solid fa-motorcycle"></i> إدارة مناديب التوصيل</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_subscriptions')"><i class="fa-solid fa-gem"></i> الاشتراكات والباقات${(S.allSubs||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allSubs||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_marketers')"><i class="fa-solid fa-bullhorn"></i> المسوّقون وعمولاتهم${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_coupons')"><i class="fa-solid fa-ticket"></i> أكواد الخصم والكوبونات</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_reports')"><i class="fa-solid fa-chart-pie"></i> تقارير المنصة الشاملة</button>
     ${isSuperAdmin()?`
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_settings')"><i class="fa-solid fa-gear"></i> إعدادات العمولة والمنصة</button>
-    ${isSuperAdmin()?`<button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_dbsetup')"><i class="fa-solid fa-database"></i> فحص وتهيئة قاعدة البيانات</button>`:''}
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_audit')"><i class="fa-solid fa-clock-rotate-left"></i> سجل نشاط الإدارة</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_settings')"><i class="fa-solid fa-gear"></i> إعدادات العمولة والمنصة</button>
+    ${isSuperAdmin()?`<button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_dbsetup')"><i class="fa-solid fa-database"></i> فحص وتهيئة قاعدة البيانات</button>`:''}
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_audit')"><i class="fa-solid fa-clock-rotate-left"></i> سجل نشاط الإدارة</button>
     ` : `<div class="hint-box" style="margin-top:10px"><i class="fa-solid fa-lock"></i> حسابك «أدمن مساعد» — الإعدادات الحساسة وسجل النشاط متاحين للأدمن الرئيسي فقط.</div>`}
     <button class="btn btn-ghost" style="margin-top:10px" onclick="syncCategories()"><i class="fa-solid fa-wand-magic-sparkles"></i> إضافة/تحديث الأقسام المقترحة (${CATEGORY_SEED.length} قسم)</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
