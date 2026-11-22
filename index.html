@@ -212,8 +212,8 @@ img{max-width:100%; display:block;}
 
 /* ---------- order ---------- */
 .order-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:14px;}
-.order-card .top-row{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
-.order-card .oid{font-weight:800; font-size:13.5px;}
+.order-card .top-row{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;}
+.order-card .oid{font-weight:800; font-size:13.5px; max-width:100%; overflow-wrap:anywhere; direction:ltr; unicode-bidi:isolate;}
 .order-card .date{font-size:11.5px; color:var(--ink-soft);}
 .timeline{display:flex; align-items:center; margin:14px 0 4px;}
 .timeline .step{flex:1; display:flex; flex-direction:column; align-items:center; position:relative;}
@@ -403,6 +403,13 @@ try{ db = initializeFirestore(fbApp, { localCache: persistentLocalCache({ tabMan
 catch(e){ db = getFirestore(fbApp); }
 
 const uid = () => crypto.randomUUID();
+// 12 uniform base32 characters provide 60 random bits without I, O, 0 or 1.
+// All checkout paths use this generator; existing order IDs stay unchanged.
+const newOrderId = () => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return 'ORD-' + Array.from(bytes, b=>alphabet[b & 31]).join('');
+};
 const nowMs = () => Date.now();
 const fmtMoney = n => (Math.round((n||0)*100)/100).toLocaleString('ar-EG') + ' ج.م';
 
@@ -2040,7 +2047,7 @@ window.confirmRecurringOrder = async (id)=>{
   const p = getProduct(r.productId);
   if(!p || !p.isActive){ UI.toast('عذرًا، المنتج ده مش متاح حاليًا'); await updateDoc(doc(db,'recurringOrders',id), {lastHandledWeek: currentWeekKey()}); render(); return; }
   try{
-    const orderId = 'ORD-' + Math.floor(10000+Math.random()*89999);
+    const orderId = newOrderId();
     const subId = `SUB-${orderId}-1`;
     const m = getMerchant(r.merchantId);
     await runTransaction(db, async (tx)=>{
@@ -2198,7 +2205,7 @@ window.finalizeGroupBuy = async (gid)=>{
       const m = getMerchant(g.merchantId);
       const subOrderIds = [];
       g.participants.forEach((part, idx)=>{
-        const orderId = 'ORD-' + Math.floor(10000+Math.random()*89999) + '-' + idx;
+        const orderId = newOrderId();
         const subId = `SUB-${orderId}-1`;
         subOrderIds.push(subId);
         tx.set(doc(db,'orders',orderId), {
@@ -2650,7 +2657,7 @@ window.submitOrder = async ()=>{
     const pts = S.appliedPoints;
     const pointsDiscount = pts ? pts.discount : 0;
     const totalDiscount = couponDiscount + pointsDiscount;
-    const orderId = 'ORD-' + Math.floor(10000+Math.random()*89999);
+    const orderId = newOrderId();
     // نحسب subIds مقدّمًا قبل أي كتابة، عشان نكتب المستند مرة واحدة فقط
     // (Firestore بيرفض batch فيه set() و update() على نفس المستند في نفس الوقت)
     const subIds = Object.keys(groups).map((mid, idx)=>`SUB-${orderId}-${idx+1}`);
@@ -2732,7 +2739,7 @@ function renderOrderDone(){
       <div style="width:64px;height:64px;border-radius:50%;background:var(--teal-tint);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 10px"><i class="fa-solid fa-check"></i></div>
       <h3 style="margin:0 0 4px">تم استلام طلبك 🎉</h3>
       <div style="font-size:13px;color:var(--ink-soft)">رقم الطلب</div>
-      <div style="font-size:22px;font-weight:800;letter-spacing:1px;color:var(--teal);margin:4px 0 10px">#${esc(o.id)}</div>
+      <div dir="ltr" style="font-size:18px;font-weight:800;letter-spacing:.5px;color:var(--teal);margin:4px 0 10px;overflow-wrap:anywhere">#${esc(o.id)}</div>
       <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(o.id)}')"><i class="fa-regular fa-copy"></i> نسخ رقم الطلب</button>
     </div>
     <div class="card" style="margin-top:12px">
