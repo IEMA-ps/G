@@ -35,6 +35,13 @@ export function feeSnapshot(m,subtotal){
   return {commissionModel:MODEL,commissionTermsVersion:1,commissionPayer:'MERCHANT',commissionPercent:2,commissionBase:base,commissionAmount:Math.round(base*2)/100,commissionBasis:'GOODS_AFTER_MERCHANT_DISCOUNTS_EXCLUDES_DELIVERY'};
 }
 export const marketerPercentFor = (p,settings) => p?.marketerPercent!=null ? p.marketerPercent : (settings?.marketerSubPercent!=null ? settings.marketerSubPercent : 10);
+// Upgrade request: a merchant with a valid PROFILE term asks for an ORDERING plan from his own account.
+// The ordering term starts at approval; the unused rest of the profile term is NOT credited (no proration).
+export const canRequestUpgrade = (m,p,now=Date.now()) => isNewMerchant(m) && hasTerm(m,now) && modeOf(m)==='PROFILE' && isNewPlan(p) && p.kind==='ORDERING' && p.active!==false;
+export function upgradeTermFor(m,p,now=Date.now()){
+  if(!canRequestUpgrade(m,p,now)) throw new Error('الترقية متاحة فقط للمتجر صاحب باقة تعريفية سارية إلى باقة طلبات');
+  return {subscriptionModel:MODEL,subPlanType:'ORDERING',subPlanId:p.id||p._id,subPlanName:p.name,subEndsAt:addCalendarMonths(now,p.months),subOrderCommissionPercent:2,subTermsVersion:1};
+}
 // Marketer-code offer: 6 months of the PROFILE plan for a fixed price, only for merchants
 // attributed to a marketer (they entered a valid marketer code at registration). One use per merchant.
 export const MARKETER_OFFER = { id:'MARKETER_PROFILE_6M', planId:'profile_6m_v2', kind:'PROFILE', months:6, price:300 };

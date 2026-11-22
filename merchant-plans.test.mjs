@@ -47,6 +47,17 @@ check(P.phoneHref('javascript:alert(1)'), '');
 check(P.mapHref({latitude:30,longitude:31}),'https://www.google.com/maps/search/?api=1&query=30%2C31');
 check(P.mapHref({latitude:null,longitude:null,address:'عنوان'}),'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent('عنوان'));
 check(P.mapHref({}), '');
+const ord3=P.PLAN_TEMPLATES[3];
+check(P.canRequestUpgrade(profile,ord3,now),true);
+check(P.canRequestUpgrade(merchant,ord3,now),false);
+check(P.canRequestUpgrade({...profile,subEndsAt:now-1},ord3,now),false);
+check(P.canRequestUpgrade(profile,P.PLAN_TEMPLATES[1],now),false);
+check(P.canRequestUpgrade({status:'ACTIVE',subEndsAt:now+day},ord3,now),false);
+check(P.canRequestUpgrade(profile,{...ord3,active:false},now),false);
+const ut=P.upgradeTermFor(profile,ord3,now);
+check(ut.subPlanType,'ORDERING');check(ut.subEndsAt,P.addCalendarMonths(now,3));check(ut.subOrderCommissionPercent,2);
+assert.throws(()=>P.upgradeTermFor(merchant,ord3,now));checks++;
+assert.throws(()=>P.termFor(profile,ord3,now));checks++; // plain term change stays blocked
 const prof6=P.PLAN_TEMPLATES[1],on={marketerOfferEnabled:true};
 const mk={id:'m',status:'ACTIVE',subscriptionModel:P.MODEL,subPlanType:null,marketerId:'u1'};
 check(P.marketerOfferFor(mk,prof6,on),{offerId:'MARKETER_PROFILE_6M',price:300,listPrice:400});

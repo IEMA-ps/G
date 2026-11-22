@@ -1206,24 +1206,28 @@ function renderMerchantSubscription(){
 }
 window.openSubscribe = (planId)=>{
   const p = (S.plans||[]).find(x=>x._id===planId); if(!p) return;
-  if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==p.kind){UI.toast('تغيير نوع باقة سارية متاح بعد انتهاء المدة الحالية. لا تحوّل قيمة الباقة الجديدة الآن.');return;}
+  const upg=MerchantPlans.canRequestUpgrade(S.myMerchant,p);
+  if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==p.kind && !upg){UI.toast('تغيير نوع باقة سارية متاح بعد انتهاء المدة الحالية. لا تحوّل قيمة الباقة الجديدة الآن.');return;}
   const offer=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings),shownPrice=offer?offer.price:p.price;
   UI.openModal(`
-    <div class="modal-head"><h3>الاشتراك في «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="modal-head"><h3>${upg?'طلب ترقية إلى':'الاشتراك في'} «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: 6 شهور بـ ${fmtMoney(offer.price)}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
+    ${upg?`<div class="hint-box" style="margin-bottom:12px">طلب ترقية من الباقة التعريفية لباقة الطلبات. تبدأ باقة الطلبات من تاريخ اعتماد الإدارة بعد استلام المبلغ كاش، وباقي مدة التعريفية الحالية لا يُخصم من السعر. الطلب يظهر للإدارة للمراجعة.</div>`:''}
     ${S.settings.subPaymentInstructions?`<p style="font-size:12.5px;color:var(--ink-soft);white-space:pre-line;line-height:1.8">${esc(S.settings.subPaymentInstructions)}</p>`:''}
     <div class="field"><label>رقم عملية التحويل / ملاحظة الدفع</label><input id="subRef" placeholder="مثال: آخر 4 أرقام من رقم العملية"></div>
     <button class="btn btn-primary" onclick="submitSubscription('${planId}')">إرسال طلب الاشتراك</button>`);
 };
 window.submitSubscription = async (planId)=>{
   const p = (S.plans||[]).find(x=>x._id===planId), m = S.myMerchant; if(!p||!m) return;
-  if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(m) && MerchantPlans.modeOf(m)!==p.kind){UI.toast('انتظر انتهاء الاشتراك الحالي قبل طلب نوع باقة آخر');return;}
+  const upg=MerchantPlans.canRequestUpgrade(m,p);
+  if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(m) && MerchantPlans.modeOf(m)!==p.kind && !upg){UI.toast('انتظر انتهاء الاشتراك الحالي قبل طلب نوع باقة آخر');return;}
   if((S.mySubs||[]).some(x=>x.status==='PENDING')){ UI.toast('عندك طلب قيد المراجعة بالفعل'); return; }
   const id = 'sub_'+uid();
   const offer=MerchantPlans.marketerOfferFor(m,p,S.settings);
   await setDoc(doc(db,'subscriptions',id), { id, merchantId:m.id, merchantName:m.businessName, planId:p._id, planName:p.name, price:offer?offer.price:p.price, months:p.months,
     ...(offer?{offerId:offer.offerId,listPrice:offer.listPrice}:{}),
     ...(MerchantPlans.isNewPlan(p)?{model:p.model,kind:p.kind,termsVersion:p.termsVersion,orderCommissionPercent:p.orderCommissionPercent}:{}),
+    ...(upg?{upgrade:true,upgradeFrom:'PROFILE'}:{}),
     reference:document.getElementById('subRef').value.trim(), status:'PENDING', createdAt:nowMs(), marketerId:null, marketerAmount:0 });
   try{ await pushNotification('ADMIN','ALL','طلب اشتراك جديد 💳', `${m.businessName} — ${p.name} (${fmtMoney(p.price)})`, id); }catch(e){}
   UI.closeModal(); UI.toast('تم إرسال طلب الاشتراك، هنراجعه ونفعّله ✅');
@@ -1290,10 +1294,11 @@ window.loadMoreStoreProducts=async mid=>{
   finally{if(epoch===authEpoch){state.busy=false;render();}}
 };
 function renderNewPlanCatalog(plans,pending){
-  const locked=kind=>MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==kind;
+  const canUp=kind=>kind==='ORDERING'&&MerchantPlans.hasTerm(S.myMerchant)&&MerchantPlans.modeOf(S.myMerchant)==='PROFILE';
+  const locked=kind=>MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==kind && !canUp(kind);
   return `<div class="plan-pair">${['PROFILE','ORDERING'].map(kind=>{
     const options=plans.filter(p=>p.kind===kind).sort((a,b)=>a.months-b.months);
-    return `<div class="card plan-card ${kind==='ORDERING'?'ordering-plan':''}"><span class="badge-chip">${kind==='PROFILE'?'عشان العملاء يعرفوك':'عشان تستقبل طلبات'}</span><h3 style="margin:12px 0 4px">${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</h3><p class="plan-intro">${kind==='PROFILE'?'صفحتك وعنوانك واللوكيشن وأرقام التواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها ليستلمها المندوب.'}</p>${kind==='ORDERING'?'<div class="plan-fee">+ 2% على التاجر من المنتجات في الطلبات المسلّمة، بدون التوصيل. كاش فقط.</div>':'<div class="plan-fee">اشتراك ثابت. التواصل مع المتجر مباشرة.</div>'}<div>${options.map(p=>`<div class="plan-option"><span>${p.months===12?'سنة':p.months+' شهور'}</span>${(()=>{const o=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings);return o?`<b><s style="opacity:.55;font-weight:400">${fmtMoney(o.listPrice)}</s> ${fmtMoney(o.price)}<small class="badge-chip" style="margin-inline-start:6px">عرض كود المسوّق</small></b>`:`<b>${fmtMoney(p.price)}</b>`;})()}<button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px" ${pending||locked(kind)?'disabled':''} onclick="openSubscribe('${p._id||p.id}')">${locked(kind)?'بعد الانتهاء':'اختيار'}</button></div>`).join('')}</div></div>`;
+    return `<div class="card plan-card ${kind==='ORDERING'?'ordering-plan':''}"><span class="badge-chip">${kind==='PROFILE'?'عشان العملاء يعرفوك':'عشان تستقبل طلبات'}</span><h3 style="margin:12px 0 4px">${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</h3><p class="plan-intro">${kind==='PROFILE'?'صفحتك وعنوانك واللوكيشن وأرقام التواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها ليستلمها المندوب.'}</p>${kind==='ORDERING'?'<div class="plan-fee">+ 2% على التاجر من المنتجات في الطلبات المسلّمة، بدون التوصيل. كاش فقط.</div>':'<div class="plan-fee">اشتراك ثابت. التواصل مع المتجر مباشرة.</div>'}<div>${options.map(p=>`<div class="plan-option"><span>${p.months===12?'سنة':p.months+' شهور'}</span>${(()=>{const o=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings);return o?`<b><s style="opacity:.55;font-weight:400">${fmtMoney(o.listPrice)}</s> ${fmtMoney(o.price)}<small class="badge-chip" style="margin-inline-start:6px">عرض كود المسوّق</small></b>`:`<b>${fmtMoney(p.price)}</b>`;})()}<button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px" ${pending||locked(kind)?'disabled':''} onclick="openSubscribe('${p._id||p.id}')">${locked(kind)?'بعد الانتهاء':canUp(kind)?'طلب ترقية':'اختيار'}</button></div>`).join('')}</div></div>`;
   }).join('')}</div>`;
 }
 
@@ -1347,7 +1352,7 @@ async function activateNewSubscription(subId,input){
     const offer=sub.offerId?MerchantPlans.marketerOfferFor(m,p,settings):null;
     if(sub.offerId){ if(!offer||offer.offerId!==sub.offerId||sub.price!==offer.price) throw new Error('عرض كود المسوّق غير متاح لهذا المتجر أو استُخدم من قبل. ارفض الطلب واطلب اشتراكًا جديدًا.'); }
     else if(sub.price!==p.price) throw new Error('شروط الباقة تغيّرت أو غير متطابقة. اطلب اشتراكًا جديدًا بالشروط الحالية.');
-    const terms=MerchantPlans.termFor(m,p),marketerId=m.marketerId||null;
+    const terms=sub.upgrade?MerchantPlans.upgradeTermFor(m,p):MerchantPlans.termFor(m,p),marketerId=m.marketerId||null;
     const basePct=p.marketerPercent!=null?p.marketerPercent:(settings.marketerSubPercent??10);
     const tierBonus=marketerId?mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId&&x.status==='ACTIVE').length).cur.bonus:0;
     const pct=marketerId?Math.min(100,basePct+tierBonus):0;
@@ -1375,7 +1380,7 @@ function renderAdminSubscriptions(){
     ${pend.length?`<div class="section-head"><h3>طلبات تنتظر الاعتماد (${pend.length})</h3></div><div class="list-gap" style="margin-bottom:16px">${pend.map(x=>{
       const m = S.allMerchants.find(y=>y.id===x.merchantId)||{};
       return `<div class="card" style="border-color:var(--gold)"><div class="row-between"><b style="font-size:13.5px">${esc(x.merchantName||m.businessName||'')}</b><b>${fmtMoney(x.price)}</b></div>
-        <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${esc(x.planName)} · ${x.months} شهر${x.reference?` · مرجع: ${esc(x.reference)}`:''}${m.marketerId?` · مسوّق: ${esc(m.marketerName||'')}`:''}</div>
+        <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${x.upgrade?'<b style="color:var(--teal)">طلب ترقية</b> · ':''}${esc(x.planName)} · ${x.months} شهر${x.reference?` · مرجع: ${esc(x.reference)}`:''}${m.marketerId?` · مسوّق: ${esc(m.marketerName||'')}`:''}</div>
         ${sa?`<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveSubscription('${x._id}')">اعتماد</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="rejectSubscription('${x._id}')">رفض</button></div>`:''}</div>`; }).join('')}</div>`:''}
     ${sa?`<div class="card" style="margin-bottom:16px;border-color:var(--teal)"><b>النظام الجديد: تعريفية وطلبات</b><p style="font-size:13px;line-height:1.8">تعريفية: 200 / 400 / 600 جنيه. طلبات: 400 / 800 / 1200 جنيه + 2% على التاجر. المدد: 3 / 6 / 12 شهر. لا يغيّر الاشتراكات أو العمولات السابقة.</p><button class="btn btn-ghost" onclick="previewMerchantPlans()">مراجعة الباقات الست قبل الإضافة</button></div>`:''}
     <div class="section-head"><h3>الباقات</h3></div>
