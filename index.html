@@ -1208,9 +1208,10 @@ window.openSubscribe = (planId)=>{
   const p = (S.plans||[]).find(x=>x._id===planId); if(!p) return;
   const upg=MerchantPlans.canRequestUpgrade(S.myMerchant,p);
   if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==p.kind && !upg){UI.toast('تغيير نوع باقة سارية متاح بعد انتهاء المدة الحالية. لا تحوّل قيمة الباقة الجديدة الآن.');return;}
+  const offer=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings),shownPrice=offer?offer.price:p.price;
   UI.openModal(`
     <div class="modal-head"><h3>${upg?'طلب ترقية إلى':'الاشتراك في'} «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${fmtMoney(p.price)}</b></div><div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
+    <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: 6 شهور بـ ${fmtMoney(offer.price)}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
     ${upg?`<div class="hint-box" style="margin-bottom:12px">طلب ترقية من الباقة التعريفية لباقة الطلبات. تبدأ باقة الطلبات من تاريخ اعتماد الإدارة بعد استلام المبلغ كاش، وباقي مدة التعريفية الحالية لا يُخصم من السعر. الطلب يظهر للإدارة للمراجعة.</div>`:''}
     ${S.settings.subPaymentInstructions?`<p style="font-size:12.5px;color:var(--ink-soft);white-space:pre-line;line-height:1.8">${esc(S.settings.subPaymentInstructions)}</p>`:''}
     <div class="field"><label>رقم عملية التحويل / ملاحظة الدفع</label><input id="subRef" placeholder="مثال: آخر 4 أرقام من رقم العملية"></div>
@@ -1222,7 +1223,9 @@ window.submitSubscription = async (planId)=>{
   if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(m) && MerchantPlans.modeOf(m)!==p.kind && !upg){UI.toast('انتظر انتهاء الاشتراك الحالي قبل طلب نوع باقة آخر');return;}
   if((S.mySubs||[]).some(x=>x.status==='PENDING')){ UI.toast('عندك طلب قيد المراجعة بالفعل'); return; }
   const id = 'sub_'+uid();
-  await setDoc(doc(db,'subscriptions',id), { id, merchantId:m.id, merchantName:m.businessName, planId:p._id, planName:p.name, price:p.price, months:p.months,
+  const offer=MerchantPlans.marketerOfferFor(m,p,S.settings);
+  await setDoc(doc(db,'subscriptions',id), { id, merchantId:m.id, merchantName:m.businessName, planId:p._id, planName:p.name, price:offer?offer.price:p.price, months:p.months,
+    ...(offer?{offerId:offer.offerId,listPrice:offer.listPrice}:{}),
     ...(MerchantPlans.isNewPlan(p)?{model:p.model,kind:p.kind,termsVersion:p.termsVersion,orderCommissionPercent:p.orderCommissionPercent}:{}),
     ...(upg?{upgrade:true,upgradeFrom:'PROFILE'}:{}),
     reference:document.getElementById('subRef').value.trim(), status:'PENDING', createdAt:nowMs(), marketerId:null, marketerAmount:0 });
@@ -1295,7 +1298,7 @@ function renderNewPlanCatalog(plans,pending){
   const locked=kind=>MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==kind && !canUp(kind);
   return `<div class="plan-pair">${['PROFILE','ORDERING'].map(kind=>{
     const options=plans.filter(p=>p.kind===kind).sort((a,b)=>a.months-b.months);
-    return `<div class="card plan-card ${kind==='ORDERING'?'ordering-plan':''}"><span class="badge-chip">${kind==='PROFILE'?'عشان العملاء يعرفوك':'عشان تستقبل طلبات'}</span><h3 style="margin:12px 0 4px">${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</h3><p class="plan-intro">${kind==='PROFILE'?'صفحتك وعنوانك واللوكيشن وأرقام التواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها ليستلمها المندوب.'}</p>${kind==='ORDERING'?'<div class="plan-fee">+ 2% على التاجر من المنتجات في الطلبات المسلّمة، بدون التوصيل. كاش فقط.</div>':'<div class="plan-fee">اشتراك ثابت. التواصل مع المتجر مباشرة.</div>'}<div>${options.map(p=>`<div class="plan-option"><span>${p.months===12?'سنة':p.months+' شهور'}</span><b>${fmtMoney(p.price)}</b><button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px" ${pending||locked(kind)?'disabled':''} onclick="openSubscribe('${p._id||p.id}')">${locked(kind)?'بعد الانتهاء':canUp(kind)?'طلب ترقية':'اختيار'}</button></div>`).join('')}</div></div>`;
+    return `<div class="card plan-card ${kind==='ORDERING'?'ordering-plan':''}"><span class="badge-chip">${kind==='PROFILE'?'عشان العملاء يعرفوك':'عشان تستقبل طلبات'}</span><h3 style="margin:12px 0 4px">${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</h3><p class="plan-intro">${kind==='PROFILE'?'صفحتك وعنوانك واللوكيشن وأرقام التواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها ليستلمها المندوب.'}</p>${kind==='ORDERING'?'<div class="plan-fee">+ 2% على التاجر من المنتجات في الطلبات المسلّمة، بدون التوصيل. كاش فقط.</div>':'<div class="plan-fee">اشتراك ثابت. التواصل مع المتجر مباشرة.</div>'}<div>${options.map(p=>`<div class="plan-option"><span>${p.months===12?'سنة':p.months+' شهور'}</span>${(()=>{const o=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings);return o?`<b><s style="opacity:.55;font-weight:400">${fmtMoney(o.listPrice)}</s> ${fmtMoney(o.price)}<small class="badge-chip" style="margin-inline-start:6px">عرض كود المسوّق</small></b>`:`<b>${fmtMoney(p.price)}</b>`;})()}<button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px" ${pending||locked(kind)?'disabled':''} onclick="openSubscribe('${p._id||p.id}')">${locked(kind)?'بعد الانتهاء':canUp(kind)?'طلب ترقية':'اختيار'}</button></div>`).join('')}</div></div>`;
   }).join('')}</div>`;
 }
 
@@ -1344,13 +1347,18 @@ async function activateNewSubscription(subId,input){
     if(!md.exists()||!pd.exists()) throw new Error('المتجر أو الباقة غير موجود');
     const m={...md.data(),id:md.id},p={...pd.data(),_id:pd.id,id:pd.id},settings=settingsDoc.exists()?settingsDoc.data():{};
     if(m.status!=='ACTIVE') throw new Error('وافق على انضمام المتجر أولًا قبل تفعيل اشتراكه');
-    if(!MerchantPlans.isNewPlan(p)||p.active===false||sub.model!==p.model||sub.kind!==p.kind||sub.termsVersion!==p.termsVersion||sub.price!==p.price||sub.months!==p.months) throw new Error('شروط الباقة تغيّرت أو غير متطابقة. اطلب اشتراكًا جديدًا بالشروط الحالية.');
+    if(!MerchantPlans.isNewPlan(p)||p.active===false||sub.model!==p.model||sub.kind!==p.kind||sub.termsVersion!==p.termsVersion||sub.months!==p.months) throw new Error('شروط الباقة تغيّرت أو غير متطابقة. اطلب اشتراكًا جديدًا بالشروط الحالية.');
+    // Price must equal the list price, or the marketer-offer price re-validated here from authoritative data.
+    const offer=sub.offerId?MerchantPlans.marketerOfferFor(m,p,settings):null;
+    if(sub.offerId){ if(!offer||offer.offerId!==sub.offerId||sub.price!==offer.price) throw new Error('عرض كود المسوّق غير متاح لهذا المتجر أو استُخدم من قبل. ارفض الطلب واطلب اشتراكًا جديدًا.'); }
+    else if(sub.price!==p.price) throw new Error('شروط الباقة تغيّرت أو غير متطابقة. اطلب اشتراكًا جديدًا بالشروط الحالية.');
     const terms=sub.upgrade?MerchantPlans.upgradeTermFor(m,p):MerchantPlans.termFor(m,p),marketerId=m.marketerId||null;
     const basePct=p.marketerPercent!=null?p.marketerPercent:(settings.marketerSubPercent??10);
     const tierBonus=marketerId?mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId&&x.status==='ACTIVE').length).cur.bonus:0;
     const pct=marketerId?Math.min(100,basePct+tierBonus):0;
-    tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:p.price,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:roundMoney(p.price*pct/100)},{merge:true});
-    tx.update(mr,terms);
+    const paid=offer?offer.price:p.price; // marketer share is computed on what the merchant actually paid
+    tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:paid,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:roundMoney(paid*pct/100)},{merge:true});
+    tx.update(mr,{...terms,...(offer?{marketerOfferUsed:true,marketerOfferUsedAt:nowMs()}:{})});
     tx.set(doc(db,'publicMerchantProfiles',m.id),publicMerchantData({...m,...terms}));
   });
   await logAudit('اعتماد باقة تاجر جديدة',subId);
@@ -1387,6 +1395,7 @@ function renderAdminSubscriptions(){
       <div class="field"><label>مصدر نسبة المسوّق</label><select id="ssSource"><option value="SUBSCRIPTIONS" ${mkSource()==='SUBSCRIPTIONS'?'selected':''}>من الاشتراكات فقط</option><option value="ORDERS" ${mkSource()==='ORDERS'?'selected':''}>من عمولة الطلبات فقط</option><option value="BOTH" ${mkSource()==='BOTH'?'selected':''}>الاثنين</option></select></div>
       <div class="field"><label>نسبة المسوّق الافتراضية من الاشتراك (%) — لو الباقة ماحددتش نسبتها</label><input id="ssPct" type="number" step="0.1" min="0" max="100" value="${st.marketerSubPercent!=null?st.marketerSubPercent:10}"></div>
       <div class="field"><label>الباك إند (Cloud Functions)</label><select id="ssBackend"><option value="0" ${!st.useBackend?'selected':''}>غير مفعّل (الواجهة تكتب مباشرة)</option><option value="1" ${st.useBackend?'selected':''}>مفعّل (اعتماد الاشتراكات والسحب وكلمات المرور من السيرفر)</option></select><div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px">فعّله بعد نشر الدوال (deploy) بس، وإلا العمليات هتفشل.</div></div>
+      <div class="field"><label>عرض كود المسوّق: 6 شهور بـ 300 جنيه (الباقة التعريفية فقط)</label><select id="ssOffer"><option value="0" ${st.marketerOfferEnabled!==true?'selected':''}>متوقف</option><option value="1" ${st.marketerOfferEnabled===true?'selected':''}>مفعّل (للتاجر المسجّل بكود مسوّق، مرة واحدة)</option></select></div>
       <div class="field"><label>الحد الأدنى لسحب المسوّق (جنيه)</label><input id="ssMinW" type="number" min="0" step="1" value="${st.marketerMinWithdraw!=null?st.marketerMinWithdraw:100}"></div>
       <div class="field"><label>مستويات المسوّق — عدد المحلات النشطة للفضي / الذهبي</label>
         <div style="display:flex;gap:8px"><input id="ssT2" type="number" min="1" value="${mkTiers()[1].min}" placeholder="فضي"><input id="ssT3" type="number" min="2" value="${mkTiers()[2].min}" placeholder="ذهبي"></div></div>
@@ -1404,12 +1413,13 @@ window.saveSubSettings = async ()=>{
   const marketerCommissionSource = document.getElementById('ssSource').value;
   const marketerSubPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('ssPct').value)||0));
   const subPaymentInstructions = document.getElementById('ssPay').value.trim();
+  const marketerOfferEnabled = document.getElementById('ssOffer').value==='1';
   const marketerMinWithdraw = Math.max(0, parseFloat(document.getElementById('ssMinW').value)||0);
   const t2 = Math.max(1, parseInt(document.getElementById('ssT2').value)||10), t3 = Math.max(t2+1, parseInt(document.getElementById('ssT3').value)||30);
   const nb = id => Math.max(0, parseFloat(document.getElementById(id).value)||0);
   const marketerTiers = [{name:'برونزي',min:0,bonus:nb('ssB1')},{name:'فضي',min:t2,bonus:nb('ssB2')},{name:'ذهبي',min:t3,bonus:nb('ssB3')}];
   if(subsEnforced && !confirm('تفعيل الإلزام هيخفي كل المتاجر اللي مالهاش اشتراك ساري عن العملاء فورًا. متأكد؟')) return;
-  await setDoc(doc(db,'settings','app'), {subsEnforced, useBackend:useBackendSel, marketerCommissionSource, marketerSubPercent, subPaymentInstructions, marketerTiers, marketerMinWithdraw}, {merge:true});
+  await setDoc(doc(db,'settings','app'), {subsEnforced, useBackend:useBackendSel, marketerCommissionSource, marketerSubPercent, subPaymentInstructions, marketerTiers, marketerMinWithdraw, marketerOfferEnabled}, {merge:true});
   await logAudit('تعديل إعدادات الاشتراكات', `إلزام: ${subsEnforced} — مصدر: ${marketerCommissionSource} — ${marketerSubPercent}%`);
   UI.toast('تم الحفظ ✅');
 };

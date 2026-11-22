@@ -58,4 +58,17 @@ const ut=P.upgradeTermFor(profile,ord3,now);
 check(ut.subPlanType,'ORDERING');check(ut.subEndsAt,P.addCalendarMonths(now,3));check(ut.subOrderCommissionPercent,2);
 assert.throws(()=>P.upgradeTermFor(merchant,ord3,now));checks++;
 assert.throws(()=>P.termFor(profile,ord3,now));checks++; // plain term change stays blocked
+const prof6=P.PLAN_TEMPLATES[1],on={marketerOfferEnabled:true};
+const mk={id:'m',status:'ACTIVE',subscriptionModel:P.MODEL,subPlanType:null,marketerId:'u1'};
+check(P.marketerOfferFor(mk,prof6,on),{offerId:'MARKETER_PROFILE_6M',price:300,listPrice:400});
+check(P.marketerOfferFor(mk,prof6,{}),null);
+check(P.marketerOfferFor(mk,prof6,{marketerOfferEnabled:'true'}),null);
+check(P.marketerOfferFor({...mk,marketerId:null},prof6,on),null);
+check(P.marketerOfferFor({...mk,marketerOfferUsed:true},prof6,on),null);
+check(P.marketerOfferFor({...mk,subscriptionModel:undefined},prof6,on),null);
+check(P.marketerOfferFor(mk,P.PLAN_TEMPLATES[0],on),null);
+check(P.marketerOfferFor(mk,P.PLAN_TEMPLATES[4],on),null);
+check(P.marketerOfferFor(mk,{...prof6,active:false},on),null);
+check(P.marketerOfferFor({...mk,subPlanType:'ORDERING',subEndsAt:Date.now()+day},prof6,on),null);
+check(P.marketerPercentFor(prof6,{marketerSubPercent:10})*300/100,30);
 console.log(`PASS ${checks} merchant-plan checks`);

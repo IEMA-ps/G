@@ -42,6 +42,17 @@ export function upgradeTermFor(m,p,now=Date.now()){
   if(!canRequestUpgrade(m,p,now)) throw new Error('الترقية متاحة فقط للمتجر صاحب باقة تعريفية سارية إلى باقة طلبات');
   return {subscriptionModel:MODEL,subPlanType:'ORDERING',subPlanId:p.id||p._id,subPlanName:p.name,subEndsAt:addCalendarMonths(now,p.months),subOrderCommissionPercent:2,subTermsVersion:1};
 }
+// Marketer-code offer: 6 months of the PROFILE plan for a fixed price, only for merchants
+// attributed to a marketer (they entered a valid marketer code at registration). One use per merchant.
+export const MARKETER_OFFER = { id:'MARKETER_PROFILE_6M', planId:'profile_6m_v2', kind:'PROFILE', months:6, price:300 };
+export const marketerOfferOn = settings => settings?.marketerOfferEnabled===true;
+export function marketerOfferFor(m,p,settings){
+  if(!marketerOfferOn(settings) || !m?.marketerId || m.marketerOfferUsed) return null;
+  if(!isNewMerchant(m) || !isNewPlan(p) || p.active===false) return null;
+  if((p.id||p._id)!==MARKETER_OFFER.planId || p.kind!==MARKETER_OFFER.kind || p.months!==MARKETER_OFFER.months) return null;
+  if(hasTerm(m) && modeOf(m)!==MARKETER_OFFER.kind) return null;
+  return {offerId:MARKETER_OFFER.id,price:MARKETER_OFFER.price,listPrice:p.price};
+}
 export const millisOf = value => typeof value?.toMillis==='function'?value.toMillis():Number(value);
 export function cairoMonth(ms){
   const value=millisOf(ms);
