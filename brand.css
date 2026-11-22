@@ -1,6 +1,27 @@
 /* Final warm Arabic identity, selected with logo 01. */
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
-:root{--ink:#30251F;--ink-soft:#7B6A5B;--paper:#FFF8EE;--surface:#FFFDFA;--line:#EDDFCF;--teal:#C9401D;--teal-deep:#9F2E14;--teal-tint:#FDE9DE;--gold:#EAB94F;--gold-tint:#FFF0CB;--radius-s:12px;--radius-m:20px;--radius-l:28px;--shadow:0 10px 30px #5A2A1110}
+:root{
+  /* الألوان الأساسية */
+  --ink:#30251F; --ink-soft:#7B6A5B; --ink-faint:#999999;
+  --paper:#FFF8EE; --surface:#FFFDFA; --line:#EDDFCF; --line-strong:#DCC6B0;
+  --teal:#C9401D; --teal-deep:#9F2E14; --teal-tint:#FDE9DE; --teal-hover:#B23717; --teal-tint-deep:#F9DCCB;
+  --gold:#EAB94F; --gold-tint:#FFF0CB; --gold-hover:#E0AB3B;
+  /* ألوان دلالية */
+  --danger:#B5453A; --danger-tint:#F8E9E7; --danger-tint-deep:#F1D6D1;
+  --success:#2F7A52; --success-tint:#E5F2EA;
+  --warning:#8A5B00; --whatsapp:#1f9d55;
+  --on-gold:#2A1D06; --gold-ink:#5C4315; --on-teal-soft:#CBD8D3;
+  /* الحواف والظلال */
+  --radius-s:12px; --radius-m:20px; --radius-l:28px;
+  --shadow:0 10px 30px #5A2A1110;
+  --shadow-sm:0 1px 2px rgba(48,37,31,.07);
+  --shadow-lg:0 18px 44px -14px rgba(48,37,31,.28);
+  --focus-ring:0 0 0 3px rgba(201,64,29,.18);
+  /* مقياس المسافات */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px;
+  /* مقياس الخط */
+  --text-xs:11px; --text-sm:12.5px; --text-md:14px; --text-lg:16px; --text-xl:20px;
+}
 body{font-family:'IBM Plex Sans Arabic',sans-serif;background:#EDE3D6;line-height:1.65}#appRoot{background:var(--paper);box-shadow:0 0 0 1px #DDCDB9,0 20px 90px #61402D15}button,input,select,textarea{font-family:inherit}button:focus-visible,a:focus-visible{outline:3px solid #30251F;outline-offset:3px}
 #topbar{background:var(--paper);color:var(--ink);padding:24px 22px 16px;border-bottom:0;gap:10px}#topbar .tb-title{font-size:21px;line-height:1.35}#topbar .tb-title:before{content:'';display:block;float:right;width:36px;height:36px;background:url('/logo.svg') center/contain no-repeat;margin-left:10px;margin-top:4px}#topbar .tb-title small{color:var(--ink-soft);font-size:12px;margin-top:5px;font-weight:400}.icon-btn{background:#F0E5D6;color:var(--ink);border-radius:14px;width:42px;height:42px}.icon-btn .dot{border-color:var(--paper)}
 #searchBar{background:var(--paper);padding:4px 22px 18px}#searchBar .box{border-radius:14px;background:#F1E7DA;border:1px solid transparent;padding:14px 16px}#searchBar .box:focus-within{border-color:var(--teal)}#searchBar input{font-size:14px;min-width:0}#mainContent{padding:12px 22px 150px}
