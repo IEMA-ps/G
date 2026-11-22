@@ -1,7 +1,7 @@
 // Native browser install prompt where supported, manual iPhone instructions otherwise.
 let deferred;
 const standalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
-const button=document.createElement('button');button.type='button';button.textContent='ثبّت على بابك على موبايلك';button.style.cssText='position:fixed;bottom:92px;left:max(16px, calc((100vw - 480px)/2 + 16px));z-index:80;max-width:260px;border:1px solid #CF9A3E;border-radius:16px;padding:12px 18px;background:#154C43;color:white;font:700 13px Cairo,sans-serif;box-shadow:0 4px 16px #0003;cursor:pointer';
+const button=document.createElement('button');button.type='button';button.textContent='ثبّت على بابك على موبايلك';button.style.cssText='position:fixed;bottom:92px;left:max(16px, calc((100vw - 480px)/2 + 16px));z-index:40;max-width:260px;border:1px solid #CF9A3E;border-radius:16px;padding:12px 18px;background:#154C43;color:white;font:700 13px Cairo,sans-serif;box-shadow:0 4px 16px #0003;cursor:pointer';
 function refresh(){button.hidden=standalone();}
 button.addEventListener('click',async()=>{
  if(deferred){const prompt=deferred;deferred=null;await prompt.prompt();await prompt.userChoice;refresh();return;}
