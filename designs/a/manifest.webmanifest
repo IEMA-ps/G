@@ -1,0 +1,39 @@
+{
+  "id": "/?design=a",
+  "name": "على بابك",
+  "short_name": "على بابك",
+  "description": "اطلب اللي محتاجه من محلات منطقتك، وإحنا نوصّله لحد بابك.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/?design=a",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBF7EF",
+  "theme_color": "#FFF8EE",
+  "categories": [
+    "shopping",
+    "food",
+    "lifestyle"
+  ],
+  "icons": [
+    {
+      "src": "/designs/a/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/designs/a/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/designs/a/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
