@@ -3,7 +3,7 @@ export function createMarketerTools({state, ui, escape, callBackend}){
   const e=escape;
   let data=null, loading=false, loadError=false;
   const code=()=>state().profile?.referralCode||'';
-  const link=()=>{const u=new URL('https://3ala-babk.vercel.app/');u.searchParams.set('marketer',code());u.hash='register';return u.href;};
+  const link=()=>{const u=new URL('https://3alababk.com/');u.searchParams.set('marketer',code());u.hash='register';return u.href;};
   const pitch=()=>`أهلًا! تطبيق على بابك بيساعد العملاء يطلبوا من محلات منطقتهم. لو حابب تنضم كتاجر، سجّل بيانات محلك من الرابط ده عشان الإدارة تراجعها وتتواصل معاك:\n${link()}\nكود المسوّق: ${code()}`;
   const templates=()=>[
     {title:'أول تواصل',text:pitch()},
