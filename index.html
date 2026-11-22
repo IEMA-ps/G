@@ -1740,10 +1740,10 @@ function renderMarketerDashboard(){
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft)">${tiers.map(x=>`<span>${esc(x.name)} (${x.min})</span>`).join('')}</div>
       <div style="font-size:12px;color:var(--ink-soft)">${tr.next?`باقي ${tr.need} محل نشط للوصول لمستوى «${esc(tr.next.name)}» (+${tr.next.bonus}%)`:'وصلت لأعلى مستوى 🎉'}</div></div>`; })()}
     <div class="stat-grid">
-      <div class="stat-card"><div class="num">${ms.length}</div><div class="lbl">محلاتي (${ms.filter(m=>m.status==='ACTIVE').length} نشط)</div></div>
-      <div class="stat-card"><div class="num">${fmtMoney(t.gross)}</div><div class="lbl">مبيعات محلاتي المسلّمة</div></div>
-      <div class="stat-card"><div class="num">${fmtMoney(t.earn)}</div><div class="lbl">إجمالي نسبتي</div></div>
-      <div class="stat-card"><div class="num" style="color:var(--success)">${fmtMoney(t.available)}</div><div class="lbl">الرصيد المتاح للسحب${t.pendingW>0?` (+${fmtMoney(t.pendingW)} قيد السحب)`:''}</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-shop"></i><div class="num">${ms.length}</div><div class="lbl">محلاتي (${ms.filter(m=>m.status==='ACTIVE').length} نشط)</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-chart-line"></i><div class="num">${fmtMoney(t.gross)}</div><div class="lbl">مبيعات محلاتي المسلّمة</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-coins"></i><div class="num">${fmtMoney(t.earn)}</div><div class="lbl">إجمالي نسبتي</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-wallet"></i><div class="num" style="color:var(--success)">${fmtMoney(t.available)}</div><div class="lbl">الرصيد المتاح للسحب${t.pendingW>0?` (+${fmtMoney(t.pendingW)} قيد السحب)`:''}</div></div>
     </div>
     <button class="btn btn-primary" style="margin-top:16px" onclick="go('mk_tools')"><i class="fa-solid fa-bullhorn"></i> افتح أدواتك التسويقية</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openWithdrawRequest()"><i class="fa-solid fa-hand-holding-dollar"></i> طلب سحب الرصيد</button>
@@ -1757,7 +1757,7 @@ function renderMarketerMerchants(){
     <button class="btn btn-primary" style="margin-bottom:14px" onclick="openMarketerMerchantForm()"><i class="fa-solid fa-plus"></i> تسجيل محل جديد</button>
     ${ms.length? `<div class="list-gap">${ms.map(m=>{
       const st = MERCHANT_STATUS[m.status]||{}; const r = byId[m.id]||{orders:0,gross:0,earn:0};
-      return `<div class="card"><div class="row-between"><b style="font-size:14px">${esc(m.businessName)}</b><span class="status-pill ${st.cls}">${st.label}</span></div>
+      return `<div class="card"><div class="row-between"><b style="font-size:14px">${esc(m.businessName)}</b><span class="status-pill ${st.cls}"><i class="fa-solid ${m.status==='ACTIVE'?'fa-circle-check':m.status==='PENDING'?'fa-clock':'fa-ban'}"></i> ${st.label}</span></div>
         <p style="font-size:12px;color:var(--ink-soft);margin:6px 0">${esc(m.managerName||'')} · ${esc(m.phone||'')} · ${esc(m.activityType||'')}</p>
         <div style="display:flex;gap:14px;font-size:12px;flex-wrap:wrap"><span>طلبات مسلّمة: <b>${r.orders}</b></span><span>مبيعات: <b>${fmtMoney(r.gross)}</b></span><span>اشتراكات: <b>${r.subsCount}</b> (${fmtMoney(r.subsTotal)})</span><span>نسبتي: <b style="color:var(--success)">${fmtMoney(r.earn)}</b></span></div>
         ${r.m.subEndsAt?`<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px">${esc(r.m.subPlanName||'')} — ${r.m.subEndsAt>Date.now()?'ساري حتى':'انتهى في'} ${new Date(r.m.subEndsAt).toLocaleDateString('ar-EG')}</div>`:'<div style="font-size:11.5px;color:var(--danger);margin-top:6px">لا يوجد اشتراك</div>'}
@@ -3624,8 +3624,8 @@ function renderDeliveryDashboard(){
   const delivered = all.filter(s=>s.status==='DELIVERED');
   return `
     <div class="stat-grid">
-      <div class="stat-card"><div class="num">${active.length}</div><div class="lbl">جاري توصيلها الآن</div></div>
-      <div class="stat-card"><div class="num">${delivered.length}</div><div class="lbl">تم تسليمها</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-motorcycle"></i><div class="num">${active.length}</div><div class="lbl">جاري توصيلها الآن</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-circle-check"></i><div class="num">${delivered.length}</div><div class="lbl">تم تسليمها</div></div>
     </div>
     <div class="section-head"><h3>مهامك الحالية</h3></div>
     ${active.length? `<div class="list-gap">${active.map(deliveryTaskCard).join('')}</div>` : emptyState('fa-motorcycle','لا توجد طلبات جاري توصيلها الآن','هتظهر هنا أول ما التاجر يسند لك طلب جديد')}
@@ -3633,7 +3633,7 @@ function renderDeliveryDashboard(){
 }
 function deliveryTaskCard(s){
   return `<div class="order-card">
-    <div class="top-row"><span class="oid">#${s.parentOrderId}</span><span class="status-pill status-pending">جاري التوصيل</span></div>
+    <div class="top-row"><span class="oid">#${s.parentOrderId}</span><span class="status-pill status-pending"><i class="fa-solid fa-motorcycle"></i> جاري التوصيل</span></div>
     <div class="date">${fmtDate(s.createdAt)}</div>
     <div class="divider" style="margin:10px 0"></div>
     <p style="font-size:12.5px;margin:0 0 4px"><i class="fa-solid fa-shop"></i> استلام من: ${esc(s.merchantName)}</p>
@@ -3651,7 +3651,7 @@ function renderDeliveryHistory(){
   if(!list.length) return emptyState('fa-clock-rotate-left','لا يوجد سجل توصيل بعد','');
   return `<div class="list-gap">${list.map(s=>`
     <div class="order-card">
-      <div class="top-row"><span class="oid">#${s.parentOrderId}</span><span class="status-pill ${s.status==='DELIVERED'?'status-active':'status-suspended'}">${s.status==='DELIVERED'?'تم التسليم':'ملغي'}</span></div>
+      <div class="top-row"><span class="oid">#${s.parentOrderId}</span><span class="status-pill ${s.status==='DELIVERED'?'status-active':'status-suspended'}"><i class="fa-solid ${s.status==='DELIVERED'?'fa-circle-check':'fa-circle-xmark'}"></i> ${s.status==='DELIVERED'?'تم التسليم':'ملغي'}</span></div>
       <div class="date">${fmtDate(s.createdAt)}</div>
       <p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-location-dot"></i> ${esc(s.deliveryAddress)}</p>
     </div>`).join('')}</div>`;
@@ -3906,7 +3906,7 @@ function renderAdminMerchants(){
     ${list.length? `<div class="list-gap">${list.map(m=>{
       const st = MERCHANT_STATUS[m.status]||{};
       return `<div class="card">
-        <div class="row-between"><b style="font-size:14px">${esc(m.businessName)}</b><span class="status-pill ${st.cls}">${st.label}</span></div>
+        <div class="row-between"><b style="font-size:14px">${esc(m.businessName)}</b><span class="status-pill ${st.cls}"><i class="fa-solid ${m.status==='ACTIVE'?'fa-circle-check':m.status==='PENDING'?'fa-clock':'fa-ban'}"></i> ${st.label}</span></div>
         <p style="font-size:12px;color:var(--ink-soft);margin:6px 0">${esc(m.managerName)} · ${esc(m.phone)} · ${esc(m.activityType||'')}</p>
         <div class="row-between" style="margin-bottom:8px">
           <span style="font-size:12px;color:var(--ink-soft)"><i class="fa-solid fa-gem"></i> <b style="color:${subOk(m)?'var(--success)':'var(--danger)'}">${m.subEndsAt?(esc(m.subPlanName||'')+(subOk(m)?' حتى ':' انتهى ')+fmtDay(m.subEndsAt)):'بدون اشتراك'}</b></span></div>
