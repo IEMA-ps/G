@@ -65,25 +65,26 @@ export function createMarketerTools({state, ui, escape, callBackend}){
   const image=src=>new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src;});
   async function material(kind){
     if(!code()) throw new Error('missing-code');
+    await document.fonts.load('700 64px "IBM Plex Sans Arabic"');
     await document.fonts.ready;
     const c=document.createElement('canvas');c.width=1080;c.height=kind==='story'?1920:1080;
     const x=c.getContext('2d');const story=kind==='story';
-    x.fillStyle='#FBF7EF';x.fillRect(0,0,c.width,c.height);
-    x.fillStyle='#154C43';x.fillRect(0,0,1080,story?560:300);
-    const logo=await image('/icon.svg');x.drawImage(logo,story?420:450,story?100:42,story?240:180,story?240:180);
+    x.fillStyle='#FFF8EE';x.fillRect(0,0,c.width,c.height);
+    x.fillStyle='#CC3D1B';x.fillRect(0,0,1080,story?560:300);
+    const logo=await image('/logo-reverse.svg');x.drawImage(logo,story?420:450,story?100:42,story?240:180,story?240:180);
     x.direction='rtl';x.textAlign='center';
-    function text(t,y,size=48,color='#154C43'){x.fillStyle=color;x.font=`800 ${size}px Cairo, sans-serif`;x.fillText(t,540,y,920);}
-    text('على بابك',story?440:266,64,'#FBF7EF');
+    function text(t,y,size=48,color='#CC3D1B'){x.fillStyle=color;x.font=`700 ${size}px "IBM Plex Sans Arabic", sans-serif`;x.fillText(t,540,y,920);}
+    text('على بابك',story?440:266,64,'#FFF8EE');
     text('محلك أقرب لعملاء منطقتك',story?720:410,54);
     text('انضم كتاجر وعرّف الناس بمنتجاتك',story?825:490,35);
-    text('سجّل بيانات محلك لمراجعة الإدارة',story?900:550,30,'#6F6A61');
+    text('سجّل بيانات محلك لمراجعة الإدارة',story?900:550,30,'#7B6A5B');
     const svg=qrSvg();const qr=await image('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg));
     const qrSize=story?420:250,qrY=story?1050:580;
     x.fillStyle='#FFFFFF';x.fillRect((1080-qrSize)/2-12,qrY-12,qrSize+24,qrSize+24);x.drawImage(qr,(1080-qrSize)/2,qrY,qrSize,qrSize);
     text('امسح الرمز وسجّل محلك',qrY+qrSize+68,32);
-    text('كود المسوّق',qrY+qrSize+123,24,'#6F6A61');
+    text('كود المسوّق',qrY+qrSize+123,24,'#7B6A5B');
     text(code(),qrY+qrSize+170,Math.min(34,850/code().length*1.7));
-    x.fillStyle='#CF9A3E';x.fillRect(0,c.height-20,1080,20);
+    x.fillStyle='#EAB94F';x.fillRect(0,c.height-20,1080,20);
     return c;
   }
   async function previewMaterial(kind){
