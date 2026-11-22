@@ -347,6 +347,29 @@ img{max-width:100%; display:block;}
   body[data-role="marketer"] #modalRoot{align-items:center;}
   body[data-role="marketer"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
   body[data-role="marketer"] #toast{bottom:32px;}
+/* ---------- ديسكتوب: لوحة المندوب (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+@media (min-width:1024px){
+  body[data-role="delivery"]{background:var(--paper);}
+  body[data-role="delivery"] #appRoot{max-width:none; margin:0; box-shadow:none; background:var(--paper);}
+  body[data-role="delivery"] #appShell{margin-right:250px;}
+  body[data-role="delivery"] #topbar{padding:16px 36px;}
+  body[data-role="delivery"] #topbar .tb-title{font-size:20px;}
+  body[data-role="delivery"] #mainContent{width:100%; max-width:1240px; margin:0 auto; padding:28px 36px 48px;}
+  body[data-role="delivery"] #bottomNav{top:0; bottom:0; right:0; left:auto; transform:none; width:250px; max-width:none; flex-direction:column; justify-content:flex-start; gap:2px; overflow-y:auto; border-top:none; border-left:1px solid var(--line); padding:20px 12px; border-radius:0; margin:0; box-shadow:none; height:auto;}
+  body[data-role="delivery"] #bottomNav::before{content:'على بابك'; display:block; font-weight:800; font-size:20px; color:var(--teal); padding:4px 14px 18px;}
+  body[data-role="delivery"] .nav-btn{flex:none; flex-direction:row; justify-content:flex-start; gap:12px; padding:11px 14px; border-radius:12px; font-size:14px; text-align:right;}
+  body[data-role="delivery"] .nav-btn i{font-size:16px; width:20px; text-align:center;}
+  body[data-role="delivery"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="delivery"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="delivery"] .nav-btn .badge{position:static; margin:0 6px 0 0;}
+  body[data-role="delivery"] .stat-grid{grid-template-columns:repeat(4,1fr); gap:16px;}
+  body[data-role="delivery"] .stat-card{padding:20px;}
+  body[data-role="delivery"] .stat-card .num{font-size:28px;}
+  body[data-role="delivery"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; align-items:start;}
+  body[data-role="delivery"][data-tab="d_profile"] #mainContent{max-width:900px;}
+  body[data-role="delivery"] #modalRoot{align-items:center;}
+  body[data-role="delivery"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="delivery"] #toast{bottom:32px;}
 }
 
 /* ---------- modal ---------- */
