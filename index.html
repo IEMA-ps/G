@@ -3705,7 +3705,7 @@ function renderAdminRecurringOrders(){
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${filter===k?'active':''}" onclick="S.aRecurringFilter='${k}';renderMain()">${l}</button>`).join('')}</div>
     <p style="font-size:12px;color:var(--ink-soft)">عرض حتى ١٠٠ تذكير، الأحدث أولًا. الشاشة للعرض فقط.</p>
     ${S.adminRecurringLoading?emptyState('fa-hourglass-half','جاري تحميل التذكيرات',''):S.adminRecurringError?`<p class="hint-box" role="alert" style="padding:12px">${esc(S.adminRecurringError)}</p>`:list.length?`<div class="list-gap">${list.map(r=>`<div class="card" style="overflow-wrap:anywhere">
-      <div style="display:flex;gap:12px;align-items:flex-start"><b style="flex:1;min-width:0;font-size:14px">${esc(r.productTitle||'منتج غير مسمّى')}</b><span class="status-pill ${r.status==='ACTIVE'?'status-active':'status-suspended'}" style="flex-shrink:0">${r.status==='ACTIVE'?'مفعّل':r.status==='PAUSED'?'موقّف':esc(r.status||'غير محدد')}</span></div>
+      <div style="display:flex;gap:12px;align-items:flex-start"><b style="flex:1;min-width:0;font-size:14px">${esc(r.productTitle||'منتج غير مسمّى')}</b><span class="status-pill ${r.status==='ACTIVE'?'status-active':'status-suspended'}" style="flex-shrink:0"><i class="fa-solid ${r.status==='ACTIVE'?'fa-circle-check':'fa-pause'}"></i> ${r.status==='ACTIVE'?'مفعّل':r.status==='PAUSED'?'موقّف':esc(r.status||'غير محدد')}</span></div>
       <p style="font-size:13px;margin:10px 0 4px">العميل: ${esc(r.customerName||r.customerId||'غير محدد')}</p>
       <p style="font-size:13px;margin:4px 0">كل ${esc(WEEKDAY_NAMES[r.dayOfWeek]||'يوم غير محدد')} · الكمية ${Number(r.quantity)||0}</p>
       <div style="font-size:11px;color:var(--ink-soft);margin-top:8px">${esc(r._id)}${r.createdAt?' · '+fmtDate(r.createdAt):''}</div>
@@ -3720,10 +3720,10 @@ function renderAdminDashboard(){
   const newOrdersCount = orders.filter(o=>o.status==='PENDING_ADMIN').length;
   return `
     <div class="stat-grid">
-      <div class="stat-card"><div class="num">${merchants.filter(m=>m.status==='ACTIVE').length}</div><div class="lbl">تجار نشطون</div></div>
-      <div class="stat-card"><div class="num">${pendingMerchants}</div><div class="lbl">بانتظار الموافقة</div></div>
-      <div class="stat-card"><div class="num">${orders.length}</div><div class="lbl">إجمالي الطلبات</div></div>
-      <div class="stat-card"><div class="num">${fmtMoney(revenue)}</div><div class="lbl">إجمالي المبيعات</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-shop"></i><div class="num">${merchants.filter(m=>m.status==='ACTIVE').length}</div><div class="lbl">تجار نشطون</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-clock"></i><div class="num">${pendingMerchants}</div><div class="lbl">بانتظار الموافقة</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-receipt"></i><div class="num">${orders.length}</div><div class="lbl">إجمالي الطلبات</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-sack-dollar"></i><div class="num">${fmtMoney(revenue)}</div><div class="lbl">إجمالي المبيعات</div></div>
     </div>
     ${newOrdersCount>0 ? `<div class="card" style="margin-top:16px;border-color:var(--teal);background:var(--teal-tint)" onclick="go('a_new_orders')">
       <b style="font-size:13.5px"><i class="fa-solid fa-bell"></i> ${newOrdersCount} طلب جديد بانتظار المراجعة والإرسال للتاجر</b>
@@ -3737,7 +3737,7 @@ function renderAdminDashboard(){
     <div class="section-head"><h3>أحدث الطلبات</h3><span class="more" onclick="go('a_orders')">عرض الكل</span></div>
     ${orders.slice(0,4).length? `<div class="list-gap">${orders.slice(0,4).map(o=>{
       const st=ORDER_STATUS[o.status]||{};
-      return `<div class="order-card"><div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}">${st.label}</span></div><div class="date">${fmtDate(o.createdAt)} · ${esc(o.customerName)}</div><div class="row-between" style="margin-top:8px"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div></div>`;
+      return `<div class="order-card"><div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}"><i class="fa-solid ${o.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':o.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':o.status==='PREPARING'?'fa-box-open':o.status==='ACCEPTED'?'fa-check':'fa-clock'}"></i> ${st.label}</span></div><div class="date">${fmtDate(o.createdAt)} · ${esc(o.customerName)}</div><div class="row-between" style="margin-top:8px"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div></div>`;
     }).join('')}</div>` : emptyState('fa-receipt','لا توجد طلبات بعد','')}
     <button class="btn btn-primary a-shortcut" style="margin-top:16px" onclick="go('a_settlements')"><i class="fa-solid fa-sack-dollar"></i> الكشوف والتسويات للتجار</button>
     <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_recurring')"><i class="fa-solid fa-repeat"></i> الطلبات الأسبوعية</button>
@@ -3866,7 +3866,7 @@ function adminSubOrderCard(s){
   const canSend = s.status==='PENDING_ADMIN';
   const cancellable = !['DELIVERED','REJECTED','CANCELLED'].includes(s.status);
   return `<div class="card" style="margin-bottom:8px;background:var(--paper)">
-    <div class="row-between" style="margin-bottom:6px"><b style="font-size:12.5px"><i class="fa-solid fa-shop" style="color:var(--teal)"></i> ${esc(s.merchantName)}</b><span class="status-pill ${pillCls}" style="font-size:9.5px">${st.label}</span></div>
+    <div class="row-between" style="margin-bottom:6px"><b style="font-size:12.5px"><i class="fa-solid fa-shop" style="color:var(--teal)"></i> ${esc(s.merchantName)}</b><span class="status-pill ${pillCls}" style="font-size:9.5px"><i class="fa-solid ${s.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':s.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':s.status==='PREPARING'?'fa-box-open':s.status==='ACCEPTED'?'fa-check':'fa-clock'}"></i> ${st.label}</span></div>
     ${s.deliveryAgentName?`<p style="font-size:11.5px;color:var(--ink-soft);margin:0 0 6px"><i class="fa-solid fa-motorcycle"></i> مندوب التوصيل: ${esc(s.deliveryAgentName)}</p>`:''}
     ${s.cancelReason?`<p style="font-size:11.5px;color:var(--danger);margin:0 0 6px"><i class="fa-solid fa-circle-info"></i> سبب الإلغاء: ${esc(s.cancelReason)}</p>`:''}
     ${(s.items||[]).map(it=>`<div class="row-between" style="font-size:12px;margin-bottom:3px"><span>${esc(it.productTitle)} × ${it.quantity}</span><span>${fmtMoney(it.price*it.quantity)}</span></div>`).join('')}
@@ -4336,7 +4336,7 @@ function renderAdminOrders(){
       const subs = S.allSubOrders.filter(s=>s.parentOrderId===o.id);
       const st = ORDER_STATUS[o.status]||{};
       return `<div class="order-card">
-        <div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}">${st.label}</span></div>
+        <div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}"><i class="fa-solid ${o.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':o.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':o.status==='PREPARING'?'fa-box-open':o.status==='ACCEPTED'?'fa-check':'fa-clock'}"></i> ${st.label}</span></div>
         <div class="date">${fmtDate(o.createdAt)} · ${esc(o.customerName)} · ${esc(o.customerPhone)}</div>
         <div class="divider" style="margin:10px 0"></div>
         ${subs.map(adminSubOrderCard).join('')}
@@ -4358,7 +4358,7 @@ function renderAdminCoupons(){
       const statusLabel = !c.isActive ? 'متوقف' : expired ? 'منتهي' : usedUp ? 'استُنفذ' : 'فعّال';
       const statusCls = (!c.isActive || expired || usedUp) ? 'status-suspended' : 'status-active';
       return `<div class="card">
-        <div class="row-between"><b style="font-size:15px;letter-spacing:1px">${esc(c.code)}</b><span class="status-pill ${statusCls}">${statusLabel}</span></div>
+        <div class="row-between"><b style="font-size:15px;letter-spacing:1px">${esc(c.code)}</b><span class="status-pill ${statusCls}"><i class="fa-solid ${statusCls==='status-active'?'fa-circle-check':'fa-ban'}"></i> ${statusLabel}</span></div>
         <p style="font-size:12.5px;color:var(--ink-soft);margin:8px 0">
           ${c.type==='PERCENT' ? `خصم ${c.value}%` : `خصم ثابت ${fmtMoney(c.value)}`}
           ${c.minOrderAmount>0?` · بحد أدنى للطلب ${fmtMoney(c.minOrderAmount)}`:''}
@@ -4498,7 +4498,7 @@ function renderAdminAgents(){
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${filter===k?'active':''}" onclick="S.aAgentFilter='${k}';renderMain()">${l}${k==='PENDING'&&(S.allDeliveryAgents||[]).filter(a=>a.status==='PENDING').length?' ('+(S.allDeliveryAgents||[]).filter(a=>a.status==='PENDING').length+')':''}</button>`).join('')}</div>
     ${list.length? `<div class="list-gap">${list.map(a=>`
       <div class="card">
-        <div class="row-between"><b style="font-size:14px">${esc(a.name)}</b><span class="status-pill ${statusClass(a.status)}">${statusLabel(a.status)}</span></div>
+        <div class="row-between"><b style="font-size:14px">${esc(a.name)}</b><span class="status-pill ${statusClass(a.status)}"><i class="fa-solid ${a.status==='ACTIVE'?'fa-circle-check':a.status==='PENDING'?'fa-clock':'fa-ban'}"></i> ${statusLabel(a.status)}</span></div>
         <p style="font-size:12px;color:var(--ink-soft);margin:6px 0">${esc(a.phone)}${a.vehicleType?' · '+esc(a.vehicleType):''} · <i class="fa-solid fa-star" style="color:var(--gold)"></i> ${a.rating||'—'} (${a.ratingCount||0})</p>
         ${a.status==='PENDING' ? `<p style="font-size:12px;color:var(--ink-soft);margin:0 0 6px"><i class="fa-solid fa-circle-info"></i> طلب تسجيل ذاتي من التطبيق، بانتظار الموافقة</p>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
@@ -4619,7 +4619,7 @@ function renderLegacyAdminSettlements(){
           const net = saved ? saved.netAmount : roundMoney(gross-commissionAmount);
           const paid = !!(saved && saved.paid);
           return `<div style="border:1px solid var(--line);border-radius:var(--radius-m);padding:12px;margin-bottom:10px;background:var(--paper)">
-            <div class="row-between" style="margin-bottom:8px"><b style="font-size:12.5px">${weekLabelOf(wk)}</b><span class="status-pill ${paid?'status-active':'status-pending'}" style="font-size:9.5px">${paid?'تم الدفع':'لم تُدفع بعد'}</span></div>
+            <div class="row-between" style="margin-bottom:8px"><b style="font-size:12.5px">${weekLabelOf(wk)}</b><span class="status-pill ${paid?'status-active':'status-pending'}" style="font-size:9.5px"><i class="fa-solid ${paid?'fa-circle-check':'fa-clock'}"></i> ${paid?'تم الدفع':'لم تُدفع بعد'}</span></div>
             <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:4px"><span>إجمالي مبيعات التاجر</span><span>${fmtMoney(gross)}</span></div>
             <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:4px;color:var(--danger)"><span>عمولة المنصة (${pct}%)</span><span>-${fmtMoney(commissionAmount)}</span></div>
             <div class="summary-row total" style="font-size:13.5px;display:flex;justify-content:space-between;font-weight:800;border-top:1px dashed var(--line);padding-top:6px;margin-top:4px"><span>صافي مستحق التاجر</span><span>${fmtMoney(net)}</span></div>
