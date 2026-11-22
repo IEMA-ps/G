@@ -255,6 +255,8 @@ img{max-width:100%; display:block;}
   #appRoot{box-shadow:0 0 40px rgba(0,0,0,.1); min-height:100vh;}
   #bottomNav{position:fixed;}
 }
+
+.plan-pair{display:grid;grid-template-columns:1fr;gap:14px}.plan-card{padding:20px}.plan-card.ordering-plan{border-color:var(--teal);background:linear-gradient(155deg,var(--teal-tint),var(--surface) 60%)}.plan-intro{font-size:12.5px;color:var(--ink-soft);line-height:1.9;min-height:72px}.plan-fee{font-size:11.5px;line-height:1.8;background:var(--paper);padding:10px;border-radius:10px;margin:10px 0}.plan-option{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-top:1px solid var(--line);font-size:12px}.plan-option b{color:var(--teal);font-size:14px;white-space:nowrap}@media(max-width:600px){.plan-pair{grid-template-columns:1fr}.plan-intro{min-height:0}}
 </style>
 <link rel="stylesheet" href="/brand.css">
 <script src="/brand.js" defer></script>
@@ -371,9 +373,11 @@ import {
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   collection, query, where, orderBy, onSnapshot, serverTimestamp,
-  writeBatch, runTransaction, increment, limit
+  writeBatch, runTransaction, increment, limit, startAfter, documentId
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
+
+import * as MerchantPlans from './merchant-plans.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE",
@@ -674,7 +678,7 @@ const Auth = {
           email, activityType: document.getElementById('mActivityType').value,
           categoryIds:'', address: document.getElementById('mAddress').value.trim(),
           description: document.getElementById('mDescription').value.trim(),
-          logoUrl:'', coverUrl:'', status:'PENDING', rating:4.8, totalOrdersCount:0,
+          logoUrl:'', coverUrl:'', ...(S.settings.merchantPlansV2?{subscriptionModel:MerchantPlans.MODEL,subPlanType:null}:{}), status:'PENDING', rating:4.8, totalOrdersCount:0,
           ownerId: cred.user.uid, registeredAt: nowMs(), ...mkAttr
         });
       }
@@ -828,7 +832,7 @@ window.loadProductsFor = async (kind, id)=>{
   (S._pTs = S._pTs||{})[key] = now;
   try{
     let q;
-    if(kind==='merchant') q = query(collection(db,'products'), where('merchantId','==',id), where('isActive','==',true), limit(STORE_LIMIT));
+    if(kind==='merchant'){if(!MerchantPlans.canOrder(getMerchant(id),S.settings.subsEnforced)) return; q = query(collection(db,'products'), where('merchantId','==',id), where('isActive','==',true),orderBy(documentId()), limit(STORE_LIMIT));}
     else if(kind==='category'){
       const snapshots = await Promise.all(categoryIdsFor(id).map(cid=>getDocs(query(collection(db,'products'), where('categoryId','==',cid), where('isActive','==',true), limit(STORE_LIMIT)))));
       if(requestEpoch!==authEpoch || !S.user) return;
@@ -838,6 +842,7 @@ window.loadProductsFor = async (kind, id)=>{
     const snap = await getDocs(q);
     if(requestEpoch!==authEpoch || !S.user) return;
     mergeProducts(snap.docs.map(d=>d.data()));
+    if(kind==='merchant'){S.storePages=S.storePages||{};S.storePages[id]={last:snap.docs.at(-1),more:snap.docs.length===STORE_LIMIT,busy:false};}
     render();
   }catch(e){ delete S._pTs[key]; console.warn('products load', e); }
 };
@@ -870,6 +875,8 @@ function subscribeShared(){
   S.unsubs.push(onSnapshot(query(collection(db,'merchants'), where('status','==','ACTIVE')), snap=>{
     S._rawMerchants = snap.docs.map(d=>d.data());
     recomputeMerchants();
+    const requested=new URLSearchParams(location.search).get('store');
+    if(S.role==='customer' && !S.openedRequestedStore && /^[A-Za-z0-9_-]{1,100}$/.test(requested||'') && S.merchants.some(m=>m.id===requested)){S.openedRequestedStore=true;openMerchant(requested);}
     render();
   }));
   if(S.role==='admin'){
@@ -1138,12 +1145,12 @@ window.runDbFixAll = async ()=>{
 /* ================= باقات الاشتراك للتجار ================= */
 /* الأدمن بيحدد الباقات (سعر/مدة/حد منتجات/نسبة المسوّق). التاجر بيطلب الاشتراك ويدفع يدويًا (تحويل) ويكتب رقم العملية،
    والأدمن بيعتمد → بيتفعّل المتجر لمدة الباقة، وبتتسجّل نسبة المسوّق (لقطة وقت الاعتماد). */
-const addMonths = (ms, n)=>{ const d=new Date(ms); d.setMonth(d.getMonth()+n); return d.getTime(); };
+const addMonths = MerchantPlans.addCalendarMonths;
 const fmtDay = ms => new Date(ms).toLocaleDateString('ar-EG');
 const subOk = m => !!m && (m.subEndsAt||0) > Date.now();
 function merchantPaywall(){
   const m = S.myMerchant;
-  if(!S.settings.subsEnforced || !m || subOk(m)) return '';
+  if(!m || (!(S.settings.subsEnforced || MerchantPlans.isNewMerchant(m))) || subOk(m)) return '';
   return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>اشتراكك منتهي أو غير مفعّل</h4><p>متجرك مخفي عن العملاء لحد ما تشترك في إحدى الباقات.</p>
     <button class="btn btn-primary" style="margin-top:12px" onclick="go('m_subscription')">اختيار باقة</button></div>`;
 }
@@ -1166,7 +1173,7 @@ function onboardingCard(){
 function subBanner(){
   const m = S.myMerchant; if(!m) return '';
   if(!subOk(m)){
-    if(!S.settings.subsEnforced) return '';
+    if(!S.settings.subsEnforced && !MerchantPlans.isNewMerchant(m)) return '';
     return `<div class="card" style="border-color:var(--danger);background:var(--danger-tint);margin-bottom:12px" onclick="go('m_subscription')"><b style="color:var(--danger)">اشتراكك منتهي — متجرك مخفي</b><div style="font-size:12px">اضغط لتجديد الاشتراك</div></div>`;
   }
   const days = Math.ceil((m.subEndsAt-Date.now())/86400000);
@@ -1175,7 +1182,7 @@ function subBanner(){
 }
 function renderMerchantSubscription(){
   const m = S.myMerchant; if(!m) return emptyState('fa-hourglass-half','جاري التحميل','');
-  const plans = (S.plans||[]).filter(p=>p.active!==false);
+  const plans = (S.plans||[]).filter(p=>p.active!==false && (!S.settings.merchantPlansV2 || MerchantPlans.isNewPlan(p)));
   const mine = S.mySubs||[];
   const pending = mine.find(x=>x.status==='PENDING');
   const active = subOk(m);
@@ -1184,20 +1191,22 @@ function renderMerchantSubscription(){
       <div style="font-size:12px;color:var(--ink-soft)">حالة الاشتراك</div>
       <div style="font-size:16px;font-weight:800;margin-top:4px;color:${active?'var(--success)':'var(--danger)'}">${active?('نشط — '+esc(m.subPlanName||'')):(m.subEndsAt?'منتهي':'غير مشترك')}</div>
       ${m.subEndsAt?`<div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px">${active?'ينتهي':'انتهى'} في ${fmtDay(m.subEndsAt)}</div>`:''}
-      ${!S.settings.subsEnforced?'<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px">الاشتراك اختياري حاليًا.</div>':''}
+      ${!S.settings.subsEnforced && !MerchantPlans.isNewMerchant(m)?'<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px">الاشتراك اختياري للمتاجر القديمة حاليًا.</div>':''}
     </div>
+    ${S.settings.merchantPlansV2?`<div class="hint-box" style="margin-bottom:14px">باقة تعريفية: لوكيشن وأرقام تواصل فقط. باقة الطلبات: منتجات وطلبات وتجهيز للاستلام من المندوب، وعمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، بدون رسوم التوصيل. الدفع كاش فقط. تغيير نوع باقة سارية يتم بعد انتهاء مدتها.</div>`:''}
     ${pending?`<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-clock"></i> طلب «${esc(pending.planName)}» قيد المراجعة${pending.reference?` (مرجع: ${esc(pending.reference)})`:''}.</div>`:''}
     ${S.settings.subPaymentInstructions?`<div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة الدفع</b><div style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;white-space:pre-line;line-height:1.8">${esc(S.settings.subPaymentInstructions)}</div></div>`:''}
     <div class="section-head"><h3>الباقات المتاحة</h3></div>
-    ${plans.length? `<div class="list-gap">${plans.map(p=>`<div class="card">
+    ${plans.some(MerchantPlans.isNewPlan)?renderNewPlanCatalog(plans,pending):plans.length? `<div class="list-gap">${plans.map(p=>`<div class="card">
       <div class="row-between"><b style="font-size:15px">${esc(p.name)}</b><b style="color:var(--teal);font-size:16px">${fmtMoney(p.price)}</b></div>
-      <div style="font-size:12px;color:var(--ink-soft);margin:6px 0">لمدة ${p.months} ${p.months===1?'شهر':'أشهر'} · ${p.maxProducts>0?`حتى ${p.maxProducts} منتج`:'منتجات غير محدودة'}</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin:6px 0">لمدة ${p.months} ${p.months===1?'شهر':'أشهر'} · ${MerchantPlans.isNewPlan(p)?(p.kind==='PROFILE'?'صفحة تعريفية بدون طلبات':'منتجات وطلبات + 2% على التاجر'):p.maxProducts>0?`حتى ${p.maxProducts} منتج`:'منتجات غير محدودة'}</div>
       ${p.description?`<div style="font-size:12.5px;white-space:pre-line;line-height:1.7;margin-bottom:8px">${esc(p.description)}</div>`:''}
       <button class="btn btn-primary btn-sm" ${pending?'disabled':''} onclick="openSubscribe('${p._id}')">${active?'تجديد / ترقية':'اشترك الآن'}</button></div>`).join('')}</div>` : emptyState('fa-box-open','لا توجد باقات متاحة حاليًا','تواصل مع الإدارة')}
     ${mine.length?`<div class="section-head" style="margin-top:18px"><h3>سجل الاشتراكات</h3></div><div class="list-gap">${mine.map(x=>`<div class="card row-between"><div><b style="font-size:13px">${esc(x.planName)}</b><div style="font-size:11.5px;color:var(--ink-soft)">${fmtDay(x.createdAt)} · ${fmtMoney(x.price)}</div></div><span class="status-pill ${x.status==='APPROVED'?'status-active':x.status==='REJECTED'?'status-suspended':'status-pending'}">${x.status==='APPROVED'?'معتمد':x.status==='REJECTED'?'مرفوض':'قيد المراجعة'}</span></div>`).join('')}</div>`:''}`;
 }
 window.openSubscribe = (planId)=>{
   const p = (S.plans||[]).find(x=>x._id===planId); if(!p) return;
+  if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==p.kind){UI.toast('تغيير نوع باقة سارية متاح بعد انتهاء المدة الحالية. لا تحوّل قيمة الباقة الجديدة الآن.');return;}
   UI.openModal(`
     <div class="modal-head"><h3>الاشتراك في «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${fmtMoney(p.price)}</b></div><div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
@@ -1207,15 +1216,18 @@ window.openSubscribe = (planId)=>{
 };
 window.submitSubscription = async (planId)=>{
   const p = (S.plans||[]).find(x=>x._id===planId), m = S.myMerchant; if(!p||!m) return;
+  if(MerchantPlans.isNewPlan(p) && MerchantPlans.hasTerm(m) && MerchantPlans.modeOf(m)!==p.kind){UI.toast('انتظر انتهاء الاشتراك الحالي قبل طلب نوع باقة آخر');return;}
   if((S.mySubs||[]).some(x=>x.status==='PENDING')){ UI.toast('عندك طلب قيد المراجعة بالفعل'); return; }
   const id = 'sub_'+uid();
   await setDoc(doc(db,'subscriptions',id), { id, merchantId:m.id, merchantName:m.businessName, planId:p._id, planName:p.name, price:p.price, months:p.months,
+    ...(MerchantPlans.isNewPlan(p)?{model:p.model,kind:p.kind,termsVersion:p.termsVersion,orderCommissionPercent:p.orderCommissionPercent}:{}),
     reference:document.getElementById('subRef').value.trim(), status:'PENDING', createdAt:nowMs(), marketerId:null, marketerAmount:0 });
   try{ await pushNotification('ADMIN','ALL','طلب اشتراك جديد 💳', `${m.businessName} — ${p.name} (${fmtMoney(p.price)})`, id); }catch(e){}
   UI.closeModal(); UI.toast('تم إرسال طلب الاشتراك، هنراجعه ونفعّله ✅');
 };
 /* اعتماد اشتراك: بيمدّ مدة المتجر من تاريخ انتهاء الحالي (لو لسه ساري) أو من الآن، ويسجّل نسبة المسوّق */
 async function activateSubscription(subId, sub){
+  if(sub.model===MerchantPlans.MODEL){ return activateNewSubscription(subId,sub); }
   if(useBackend()){ await callFn('approveSubscription', sub.status==='PENDING' && S.allSubs.some(x=>x._id===subId) ? {subId} : {merchantId:sub.merchantId, planId:sub.planId, note:sub.reference}); return; }
   const m = S.allMerchants.find(x=>x.id===sub.merchantId); if(!m) throw new Error('المتجر غير موجود');
   const plan = (S.plans||[]).find(x=>x._id===sub.planId);
@@ -1259,10 +1271,92 @@ window.saveGrantSub = async (mid)=>{
   const m = S.allMerchants.find(x=>x.id===mid);
   const id = 'sub_'+uid();
   try{
-    await activateSubscription(id, { id, merchantId:mid, merchantName:m.businessName, planId:p._id, planName:p.name, price:p.price, months:p.months, reference:document.getElementById('gsNote').value.trim()||'تفعيل يدوي', status:'PENDING', createdAt:nowMs(), grantedByAdmin:true });
+    await activateSubscription(id, { id, merchantId:mid, merchantName:m.businessName, planId:p._id, planName:p.name, price:p.price, months:p.months, reference:document.getElementById('gsNote').value.trim()||'تفعيل يدوي', ...(MerchantPlans.isNewPlan(p)?{model:p.model,kind:p.kind,termsVersion:p.termsVersion,orderCommissionPercent:p.orderCommissionPercent}:{}), status:'PENDING', createdAt:nowMs(), grantedByAdmin:true });
     UI.closeModal(); UI.toast('تم تفعيل الاشتراك ✅');
   }catch(e){ UI.toast('⚠️ '+(e.message||e)); }
 };
+window.loadMoreStoreProducts=async mid=>{
+  const state=S.storePages?.[mid],epoch=authEpoch;
+  if(!state?.more||state.busy||!state.last||!MerchantPlans.canOrder(getMerchant(mid),S.settings.subsEnforced)) return;
+  state.busy=true;render();
+  try{
+    const snap=await getDocs(query(collection(db,'products'),where('merchantId','==',mid),where('isActive','==',true),orderBy(documentId()),startAfter(state.last),limit(STORE_LIMIT)));
+    if(epoch!==authEpoch||!S.user) return;
+    mergeProducts(snap.docs.map(d=>d.data()));state.last=snap.docs.at(-1)||state.last;state.more=snap.docs.length===STORE_LIMIT;
+  }catch(e){UI.toast('تعذر تحميل باقي المنتجات. حاول مرة أخرى.');}
+  finally{if(epoch===authEpoch){state.busy=false;render();}}
+};
+function renderNewPlanCatalog(plans,pending){
+  const locked=kind=>MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==kind;
+  return `<div class="plan-pair">${['PROFILE','ORDERING'].map(kind=>{
+    const options=plans.filter(p=>p.kind===kind).sort((a,b)=>a.months-b.months);
+    return `<div class="card plan-card ${kind==='ORDERING'?'ordering-plan':''}"><span class="badge-chip">${kind==='PROFILE'?'عشان العملاء يعرفوك':'عشان تستقبل طلبات'}</span><h3 style="margin:12px 0 4px">${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</h3><p class="plan-intro">${kind==='PROFILE'?'صفحتك وعنوانك واللوكيشن وأرقام التواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها ليستلمها المندوب.'}</p>${kind==='ORDERING'?'<div class="plan-fee">+ 2% على التاجر من المنتجات في الطلبات المسلّمة، بدون التوصيل. كاش فقط.</div>':'<div class="plan-fee">اشتراك ثابت. التواصل مع المتجر مباشرة.</div>'}<div>${options.map(p=>`<div class="plan-option"><span>${p.months===12?'سنة':p.months+' شهور'}</span><b>${fmtMoney(p.price)}</b><button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px" ${pending||locked(kind)?'disabled':''} onclick="openSubscribe('${p._id||p.id}')">${locked(kind)?'بعد الانتهاء':'اختيار'}</button></div>`).join('')}</div></div>`;
+  }).join('')}</div>`;
+}
+
+function merchantCanEditProducts(){
+  if(!MerchantPlans.canOrder(S.myMerchant,S.settings.subsEnforced)){UI.toast('إضافة المنتجات متاحة لمتجر نشط بباقة طلبات سارية');return false;}
+  return true;
+}
+function publicStoreUrl(id){const u=new URL('store.html',location.href);u.searchParams.set('id',id);return u.href;}
+function publicMerchantData(m){
+  const out={};
+  for(const k of ['id','businessName','description','address','phone','whatsappNumber','latitude','longitude','logoUrl','activityType','openTime','closeTime','status','subEndsAt','subPlanType']) if(m[k]!==undefined) out[k]=m[k];
+  out.publishedAt=nowMs();return out;
+}
+function merchantContactCard(m){
+  const phone=MerchantPlans.phoneHref(m.phone),map=MerchantPlans.mapHref(m);
+  return `<div class="card" style="margin-bottom:14px"><b>العنوان والتواصل</b><p style="font-size:13px;line-height:1.8">${esc(m.address||'العنوان غير مضاف بعد')}</p><div style="display:flex;gap:8px;flex-wrap:wrap">${phone?`<a class="btn btn-ghost btn-sm" style="width:auto" href="${esc(phone)}"><i class="fa-solid fa-phone"></i> ${esc(m.phone)}</a>`:''}${m.whatsappNumber?`<a class="btn btn-ghost btn-sm" style="width:auto" href="${waLink(m.whatsappNumber,'مرحبًا، بخصوص متجر '+m.businessName)}" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp"></i> واتساب</a>`:''}${map?`<a class="btn btn-primary btn-sm" style="width:auto" href="${esc(map)}" target="_blank" rel="noopener"><i class="fa-solid fa-location-dot"></i> اللوكيشن على الخريطة</a>`:''}</div></div>`;
+}
+window.previewMerchantPlans=()=>{
+  if(!isSuperAdmin()) return;
+  UI.openModal(`<div class="modal-head"><h3>مراجعة الباقات الجديدة</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="hint-box" style="margin-bottom:14px">الإضافة لا تغيّر أي اشتراك سابق أو عمولة قديمة. النقل من اشتراك ساري للنظام الجديد ينتظر انتهاء المدة. راجع صلاحيات Firestore قبل تفعيل النظام.</div>${MerchantPlans.PLAN_TEMPLATES.map(p=>`<div class="card" style="margin-bottom:8px"><div class="row-between"><b>${esc(p.name)}</b><b>${fmtMoney(p.price)}</b></div><p style="font-size:12.5px;margin:6px 0">${p.months} شهر · ${p.kind==='PROFILE'?'صفحة ولوكيشن وأرقام تواصل فقط':'منتجات وطلبات + 2% على التاجر من الطلبات المسلّمة'}</p></div>`).join('')}<button class="btn btn-primary" style="margin-top:12px" onclick="installMerchantPlans()">إضافة الباقات واعتماد عرضها بدل القديمة</button><p style="font-size:12px;line-height:1.7">لن تُحذف الباقات القديمة. نسب المسوّقين القديمة تبقى كما هي، والجديدة ترث النسبة الافتراضية الحالية مع حوافز المستوى.</p>`);
+};
+window.installMerchantPlans=async()=>{
+  if(!isSuperAdmin()) return;
+  if(!confirm('إضافة الباقات الست وعرضها للتجار؟ الاشتراكات السابقة لا تتغير. صلاحيات Firestore لازم تكون مراجعة أولًا.')) return;
+  try{
+    await runTransaction(db,async tx=>{
+      const refs=MerchantPlans.PLAN_TEMPLATES.map(p=>doc(db,'plans',p.id));
+      const snaps=await Promise.all(refs.map(r=>tx.get(r)));
+      snaps.forEach((d,i)=>{if(d.exists() && (d.data().model!==MerchantPlans.MODEL || d.data().kind!==MerchantPlans.PLAN_TEMPLATES[i].kind)) throw new Error('يوجد معرّف باقة مستخدم بشروط مختلفة، راجعه قبل الإضافة');});
+      MerchantPlans.PLAN_TEMPLATES.forEach((p,i)=>{if(!snaps[i].exists()) tx.set(refs[i],{...p,description:p.kind==='PROFILE'?'صفحة تعريفية ولوكيشن وأرقام تواصل. بدون منتجات أو طلبات.':'منتجات وطلبات وتجهيز للمندوب. عمولة 2% على التاجر من قيمة المنتجات المسلّمة، بدون التوصيل. كاش فقط.',createdAt:nowMs()});});
+      tx.set(doc(db,'settings','app'),{merchantPlansV2:true},{merge:true});
+    });
+    await logAudit('إضافة نظام باقتي التجار','6 باقات، بدون تغيير الاشتراكات السابقة');UI.closeModal();UI.toast('تمت إضافة الباقات الجديدة');
+  }catch(e){UI.toast('تعذرت إضافة الباقات: '+(e.message||e));}
+};
+async function activateNewSubscription(subId,input){
+  if(!isSuperAdmin()) throw new Error('للأدمن الرئيسي فقط');
+  if(useBackend()) throw new Error('اعتماد الباقات الجديدة يحتاج تحديث دالة السيرفر قبل استخدامه مع الباك إند. لا تغيّر إعداد الباك إند لتجاوز هذا التنبيه.');
+  await runTransaction(db,async tx=>{
+    const sr=doc(db,'subscriptions',subId),stored=await tx.get(sr);
+    if(input.grantedByAdmin && stored.exists()) throw new Error('هذا التفعيل مسجل بالفعل');
+    if(!input.grantedByAdmin && (!stored.exists()||stored.data().status!=='PENDING')) throw new Error('الطلب لم يعد قيد المراجعة');
+    const sub=input.grantedByAdmin?input:stored.data();
+    const mr=doc(db,'merchants',sub.merchantId),pr=doc(db,'plans',sub.planId);
+    const [md,pd,settingsDoc]=await Promise.all([tx.get(mr),tx.get(pr),tx.get(doc(db,'settings','app'))]);
+    if(!md.exists()||!pd.exists()) throw new Error('المتجر أو الباقة غير موجود');
+    const m={...md.data(),id:md.id},p={...pd.data(),_id:pd.id,id:pd.id},settings=settingsDoc.exists()?settingsDoc.data():{};
+    if(m.status!=='ACTIVE') throw new Error('وافق على انضمام المتجر أولًا قبل تفعيل اشتراكه');
+    if(!MerchantPlans.isNewPlan(p)||p.active===false||sub.model!==p.model||sub.kind!==p.kind||sub.termsVersion!==p.termsVersion||sub.price!==p.price||sub.months!==p.months) throw new Error('شروط الباقة تغيّرت أو غير متطابقة. اطلب اشتراكًا جديدًا بالشروط الحالية.');
+    const terms=MerchantPlans.termFor(m,p),marketerId=m.marketerId||null;
+    const basePct=p.marketerPercent!=null?p.marketerPercent:(settings.marketerSubPercent??10);
+    const tierBonus=marketerId?mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId&&x.status==='ACTIVE').length).cur.bonus:0;
+    const pct=marketerId?Math.min(100,basePct+tierBonus):0;
+    tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:p.price,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:roundMoney(p.price*pct/100)},{merge:true});
+    tx.update(mr,terms);
+    tx.set(doc(db,'publicMerchantProfiles',m.id),publicMerchantData({...m,...terms}));
+  });
+  await logAudit('اعتماد باقة تاجر جديدة',subId);
+}
+function renderMonthlyCommissionStatements(orders){
+  const rows=MerchantPlans.statements(orders),isAdmin=S.role==='admin';
+  const names=isAdmin?(S.allMerchants||[]):[S.myMerchant].filter(Boolean);
+  const unknown=(orders||[]).filter(o=>o.commissionModel===MerchantPlans.MODEL&&o.status==='DELIVERED'&&!o.deliveredAt).length;
+  return `<div class="section-head"><h3>كشف العمولة الشهري</h3><span class="badge-chip">2% على التاجر</span></div><div class="hint-box" style="margin-bottom:14px">كشف للمراجعة والتحصيل اليدوي، وليس إيصال دفع. الشهر حسب تاريخ التسليم بتوقيت القاهرة، للطلبات الجديدة بنظام الطلبات فقط. لا يشمل التوصيل أو الاشتراكات، ولا يضاف على العميل. خصم سعر المنتج محسوب، وكوبونات ونقاط المنصة لا تقلل مستحق التاجر. الطلبات القديمة لها تسوياتها السابقة.</div>${unknown?`<div class="hint-box" style="color:var(--danger);margin-bottom:12px">${unknown} طلب مكتمل بدون تاريخ تسليم، غير محسوب لحين مراجعته.</div>`:''}${rows.length?rows.map(r=>`<div class="card" style="margin-bottom:14px"><div class="row-between"><b>${esc(names.find(m=>m.id===r.merchantId)?.businessName||r.merchantId)}</b><span class="badge-chip" dir="ltr">${esc(r.month)}</span></div><p style="font-size:12px;color:var(--ink-soft)">طلبات مسلّمة: ${r.count}</p><div class="summary-row"><span>قيمة المنتجات</span><span>${fmtMoney(r.base)}</span></div><div class="summary-row total"><span>عمولة مستحقة للموقع</span><b>${fmtMoney(r.fee)}</b></div><details style="font-size:12px;line-height:1.9;margin-top:10px"><summary>تفاصيل الطلبات</summary>${r.orders.map(o=>`<div class="row-between"><span>${esc(o.id)} · ${fmtDay(MerchantPlans.millisOf(o.deliveredAt))}</span><span>${fmtMoney(o.commissionAmount)}</span></div>`).join('')}</details><p style="font-size:11.5px;color:var(--ink-soft);margin-bottom:0">الكاش مع التاجر أو المندوب حسب التشغيل. الكشف لا يعني أن المنصة دفعت للتاجر أو حصّلت العمولة.</p></div>`).join(''):emptyState('fa-file-invoice','لا توجد عمولات شهرية بعد','تظهر هنا الطلبات الجديدة بعد تسليمها فعليًا')}`;
+}
+
 /* ---- إدارة الباقات والإعدادات (أدمن) ---- */
 function renderAdminSubscriptions(){
   const plans = S.plans||[], subs = S.allSubs||[];
@@ -1275,12 +1369,13 @@ function renderAdminSubscriptions(){
       return `<div class="card" style="border-color:var(--gold)"><div class="row-between"><b style="font-size:13.5px">${esc(x.merchantName||m.businessName||'')}</b><b>${fmtMoney(x.price)}</b></div>
         <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${esc(x.planName)} · ${x.months} شهر${x.reference?` · مرجع: ${esc(x.reference)}`:''}${m.marketerId?` · مسوّق: ${esc(m.marketerName||'')}`:''}</div>
         ${sa?`<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveSubscription('${x._id}')">اعتماد</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="rejectSubscription('${x._id}')">رفض</button></div>`:''}</div>`; }).join('')}</div>`:''}
+    ${sa?`<div class="card" style="margin-bottom:16px;border-color:var(--teal)"><b>النظام الجديد: تعريفية وطلبات</b><p style="font-size:13px;line-height:1.8">تعريفية: 200 / 400 / 600 جنيه. طلبات: 400 / 800 / 1200 جنيه + 2% على التاجر. المدد: 3 / 6 / 12 شهر. لا يغيّر الاشتراكات أو العمولات السابقة.</p><button class="btn btn-ghost" onclick="previewMerchantPlans()">مراجعة الباقات الست قبل الإضافة</button></div>`:''}
     <div class="section-head"><h3>الباقات</h3></div>
     ${sa?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="openPlanForm()"><i class="fa-solid fa-plus"></i> إضافة باقة</button>`:''}
     ${!plans.length && sa ? `<button class="btn btn-ghost" style="margin-bottom:12px" onclick="seedDefaultPlans()"><i class="fa-solid fa-wand-magic-sparkles"></i> إنشاء 3 باقات جاهزة (أساسية / متوسطة / مميزة)</button>` : ''}
     ${plans.length? `<div class="list-gap" style="margin-bottom:16px">${plans.map(p=>`<div class="card" style="${p.active===false?'opacity:.55':''}">
       <div class="row-between"><b style="font-size:14px">${esc(p.name)}</b><b style="color:var(--teal)">${fmtMoney(p.price)}</b></div>
-      <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${p.months} شهر · ${p.maxProducts>0?`حتى ${p.maxProducts} منتج`:'غير محدود'} · نسبة المسوّق: <b>${p.marketerPercent!=null?p.marketerPercent:(st.marketerSubPercent!=null?st.marketerSubPercent:10)}%</b>${p.active===false?' · <b style="color:var(--danger)">موقوفة</b>':''}</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${p.months} شهر · ${MerchantPlans.isNewPlan(p)?(p.kind==='PROFILE'?'تعريفية فقط':'طلبات + 2% على التاجر'):p.maxProducts>0?`حتى ${p.maxProducts} منتج`:'غير محدود'} · نسبة المسوّق: <b>${p.marketerPercent!=null?p.marketerPercent:(st.marketerSubPercent!=null?st.marketerSubPercent:10)}%</b>${p.active===false?' · <b style="color:var(--danger)">موقوفة</b>':''}</div>
       ${sa?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openPlanForm('${p._id}')"><i class="fa-solid fa-pen"></i> تعديل</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="togglePlan('${p._id}')">${p.active===false?'تفعيل':'إيقاف'}</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="deletePlan('${p._id}')"><i class="fa-solid fa-trash"></i></button></div>`:''}</div>`).join('')}</div>` : emptyState('fa-box-open','لا توجد باقات بعد','اضغط «إضافة باقة»')}
     ${sa?`<div class="card" style="margin-bottom:16px"><h3 style="margin:0 0 12px;font-size:15px">إعدادات الاشتراكات</h3>
       <div class="field"><label>إلزام الاشتراك (إخفاء المتاجر غير المشتركة عن العملاء)</label><select id="ssEnforce"><option value="0" ${!st.subsEnforced?'selected':''}>اختياري (غير مُلزِم حاليًا)</option><option value="1" ${st.subsEnforced?'selected':''}>إلزامي</option></select></div>
@@ -1315,6 +1410,7 @@ window.saveSubSettings = async ()=>{
 };
 window.openPlanForm = (id)=>{
   const p = id ? (S.plans||[]).find(x=>x._id===id) : null;
+  if(MerchantPlans.isNewPlan(p)){ UI.toast('الباقات الجديدة ثابتة بالشروط المعروضة. راجع تعديل أسعارها في إصدار مستقل.'); return; }
   UI.openModal(`
     <div class="modal-head"><h3>${p?'تعديل الباقة':'باقة جديدة'}</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="field"><label>اسم الباقة</label><input id="plName" value="${esc(p?p.name:'')}" placeholder="مثال: الباقة الذهبية"></div>
@@ -1351,6 +1447,7 @@ window.seedDefaultPlans = async ()=>{
 window.togglePlan = async (id)=>{ if(!isSuperAdmin()) return; const p=(S.plans||[]).find(x=>x._id===id); await updateDoc(doc(db,'plans',id), {active: p.active===false}); };
 window.deletePlan = async (id)=>{
   if(!isSuperAdmin()) return;
+  if(MerchantPlans.isNewPlan((S.plans||[]).find(p=>p._id===id))){ UI.toast('أوقف الباقة بدل حذف شروط الاشتراكات السابقة.'); return; }
   if(!confirm('حذف الباقة؟ الاشتراكات السابقة لا تتأثر.')) return;
   await deleteDoc(doc(db,'plans',id)); await logAudit('حذف باقة', id); UI.toast('تم الحذف');
 };
@@ -1386,7 +1483,7 @@ function mkCalc(rate, merchants, subOrders, subs, marketerId){
     const pct = (m.commissionPercent!=null) ? m.commissionPercent : S.settings.platformCommissionPercent;
     const os = subOrders.filter(x=>x.merchantId===m.id && x.status==='DELIVERED' && (x.createdAt||0)<=until);
     const gross = roundMoney(os.reduce((a,x)=>a+(x.subtotal||0),0));
-    const platform = roundMoney(gross*pct/100);
+    const platform = roundMoney(os.reduce((a,x)=>a+(x.commissionModel===MerchantPlans.MODEL?(Number(x.commissionAmount)||0):(x.subtotal||0)*pct/100),0));
     const earnOrders = useOrd ? roundMoney(platform*rate/100) : 0;
     const ss = (subs||[]).filter(x=>x.merchantId===m.id && x.status==='APPROVED' && (!marketerId || x.marketerId===marketerId));
     const subsTotal = roundMoney(ss.reduce((a,x)=>a+(x.price||0),0));
@@ -1538,7 +1635,7 @@ window.saveMarketerMerchant = async ()=>{
     whatsappNumber: document.getElementById('mkWhats').value.trim() || phone,
     email: document.getElementById('mkEmail').value.trim(), activityType: document.getElementById('mkActivity').value,
     categoryIds:'', address: document.getElementById('mkAddress').value.trim(), description: document.getElementById('mkDesc').value.trim(),
-    logoUrl:'', coverUrl:'', status:'PENDING', rating:4.8, totalOrdersCount:0, ownerId:null, registeredAt: nowMs(),
+    logoUrl:'', coverUrl:'', ...(S.settings.merchantPlansV2?{subscriptionModel:MerchantPlans.MODEL,subPlanType:null}:{}), status:'PENDING', rating:4.8, totalOrdersCount:0, ownerId:null, registeredAt: nowMs(),
     marketerId: S.user.uid, marketerName: ((S.profile.firstName||'')+' '+(S.profile.lastName||'')).trim(), marketerSince: nowMs()
   });
   try{ await pushNotification('ADMIN','ALL','محل جديد من مسوّق 📣', `المسوّق ${(S.profile.firstName||'')} سجّل محل "${businessName}" وينتظر مراجعتك.`, id); }catch(e){}
@@ -1596,7 +1693,7 @@ window.saveAssignMarketer = async (mid)=>{
 /* ===== نسب المسوّق (شفافة له) + طلبات السحب ===== */
 function renderMyRates(){
   const tr = mkTier((S.mkMerchants||[]).filter(m=>m.status==='ACTIVE').length);
-  const plans = (S.plans||[]).filter(p=>p.active!==false);
+  const plans = (S.plans||[]).filter(p=>p.active!==false && (!S.settings.merchantPlansV2 || MerchantPlans.isNewPlan(p)));
   const src = mkSource();
   return `<div class="section-head"><h3>نسبتك</h3></div><div class="card" style="margin-bottom:14px">
     <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px">مستواك: <b style="color:var(--ink)">${esc(tr.cur.name)}</b>${tr.cur.bonus>0?` (+${tr.cur.bonus}% على كل باقة)`:''}</div>
@@ -1781,9 +1878,10 @@ function renderShell(){
   if(S.role==='merchant') navItems = [
     ['m_dashboard','fa-chart-line','الرئيسية'], ['m_products','fa-box','منتجاتي'],
     ['m_orders','fa-receipt','الطلبات', ()=>S.mySubOrders.filter(o=>o.status==='SENT_TO_MERCHANT').length],
-    ['m_reports','fa-chart-pie','الأداء'],
+    ['m_reports','fa-chart-pie','الأداء'], ['m_statement','fa-file-invoice','العمولة'],
     ['m_profile','fa-store','متجري']
   ];
+  if(S.role==='merchant' && MerchantPlans.modeOf(S.myMerchant)==='PROFILE') navItems=[['m_dashboard','fa-house','الرئيسية'],['m_subscription','fa-gem','اشتراكي'],['m_profile','fa-store','صفحتي']];
   if(S.role==='marketer') navItems = [
     ['mk_dashboard','fa-chart-line','الرئيسية'], ['mk_merchants','fa-shop','محلاتي', ()=>(S.mkMerchants||[]).filter(m=>m.status==='PENDING').length],
     ['mk_earnings','fa-sack-dollar','أرباحي'], ['mk_tools','fa-bullhorn','أدواتي']
@@ -1846,7 +1944,7 @@ window.addEventListener('hashchange', ()=>{
 // الشاشات اللي ينفع تتفتح من الـ hash لكل دور (الشاشات اللي محتاجة بيانات مختارة زي orderDetail/merchantPage مستثناة)
 const HASH_TABS = {
   customer: ['home','browse','cart','checkout','orders','profile','addresses','notifications','wishlist','recurringOrders','groupBuys'],
-  merchant: ['m_dashboard','m_products','m_orders','m_profile','m_reports','m_subscription','notifications'],
+  merchant: ['m_dashboard','m_products','m_orders','m_profile','m_reports','m_subscription','m_statement','notifications'],
   delivery: ['d_dashboard','d_history','d_profile','notifications'],
   marketer: ['mk_dashboard','mk_merchants','mk_earnings','mk_tools','notifications'],
   admin: ['a_dashboard','a_new_orders','a_merchants','a_categories','a_products','a_orders','a_recurring','a_users','a_settlements','a_settings','a_agents','a_coupons','a_reports','a_audit','a_marketers','a_dbsetup','a_subscriptions','notifications']
@@ -1894,7 +1992,7 @@ function renderMain(){
     home: renderHome, browse: renderBrowse, merchantPage: renderMerchantPage,
     cart: renderCart, checkout: renderCheckout, orders: renderOrders, orderDetail: renderOrderDetail, orderDone: renderOrderDone,
     profile: renderProfile, addresses: renderAddresses, notifications: renderNotifications, wishlist: renderWishlist, recurringOrders: renderRecurringOrders, groupBuys: renderGroupBuys,
-    m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports,
+    m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports, m_statement:()=>renderMonthlyCommissionStatements(S.mySubOrders||[]),
     d_dashboard: renderDeliveryDashboard, d_history: renderDeliveryHistory, d_profile: renderDeliveryProfile,
     a_dashboard: renderAdminDashboard, a_new_orders: renderAdminNewOrders, a_merchants: renderAdminMerchants, a_categories: renderAdminCategories,
     a_products: renderAdminProducts, a_orders: renderAdminOrders, a_recurring: renderAdminRecurringOrders, a_users: renderAdminUsers,
@@ -1957,12 +2055,12 @@ function displayCategories(){
 }
 
 /* ================= HELPERS ================= */
-const merchantSubOk = m => !S.settings.subsEnforced || (m && (m.subEndsAt||0) > Date.now());
+const merchantSubOk = m => MerchantPlans.visibleMerchant(m,S.settings.subsEnforced);
 function recomputeMerchants(){ S.merchants = (S._rawMerchants||[]).filter(merchantSubOk); }
 const getMerchant = id => S.merchants.find(m=>m.id===id) || S.allMerchants.find(m=>m.id===id);
 const getProduct = id => S.products.find(p=>p.id===id);
 const getCategory = id => S.categories.find(c=>c.id===id);
-function activeProducts(){ return S.products.filter(p=>p.isActive && getMerchant(p.merchantId)); }
+function activeProducts(){ return S.products.filter(p=>p.isActive && MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)); }
 function cartLines(){ return S.cart.map(c=>({...c, product:getProduct(c.productId)})).filter(l=>l.product); }
 function cartTotal(){ return cartLines().reduce((a,l)=>a+effPrice(l.product)*l.quantity,0); }
 function cartMerchantCount(){ return new Set(cartLines().map(l=>l.product.merchantId)).size; }
@@ -2054,6 +2152,9 @@ window.confirmRecurringOrder = async (id)=>{
       const pRef = doc(db,'products', r.productId);
       const pSnap = await tx.get(pRef);
       const currentStock = pSnap.exists() ? (pSnap.data().stock||0) : 0;
+      const md=await tx.get(doc(db,'merchants',r.merchantId));
+      const m=md.exists()?md.data():null;
+      if(!MerchantPlans.canOrder(m,S.settings.subsEnforced)) throw new Error('المتجر لا يستقبل طلبات حاليًا');
       if(currentStock < r.quantity){ throw new Error(`عذرًا، الكمية المتاحة من "${r.productTitle}" أصبحت ${currentStock} فقط`); }
       tx.set(doc(db,'orders',orderId), {
         id:orderId, customerId:S.user.uid, customerName:r.customerName, customerPhone:r.customerPhone,
@@ -2065,7 +2166,7 @@ window.confirmRecurringOrder = async (id)=>{
       });
       tx.set(doc(db,'subOrders',subId), {
         id:subId, parentOrderId:orderId, merchantId:r.merchantId, merchantName:m?m.businessName:'', merchantWhatsapp:m?m.whatsappNumber:'',
-        subtotal:effPrice(p)*r.quantity, status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
+        subtotal:effPrice(p)*r.quantity,...MerchantPlans.feeSnapshot(m,effPrice(p)*r.quantity), status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
         customerId:S.user.uid, customerName:r.customerName, customerPhone:r.customerPhone,
         deliveryAddress:r.addressText, notes:'طلب أسبوعي ثابت', createdAt: nowMs(),
         items:[{productId:r.productId, productTitle:r.productTitle, price:effPrice(p), quantity:r.quantity}]
@@ -2202,7 +2303,9 @@ window.finalizeGroupBuy = async (gid)=>{
       const pSnap = await tx.get(pRef);
       const currentStock = pSnap.exists() ? (pSnap.data().stock||0) : 0;
       if(currentStock < totalQty) throw new Error(`المخزون المتاح (${currentStock}) أقل من إجمالي كمية التجميعة (${totalQty})`);
-      const m = getMerchant(g.merchantId);
+      const md=await tx.get(doc(db,'merchants',g.merchantId));
+      const m=md.exists()?md.data():null;
+      if(!MerchantPlans.canOrder(m,S.settings.subsEnforced)) throw new Error('المتجر لا يستقبل طلبات حاليًا');
       const subOrderIds = [];
       g.participants.forEach((part, idx)=>{
         const orderId = newOrderId();
@@ -2218,7 +2321,7 @@ window.finalizeGroupBuy = async (gid)=>{
         });
         tx.set(doc(db,'subOrders',subId), {
           id:subId, parentOrderId:orderId, merchantId:g.merchantId, merchantName:m?m.businessName:g.merchantName, merchantWhatsapp:m?m.whatsappNumber:'',
-          subtotal:g.groupPrice*part.quantity, status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
+          subtotal:g.groupPrice*part.quantity, ...MerchantPlans.feeSnapshot(m,g.groupPrice*part.quantity), status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
           customerId:part.customerId, customerName:part.customerName, customerPhone:part.phone,
           deliveryAddress:part.addressText, notes:'ضمن تجميعة جيران', createdAt: nowMs(),
           items:[{productId:g.productId, productTitle:g.productTitle, price:g.groupPrice, quantity:part.quantity}]
@@ -2264,6 +2367,7 @@ function renderGroupBuys(){
 
 window.addToCart = (pid, qty=1)=>{
   const p = getProduct(pid);
+  if(!p || !MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)){ UI.toast('هذا المتجر لا يستقبل طلبات حاليًا'); return; }
   const ex = S.cart.find(c=>c.productId===pid);
   const desired = (ex?ex.quantity:0) + qty;
   if(p && p.stock!=null && desired>p.stock){
@@ -2312,6 +2416,7 @@ function productCard(p){
 }
 window.openProduct = (pid)=>{
   const p = getProduct(pid); if(!p) return;
+  if(!MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)){UI.toast('هذا المتجر لا يعرض منتجات للطلب حاليًا');return;}
   const liked = isWishlisted(pid);
   UI.openModal(`
     <div class="modal-head"><h3>تفاصيل المنتج</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -2381,7 +2486,7 @@ function merchantCard(m){
   </div>`;
 }
 window.openCategory = (cid)=>{ S.selectedCategory=cid; if(cid) loadProductsFor('category',cid); go('browse'); };
-window.openMerchant = (mid)=>{ S.activeMerchantId=mid; loadProductsFor('merchant',mid); go('merchantPage'); };
+window.openMerchant = (mid)=>{ S.activeMerchantId=mid; if(MerchantPlans.canOrder(getMerchant(mid),S.settings.subsEnforced)) loadProductsFor('merchant',mid); go('merchantPage'); };
 
 /* ================= CUSTOMER: BROWSE ================= */
 function renderBrowse(){
@@ -2419,7 +2524,9 @@ function renderBrowse(){
 function renderMerchantPage(){
   const m = getMerchant(S.activeMerchantId);
   if(!m) return emptyState('fa-triangle-exclamation','المتجر غير متاح','');
-  const prods = S.products.filter(p=>p.merchantId===m.id && p.isActive);
+  if(!merchantSubOk(m)) return emptyState('fa-shop','المتجر غير متاح حاليًا','');
+  const canOrder = MerchantPlans.canOrder(m,S.settings.subsEnforced);
+  const prods = canOrder?S.products.filter(p=>p.merchantId===m.id && p.isActive):[];
   const openNow = isMerchantOpenNow(m);
   return `
     <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="go('browse')"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
@@ -2436,8 +2543,11 @@ function renderMerchantPage(){
       ${m.minOrderAmount>0?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-circle-info"></i> الحد الأدنى للطلب من هذا المتجر: ${fmtMoney(m.minOrderAmount)}</p>`:''}
       <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, 'مرحبًا، أريد الاستفسار عن منتجاتكم في '+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
     </div>
-    <div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>
-    ${prods.length? `<div class="product-grid">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')}
+    ${merchantContactCard(m)}
+    ${!canOrder?`<div class="hint-box">صفحة تعريفية فقط. تواصل مع المتجر مباشرة للاستفسار، الطلب من خلال التطبيق غير متاح في هذه الباقة.</div>`:''}
+    ${canOrder?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
+    ${canOrder?(prods.length? `<div class="product-grid">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
+    ${canOrder && S.storePages?.[m.id]?.more?`<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreStoreProducts('${m.id}')" ${S.storePages[m.id].busy?'disabled':''}>${S.storePages[m.id].busy?'جاري التحميل...':'عرض باقي منتجات المتجر'}</button>`:''}
   `;
 }
 
@@ -2673,6 +2783,10 @@ window.submitOrder = async ()=>{
           throw new Error(`عذرًا، الكمية المتاحة من "${lines[i].product.title}" أصبحت ${currentStock} فقط، حدّث سلتك وحاول تاني`);
         }
       }
+      const merchantEntries=Object.entries(groups);
+      const merchantSnaps=await Promise.all(merchantEntries.map(([mid])=>tx.get(doc(db,'merchants',mid))));
+      merchantSnaps.forEach(d=>{if(!d.exists() || !MerchantPlans.canOrder(d.data(),S.settings.subsEnforced)) throw new Error('أحد المتاجر لا يستقبل طلبات حاليًا، راجع السلة');});
+      if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
       tx.set(doc(db,'orders',orderId), {
         id:orderId, customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(),
@@ -2684,11 +2798,12 @@ window.submitOrder = async ()=>{
       });
       // ملاحظة: الخصم (كوبون أو نقاط) بيتحمّله المنصة على مستوى الطلب فقط — subtotal كل SubOrder (المستخدم في حساب مستحقات التاجر) بيفضل كامل بدون تأثر
       Object.entries(groups).forEach(([mid, items], idx)=>{
-        const m = getMerchant(mid);
+        const m = merchantSnaps[idx].data();
         const subId = subIds[idx];
         tx.set(doc(db,'subOrders',subId), {
           id:subId, parentOrderId:orderId, merchantId:mid, merchantName:m?m.businessName:'', merchantWhatsapp:m?m.whatsappNumber:'',
           subtotal: items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0),
+          ...MerchantPlans.feeSnapshot(m,items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0)),
           status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
           customerId:S.user.uid,
           customerName:(S.profile.firstName+' '+S.profile.lastName).trim(), customerPhone:S.profile.phone,
@@ -2924,7 +3039,7 @@ function renderAddresses(){
   `;
 }
 function renderWishlist(){
-  const prods = (S.wishlist||[]).map(pid=>getProduct(pid)).filter(Boolean);
+  const prods = (S.wishlist||[]).map(pid=>getProduct(pid)).filter(p=>p && MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced));
   if(!prods.length) return emptyState('fa-heart','قائمة المفضلة فاضية','اضغط على أيقونة القلب في أي منتج عشان تضيفه هنا');
   return `
     <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="go('profile')"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
@@ -2952,6 +3067,7 @@ function renderMerchantDashboard(){
   if(m.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>هيتم تفعيل متجرك بعد موافقة فريق الإدارة، هتوصلك رسالة فور التفعيل.</p></div>`;
   if(m.status==='REJECTED') return `<div class="empty-state"><i class="fa-solid fa-circle-xmark"></i><h4>طلب انضمام المتجر مرفوض</h4><p>${esc(m.rejectionReason||'تواصل مع الإدارة لمعرفة السبب وإعادة المراجعة.')}</p></div>`;
   if(m.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>متجرك معلّق حاليًا</h4><p>تواصل مع الإدارة لمعرفة السبب.</p></div>`;
+  if(MerchantPlans.modeOf(m)==='PROFILE') return `<div class="card"><h3>صفحتك التعريفية</h3><p style="line-height:1.8">العملاء يشوفوا عنوانك واللوكيشن وأرقام التواصل. المنتجات والطلبات متاحة في باقة الطلبات.</p>${merchantContactCard(m)}<button class="btn btn-primary" onclick="go('m_profile')">تعديل بيانات الصفحة</button><button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')">اشتراكي والباقات</button></div>`;
   const subs = S.mySubOrders||[];
   const pending = subs.filter(s=>s.status==='SENT_TO_MERCHANT').length;
   const _sb = subBanner();
@@ -3007,6 +3123,7 @@ window.updateSubOrderStatus = async (subId, status, reason=null)=>{
   if(!s) return;
   const wasDelivered = s.status==='DELIVERED';
   const extra = {status};
+  if(status==='DELIVERED' && !s.deliveredAt) extra.deliveredAt=serverTimestamp();
   if(reason){ extra.cancelReason = reason; extra.cancelledAt = nowMs(); }
   await updateDoc(doc(db,'subOrders', s.id), extra);
   const msg = reason ? `للأسف تم إلغاء طلبك رقم #${s.parentOrderId}. السبب: ${reason}` : `طلبك رقم #${s.parentOrderId} الآن: ${ORDER_STATUS[status].label}`;
@@ -3094,6 +3211,7 @@ window.confirmAssignAgent = async (subId)=>{
 };
 
 function renderMerchantProducts(){
+  if(MerchantPlans.modeOf(S.myMerchant)==='PROFILE') return emptyState('fa-store','باقتك تعريفية فقط','لوكيشن وأرقام تواصل بدون منتجات أو طلبات');
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const m = S.myMerchant;
   if(!m || m.status!=='ACTIVE') return emptyState('fa-lock','متجرك غير مفعّل بعد','لا يمكنك إضافة منتجات حتى تتم الموافقة على متجرك');
@@ -3115,6 +3233,7 @@ function renderMerchantProducts(){
   `;
 }
 window.openProductForm = (pid)=>{
+  if(!merchantCanEditProducts()) return;
   const p = pid ? S.myProducts.find(x=>x.id===pid) : null;
   UI.openModal(`
     <div class="modal-head"><h3>${p?'تعديل المنتج':'منتج جديد'}</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -3143,6 +3262,7 @@ window.openProductForm = (pid)=>{
   `);
 };
 window.saveProduct = async (pid)=>{
+  if(!merchantCanEditProducts()) return;
   const title = document.getElementById('pfTitle').value.trim();
   const price = parseFloat(document.getElementById('pfPrice').value);
   if(!title || !price){ UI.toast('أدخل اسم وسعر المنتج'); return; }
@@ -3187,6 +3307,7 @@ window.deleteProduct = async (pid)=>{ if(confirm('هل أنت متأكد من ح
 window.toggleProductActive = async (id, cur)=>{ await updateDoc(doc(db,'products',id), {isActive:!cur}); UI.toast(!cur?'تم تفعيل المنتج':'تم إلغاء تفعيل المنتج'); };
 
 function renderMerchantOrders(){
+  if(MerchantPlans.modeOf(S.myMerchant)==='PROFILE') return emptyState('fa-store','باقتك تعريفية فقط','لوكيشن وأرقام تواصل بدون منتجات أو طلبات');
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const subs = S.mySubOrders||[];
   const filter = S.mOrderFilter || 'ALL';
@@ -3200,6 +3321,7 @@ function renderMerchantOrders(){
 
 /* ================= تقرير أداء التاجر ================= */
 function renderMerchantReports(){
+  if(MerchantPlans.modeOf(S.myMerchant)==='PROFILE') return emptyState('fa-store','باقتك تعريفية فقط','لوكيشن وأرقام تواصل بدون منتجات أو طلبات');
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const subs = S.mySubOrders||[];
   if(!subs.length) return emptyState('fa-chart-pie','لا توجد بيانات كافية بعد','التقرير هيظهر أول ما تستقبل طلبات على متجرك');
@@ -3253,6 +3375,7 @@ function renderMerchantProfile(){
       <div class="row-between"><span style="color:var(--ink-soft);font-size:13px">النشاط</span><b style="font-size:13px">${esc(m.activityType)}</b></div>
       <div class="row-between"><span style="color:var(--ink-soft);font-size:13px">العنوان</span><b style="font-size:13px">${esc(m.address)}</b></div>
     </div>
+    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">الأرقام والعنوان واللوكيشن في الصفحة التعريفية متاحة للزوار بدون تسجيل دخول بعد اعتماد الاشتراك وإعداد صلاحيات القراءة.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}" target="_blank" rel="noopener">معاينة الصفحة</a></div>`:''}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openChangePassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
@@ -3265,8 +3388,11 @@ window.openMerchantEdit = ()=>{
     <div class="modal-head"><h3>تعديل بيانات المتجر</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="field"><label>اسم المتجر</label><input id="meName" value="${esc(m.businessName)}"></div>
     <div class="field"><label>وصف المتجر</label><textarea id="meDesc">${esc(m.description||'')}</textarea></div>
+    <div class="hint-box">الهاتف وواتساب والعنوان واللوكيشن بيانات ظاهرة للعملاء. لا تضع أي بيانات خاصة هنا.</div>
+    <div class="field"><label>رقم التواصل</label><input id="mePhone" type="tel" value="${esc(m.phone||'')}"></div>
     <div class="field"><label>رقم واتساب</label><input id="meWa" value="${esc(m.whatsappNumber)}"></div>
     <div class="field"><label>العنوان</label><input id="meAddr" value="${esc(m.address)}"></div>
+    <div style="display:flex;gap:10px"><div class="field" style="flex:1"><label>خط العرض (اختياري)</label><input id="meLat" type="number" step="any" min="-90" max="90" value="${esc(m.latitude??'')}"></div><div class="field" style="flex:1"><label>خط الطول (اختياري)</label><input id="meLng" type="number" step="any" min="-180" max="180" value="${esc(m.longitude??'')}"></div></div>
     <div class="field"><label>رابط الشعار</label><input id="meLogo" value="${esc(m.logoUrl||'')}" placeholder="https://..."></div>
     <div style="display:flex;gap:10px">
       <div class="field" style="flex:1"><label>وقت الفتح</label><input id="meOpen" type="time" value="${esc(m.openTime||'09:00')}"></div>
@@ -3277,7 +3403,11 @@ window.openMerchantEdit = ()=>{
   `);
 };
 window.saveMerchantEdit = async ()=>{
+  const latRaw=document.getElementById('meLat').value.trim(),lngRaw=document.getElementById('meLng').value.trim();
+  if((latRaw==='' && lngRaw!=='')||(lngRaw==='' && latRaw!=='')||(latRaw!=='' && (!Number.isFinite(+latRaw)||!Number.isFinite(+lngRaw)||Math.abs(+latRaw)>90||Math.abs(+lngRaw)>180))){UI.toast('أدخل إحداثيات صحيحة معًا أو اتركهما فارغين');return;}
   await updateDoc(doc(db,'merchants',S.myMerchant.id), {
+    phone: document.getElementById('mePhone').value.trim(),
+    latitude:latRaw===''?null:+latRaw,longitude:lngRaw===''?null:+lngRaw,
     businessName: document.getElementById('meName').value.trim(),
     description: document.getElementById('meDesc').value.trim(),
     whatsappNumber: document.getElementById('meWa').value.trim(),
@@ -3287,6 +3417,10 @@ window.saveMerchantEdit = async ()=>{
     closeTime: document.getElementById('meClose').value,
     minOrderAmount: Math.max(0, parseFloat(document.getElementById('meMinOrder').value)||0)
   });
+  if(MerchantPlans.isNewMerchant(S.myMerchant)){
+    try{const d=await getDoc(doc(db,'merchants',S.myMerchant.id));await setDoc(doc(db,'publicMerchantProfiles',S.myMerchant.id),publicMerchantData(d.data()));}
+    catch(e){UI.toast('تم حفظ بيانات المتجر، لكن تحديث الصفحة العامة لم يكتمل. راجع صلاحيات النشر.');return;}
+  }
   UI.closeModal(); UI.toast('تم تحديث بيانات المتجر');
 };
 
@@ -3416,7 +3550,7 @@ function renderAdminDashboard(){
       const st=ORDER_STATUS[o.status]||{};
       return `<div class="order-card"><div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}">${st.label}</span></div><div class="date">${fmtDate(o.createdAt)} · ${esc(o.customerName)}</div><div class="row-between" style="margin-top:8px"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div></div>`;
     }).join('')}</div>` : emptyState('fa-receipt','لا توجد طلبات بعد','')}
-    <button class="btn btn-primary" style="margin-top:16px" onclick="go('a_settlements')"><i class="fa-solid fa-sack-dollar"></i> التسويات الأسبوعية للتجار</button>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="go('a_settlements')"><i class="fa-solid fa-sack-dollar"></i> الكشوف والتسويات للتجار</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_recurring')"><i class="fa-solid fa-repeat"></i> الطلبات الأسبوعية</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_agents')"><i class="fa-solid fa-motorcycle"></i> إدارة مناديب التوصيل</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_subscriptions')"><i class="fa-solid fa-gem"></i> الاشتراكات والباقات${(S.allSubs||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allSubs||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
@@ -3595,7 +3729,7 @@ function renderAdminMerchants(){
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openAssignMarketer('${m.id}')"><i class="fa-solid fa-pen"></i> تغيير</button>
         </div>
         <div class="row-between" style="margin-bottom:8px">
-          <span style="font-size:12px;color:var(--ink-soft)"><i class="fa-solid fa-percent"></i> عمولة المنصة: <b style="color:var(--ink)">${m.commissionPercent!=null?m.commissionPercent:S.settings.platformCommissionPercent}%</b>${m.commissionPercent!=null?'':' (افتراضية)'}</span>
+          <span style="font-size:12px;color:var(--ink-soft)"><i class="fa-solid fa-percent"></i> عمولة المنصة: <b style="color:var(--ink)">${MerchantPlans.isNewMerchant(m)?(m.subPlanType==='ORDERING'?2:0):(m.commissionPercent!=null?m.commissionPercent:S.settings.platformCommissionPercent)}%</b>${MerchantPlans.isNewMerchant(m)?' (الباقة الجديدة، شهريًا)':m.commissionPercent!=null?'':' (افتراضية)'}</span>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMerchantCommission('${m.id}')"><i class="fa-solid fa-pen"></i> تعديل</button>
         </div>
         ${m.status==='REJECTED' && m.rejectionReason?`<p class="hint-box" style="margin-top:10px">سبب الرفض: ${esc(m.rejectionReason)}</p>`:''}
@@ -3680,6 +3814,7 @@ window.saveAdminMerchant = async ()=>{
   UI.toast('تمت إضافة التاجر بنجاح ✅');
 };
 window.openMerchantCommission = (id)=>{
+  if(MerchantPlans.isNewMerchant(S.allMerchants.find(m=>m.id===id))){UI.toast('عمولة الباقة الجديدة ثابتة: الطلبات 2% والتعريفية بدون طلبات. النسبة القديمة محفوظة للتسويات السابقة.');return;}
   const m = S.allMerchants.find(x=>x.id===id);
   if(!m) return;
   UI.openModal(`
@@ -4254,7 +4389,10 @@ window.linkAgentUser = async (agentId)=>{
    - صافي مستحق التاجر
    وتسمح للأدمن بتأكيد دفع تسوية أسبوع معيّن، وتُحفظ القيم وقت الدفع حتى لو اتغيّرت النسبة بعدين. */
 function renderAdminSettlements(){
-  const delivered = (S.allSubOrders||[]).filter(s=>s.status==='DELIVERED');
+  return renderMonthlyCommissionStatements(S.allSubOrders||[])+renderLegacyAdminSettlements();
+}
+function renderLegacyAdminSettlements(){
+  const delivered = (S.allSubOrders||[]).filter(s=>s.status==='DELIVERED' && s.commissionModel!==MerchantPlans.MODEL);
   if(!delivered.length) return emptyState('fa-sack-dollar','لا توجد تسويات بعد','التسوية بتتحسب بس من الطلبات اللي وصلت للعميل فعلاً (DELIVERED)');
 
   const byMerchant = {};
