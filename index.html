@@ -2696,7 +2696,7 @@ function renderBrowse(){
     `).join('')}</div>
     <div class="row-between" style="margin-bottom:12px">
       <h3 style="margin:0;font-size:15.5px">المنتجات (${filteredAll.length})</h3>
-      <select onchange="setBrowseSort(this.value)" style="padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;font-size:12.5px">
+      <select class="sort-select" onchange="setBrowseSort(this.value)">
         <option value="DEFAULT" ${S.browseSort==='DEFAULT'?'selected':''}>الأحدث</option>
         <option value="PRICE_ASC" ${S.browseSort==='PRICE_ASC'?'selected':''}>السعر: من الأقل للأعلى</option>
         <option value="PRICE_DESC" ${S.browseSort==='PRICE_DESC'?'selected':''}>السعر: من الأعلى للأقل</option>
@@ -2752,6 +2752,7 @@ function renderCart(){
       </div>`).join('')}
     </div>
     <div class="card">
+      <h3 style="margin:0 0 6px;font-size:15.5px">ملخص الطلب</h3>
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
       <div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(fee)}</span></div>
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(cartTotal()+fee)}</span></div>
@@ -3062,8 +3063,8 @@ function renderOrders(){
   return `<div class="list-gap">${S.myOrders.map(o=>{
     const st = ORDER_STATUS[o.status]||{};
     return `<div class="order-card" onclick="openOrderDetail('${o.id}')">
-      <div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill status-${st.color==='success'?'active':st.color==='danger'?'suspended':'pending'}">${st.label}</span></div>
-      <div class="date">${fmtDate(o.createdAt)} · ${o.merchantCount} متجر</div>
+      <div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill status-${st.color==='success'?'active':st.color==='danger'?'suspended':'pending'}"><i class="fa-solid ${o.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':o.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':o.status==='PREPARING'?'fa-box-open':'fa-clock'}"></i> ${st.label}</span></div>
+      <div class="date"><i class="fa-regular fa-calendar"></i> ${fmtDate(o.createdAt)} · ${o.merchantCount} متجر</div>
       <div class="divider" style="margin:10px 0"></div>
       <div class="row-between"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div>
     </div>`;
@@ -3203,12 +3204,12 @@ function renderProfile(){
     </div>`:''}
     <div class="section-head"><h3>الحساب</h3></div>
     <div class="list-gap">
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('addresses')"><span><i class="fa-solid fa-location-dot" style="color:var(--teal);margin-left:8px"></i> عناويني</span><i class="fa-solid fa-chevron-left"></i></div>
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('wishlist')"><span><i class="fa-solid fa-heart" style="color:var(--danger);margin-left:8px"></i> المفضلة${(S.wishlist||[]).length?' ('+S.wishlist.length+')':''}</span><i class="fa-solid fa-chevron-left"></i></div>
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('recurringOrders')"><span><i class="fa-solid fa-repeat" style="color:var(--teal);margin-left:8px"></i> طلباتي الثابتة${(S.myRecurringOrders||[]).filter(r=>r.status==='ACTIVE').length?' ('+S.myRecurringOrders.filter(r=>r.status==='ACTIVE').length+')':''}</span><i class="fa-solid fa-chevron-left"></i></div>
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('groupBuys')"><span><i class="fa-solid fa-people-group" style="color:var(--teal);margin-left:8px"></i> تجميعات الجيران${groupBuysNearMe().length?' ('+groupBuysNearMe().length+' قريبة منك)':''}</span><i class="fa-solid fa-chevron-left"></i></div>
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('orders')"><span><i class="fa-solid fa-receipt" style="color:var(--teal);margin-left:8px"></i> طلباتي</span><i class="fa-solid fa-chevron-left"></i></div>
-      ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة بخصوص طلب')?`<div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة بخصوص طلب')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('addresses')"><span><i class="fa-solid fa-location-dot" style="color:var(--teal);margin-left:8px"></i> عناويني</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('wishlist')"><span><i class="fa-solid fa-heart" style="color:var(--danger);margin-left:8px"></i> المفضلة${(S.wishlist||[]).length?' ('+S.wishlist.length+')':''}</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('recurringOrders')"><span><i class="fa-solid fa-repeat" style="color:var(--teal);margin-left:8px"></i> طلباتي الثابتة${(S.myRecurringOrders||[]).filter(r=>r.status==='ACTIVE').length?' ('+S.myRecurringOrders.filter(r=>r.status==='ACTIVE').length+')':''}</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('groupBuys')"><span><i class="fa-solid fa-people-group" style="color:var(--teal);margin-left:8px"></i> تجميعات الجيران${groupBuysNearMe().length?' ('+groupBuysNearMe().length+' قريبة منك)':''}</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('orders')"><span><i class="fa-solid fa-receipt" style="color:var(--teal);margin-left:8px"></i> طلباتي</span><i class="fa-solid fa-chevron-left"></i></div>
+      ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة بخصوص طلب')?`<div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة بخصوص طلب')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
       <button class="btn btn-danger" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
     </div>
   `;
@@ -3666,7 +3667,7 @@ function renderDeliveryProfile(){
       <p style="color:var(--gold);font-size:13px;margin:6px 0 0"><i class="fa-solid fa-star"></i> ${a.rating||'—'} (${a.ratingCount||0} تقييم)</p>
     </div>
     <div class="list-gap" style="margin-top:16px">
-      ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة كمندوب توصيل')?`<div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة كمندوب توصيل')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
+      ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة كمندوب توصيل')?`<div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة كمندوب توصيل')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
       <button class="btn btn-danger" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
     </div>
   `;
