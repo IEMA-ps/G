@@ -83,3 +83,18 @@ export function mapHref(m){
   if(m?.latitude!==''&&m?.longitude!==''&&m?.latitude!=null&&m?.longitude!=null&&Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180) return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(lat+','+lng);
   return m?.address?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(m.address):'';
 }
+
+// Support WhatsApp number. Returns digits in international form, or '' when unset/invalid
+// (also treats the old built-in placeholder as unset so no button points to a made-up number).
+export function supportPhone(raw){
+  let d=String(raw||'').replace(/[^0-9]/g,'');
+  if(d.startsWith('00')) d=d.slice(2);
+  else if(d.startsWith('0')) d='20'+d.slice(1);
+  if(d==='201000000000' || !/^[1-9][0-9]{10,14}$/.test(d)) return '';
+  if(d.startsWith('20') && d.length!==12) return '';
+  return d;
+}
+export function supportHref(raw,msg){
+  const d=supportPhone(raw);
+  return d?'https://wa.me/'+d+(msg?'?text='+encodeURIComponent(msg):''):'';
+}

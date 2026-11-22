@@ -237,6 +237,8 @@ img{max-width:100%; display:block;}
 .row-between{display:flex; align-items:center; justify-content:space-between;}
 .fab{position:fixed; bottom:78px; left:50%; transform:translateX(-146px); background:var(--gold); color:#2A1D06; width:52px; height:52px; border-radius:50%; border:none; box-shadow:var(--shadow); font-size:19px; z-index:19;}
 
+.support-btn{position:fixed; bottom:98px; left:max(12px, calc(50% - 228px)); z-index:18; display:flex; align-items:center; gap:6px; background:#1f9d55; color:#fff; border:none; border-radius:999px; padding:9px 14px; font-size:12.5px; font-weight:700; box-shadow:var(--shadow);}
+.support-btn.hidden{display:none;}
 
 /* ---------- ديسكتوب: لوحة الأدمن (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
 .nav-extra{display:none;}
@@ -381,6 +383,8 @@ img{max-width:100%; display:block;}
     <div id="mainContent"></div>
     <div id="bottomNav"></div>
   </div>
+
+  <button id="supportBtn" class="support-btn hidden" onclick="openSupport()" aria-label="دعم فني"><i class="fa-brands fa-whatsapp"></i> دعم فني</button>
 
   <div id="modalRoot" class="hidden">
     <div class="modal-backdrop" onclick="UI.closeModal()"></div>
@@ -554,7 +558,7 @@ const S = {
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
   myAgent:null, myAgentSubOrders:[], agentNoLink:false, activeAgents:[], myRatings:[], appliedCoupon:null, appliedPoints:null,
   notifications:[],
-  settings:{ appNameArabic:'على بابك', supportWhatsapp:'201000000000', defaultDeliveryFee:25, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
+  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
   cart:[], // {productId, quantity}
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
   browseSort:'DEFAULT', browsePageSize:12,
@@ -1910,8 +1914,17 @@ window.waLink = waLink;
 /* ================= SHELL / ROUTER ================= */
 function unreadCount(){ return S.notifications.filter(n=>!n.isRead).length; }
 
+window.openSupport = (msg)=>{
+  const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,msg||'مرحبًا، أحتاج مساعدة');
+  if(href) window.open(href,'_blank','noopener');
+};
+function updateSupportBtn(){
+  const b=document.getElementById('supportBtn'); if(!b) return;
+  b.classList.toggle('hidden', !(S.profile && MerchantPlans.supportHref(S.settings.supportWhatsapp,'x')));
+}
 function renderShell(){
   if(!S.profile) return;
+  updateSupportBtn();
   const tb = document.getElementById('topbar');
   const bn = document.getElementById('bottomNav');
   const sb = document.getElementById('searchBar');
@@ -3095,7 +3108,7 @@ function renderProfile(){
       <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('recurringOrders')"><span><i class="fa-solid fa-repeat" style="color:var(--teal);margin-left:8px"></i> طلباتي الثابتة${(S.myRecurringOrders||[]).filter(r=>r.status==='ACTIVE').length?' ('+S.myRecurringOrders.filter(r=>r.status==='ACTIVE').length+')':''}</span><i class="fa-solid fa-chevron-left"></i></div>
       <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('groupBuys')"><span><i class="fa-solid fa-people-group" style="color:var(--teal);margin-left:8px"></i> تجميعات الجيران${groupBuysNearMe().length?' ('+groupBuysNearMe().length+' قريبة منك)':''}</span><i class="fa-solid fa-chevron-left"></i></div>
       <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('orders')"><span><i class="fa-solid fa-receipt" style="color:var(--teal);margin-left:8px"></i> طلباتي</span><i class="fa-solid fa-chevron-left"></i></div>
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window.open(waLink(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة بخصوص طلب'),'_blank')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>
+      ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة بخصوص طلب')?`<div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة بخصوص طلب')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
       <button class="btn btn-danger" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
     </div>
   `;
@@ -3553,7 +3566,7 @@ function renderDeliveryProfile(){
       <p style="color:var(--gold);font-size:13px;margin:6px 0 0"><i class="fa-solid fa-star"></i> ${a.rating||'—'} (${a.ratingCount||0} تقييم)</p>
     </div>
     <div class="list-gap" style="margin-top:16px">
-      <div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="window.open(waLink(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة كمندوب توصيل'),'_blank')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>
+      ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة كمندوب توصيل')?`<div class="card" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة كمندوب توصيل')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
       <button class="btn btn-danger" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
     </div>
   `;
@@ -4547,8 +4560,13 @@ function renderAdminSettings(){
       <div class="field"><label>نسبة المسوّق من عمولة الطلبات (%) — لو المصدر يشمل الطلبات</label><input id="setMkPct" type="number" step="0.1" min="0" max="100" value="${s.marketerCommissionPercent!=null?s.marketerCommissionPercent:20}"></div>
       <div class="field"><label>مدة احتساب نسبة الطلبات بالأشهر (0 = بدون حد)</label><input id="setMkMonths" type="number" step="1" min="0" max="120" value="${s.marketerCommissionMonths||0}"></div>
       <div class="field"><label>رسوم التوصيل لكل تاجر في الطلب (جنيه)</label><input id="setDeliveryFee" type="number" step="1" min="0" value="${s.defaultDeliveryFee}"></div>
-      <div class="field"><label>رقم واتساب الدعم الفني</label><input id="setWhatsapp" value="${esc(s.supportWhatsapp||'')}"></div>
       <button class="btn btn-primary" onclick="saveAppSettings()">حفظ الإعدادات</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 14px;font-size:15px"><i class="fa-brands fa-whatsapp" style="color:var(--teal)"></i> الدعم الفني</h3>
+      <div class="field"><label>رقم واتساب الدعم الفني</label><input id="setSupport" type="tel" inputmode="tel" dir="ltr" placeholder="مثال: 01012345678" value="${esc(s.supportWhatsapp||'')}"></div>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">${MerchantPlans.supportPhone(s.supportWhatsapp)?`الرقم الحالي: <b dir="ltr">+${MerchantPlans.supportPhone(s.supportWhatsapp)}</b>. زرار «دعم فني» ظاهر لكل المستخدمين بعد تسجيل الدخول.`:'مفيش رقم دعم محفوظ. زرار «دعم فني» مخفي لحد ما تحفظ رقم صحيح.'}</p>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="saveSupportPhone()">حفظ رقم الدعم</button>${MerchantPlans.supportPhone(s.supportWhatsapp)?`<button class="btn btn-ghost" style="width:auto" onclick="openSupport('تجربة رقم الدعم')">تجربة الرابط</button>`:''}</div>
     </div>
     <div class="hint-box"><i class="fa-solid fa-circle-info"></i> نسبة العمولة دي هي الافتراضية اللي بتتطبق على أي تاجر ملوش نسبة مخصصة. لتحديد نسبة مختلفة لتاجر معيّن، ادخل صفحة «التجار» واضغط «تعديل» بجانب العمولة.</div>
 
@@ -4587,13 +4605,22 @@ window.saveLoyaltySettings = async ()=>{
   await logAudit('تعديل إعدادات نقاط الولاء', `مفعّل: ${loyaltyEnabled} — كسب: ${loyaltyEarnRate} — استبدال: ${loyaltyRedeemValue}`);
   UI.toast('تم حفظ إعدادات نقاط الولاء ✅');
 };
+window.saveSupportPhone = async ()=>{
+  if(!isSuperAdmin()){ UI.toast('تعديل رقم الدعم للأدمن الرئيسي فقط'); return; }
+  const raw=document.getElementById('setSupport').value.trim();
+  const clean=raw?MerchantPlans.supportPhone(raw):'';
+  if(raw && !clean){ UI.toast('رقم غير صحيح. اكتب رقم واتساب كامل، مثال 01012345678'); return; }
+  const before=MerchantPlans.supportPhone(S.settings.supportWhatsapp)||'—';
+  await setDoc(doc(db,'settings','app'), {supportWhatsapp:clean}, {merge:true});
+  await logAudit('تعديل رقم الدعم الفني', `من: ${before} — إلى: ${clean||'—'}`);
+  UI.toast('تم حفظ رقم الدعم ✅');
+};
 window.saveAppSettings = async ()=>{
   const platformCommissionPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('setCommission').value)||0));
   const defaultDeliveryFee = Math.max(0, parseFloat(document.getElementById('setDeliveryFee').value)||0);
-  const supportWhatsapp = document.getElementById('setWhatsapp').value.trim();
   const marketerCommissionPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('setMkPct').value)||0));
   const marketerCommissionMonths = Math.max(0, Math.min(120, parseInt(document.getElementById('setMkMonths').value)||0));
-  await setDoc(doc(db,'settings','app'), {platformCommissionPercent, defaultDeliveryFee, supportWhatsapp, marketerCommissionPercent, marketerCommissionMonths}, {merge:true});
+  await setDoc(doc(db,'settings','app'), {platformCommissionPercent, defaultDeliveryFee, marketerCommissionPercent, marketerCommissionMonths}, {merge:true});
   await logAudit('تعديل الإعدادات العامة', `عمولة: ${platformCommissionPercent}% — توصيل: ${defaultDeliveryFee}`);
   UI.toast('تم حفظ الإعدادات بنجاح ✅');
 };
