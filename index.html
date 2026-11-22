@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>على بابك | اطلب اللي محتاجه</title>
 <meta name="description" content="على بابك — اطلب اللي محتاجه من محلات منطقتك، وإحنا نوصّله لحد بابك.">
-<link rel="canonical" href="https://YOUR-DOMAIN/">
+<link rel="canonical" href="https://3ala-babk.vercel.app/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="على بابك">
 <meta property="og:title" content="على بابك | اطلب اللي محتاجه">
 <meta property="og:description" content="اطلب من محلات منطقتك ويوصلك لحد بابك.">
-<meta property="og:url" content="https://YOUR-DOMAIN/">
-<meta property="og:image" content="https://YOUR-DOMAIN/icons/icon-512.png">
+<meta property="og:url" content="https://3ala-babk.vercel.app/">
+<meta property="og:image" content="https://3ala-babk.vercel.app/icon-512.png">
 <meta name="twitter:card" content="summary">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
-<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="theme-color" content="#154C43">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -253,7 +253,7 @@ img{max-width:100%; display:block;}
 @media (min-width:481px){
   body{background:#EDE7DA;}
   #appRoot{box-shadow:0 0 40px rgba(0,0,0,.1); min-height:100vh;}
-  #bottomNav{position:sticky;}
+  #bottomNav{position:fixed;}
 }
 </style>
 </head>
@@ -268,7 +268,7 @@ img{max-width:100%; display:block;}
 
   <div id="authScreen" class="hidden">
     <div class="auth-hero">
-      <div class="logo"><img src="icons/icon-192.png" alt="" width="64" height="64" style="display:block;margin:0 auto 8px;border-radius:16px"> على بابك</div>
+      <div class="logo"><img src="icon-192.png" alt="" width="64" height="64" style="display:block;margin:0 auto 8px;border-radius:16px"> على بابك</div>
       <p>اطلب اللي محتاجه… وإحنا نوصلّه لحد بابك</p>
     </div>
     <div class="auth-card">
@@ -355,7 +355,11 @@ img{max-width:100%; display:block;}
   <div id="toast"></div>
 </div>
 
+<script src="./qrcode.js"></script>
 <script type="module">
+import { createMarketerTools } from "./marketer-tools.js";
+import { MARKETING_CONFIG } from "./marketing-config.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
@@ -379,6 +383,9 @@ const firebaseConfig = {
   measurementId: "G-G32T5QWRLD"
 };
 const fbApp = initializeApp(firebaseConfig);
+if(MARKETING_CONFIG.backendEnabled && MARKETING_CONFIG.appCheckSiteKey){
+  initializeAppCheck(fbApp, {provider:new ReCaptchaV3Provider(MARKETING_CONFIG.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
+}
 const auth = getAuth(fbApp);
 const BACKEND_REGION = 'europe-west1';   // لازم تطابق REGION في functions/index.js
 const fns = getFunctions(fbApp, BACKEND_REGION);
@@ -509,6 +516,7 @@ const S = {
   unsubs:[]
 };
 
+const INITIAL_STATE = JSON.parse(JSON.stringify(S));
 window.S = S; // لازم تتعرض على window عشان أي onclick="S...." في الـ HTML يقدر يوصلها (السكريبت type="module" فمتغيرات المستوى الأعلى مش بتبقى على window تلقائيًا)
 
 function saveCart(){ if(S.user) localStorage.setItem('mosh_cart_'+S.user.uid, JSON.stringify(S.cart)); }
@@ -672,7 +680,7 @@ const Auth = {
       await setDoc(doc(db,'users',cred.user.uid), {
         id: cred.user.uid, firstName:first, lastName:last, phone, email,
         role: Auth.role === 'merchant' ? 'MERCHANT' : Auth.role === 'delivery' ? 'DELIVERY' : 'CUSTOMER',
-        merchantId, deliveryAgentId, loyaltyPoints:0, referralCode: cred.user.uid.slice(-6).toUpperCase(), createdAt: nowMs()
+        merchantId, deliveryAgentId, ...userDefaults(cred.user.uid), createdAt: nowMs()
       });
 
       // معالجة كود دعوة الصديق لو العميل الجديد دخل واحد
@@ -706,28 +714,67 @@ const Auth = {
     if(c.includes('too-many-requests')) return 'محاولات كثيرة، حاول بعد قليل';
     return 'حدث خطأ، حاول مرة أخرى';
   },
-  logout(){ if(!confirm('تسجيل الخروج من حسابك؟')) return; signOut(auth); }
+  logout(){
+    if(Auth.signingOut) return;
+    UI.openModal(`<div class="modal-head"><h3>تسجيل الخروج</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إلغاء">×</button></div>
+      <p>متأكد إنك عايز تخرج من حسابك؟</p>
+      <button class="btn btn-danger" id="confirmLogout" onclick="Auth.confirmLogout()">تسجيل الخروج</button>
+      <button class="btn btn-ghost" style="margin-top:8px" onclick="UI.closeModal()">إلغاء</button>`);
+  },
+  async confirmLogout(){
+    if(Auth.signingOut) return;
+    Auth.signingOut = true;
+    const button = document.getElementById('confirmLogout');
+    if(button){ button.disabled = true; button.textContent = 'جاري تسجيل الخروج...'; }
+    try{
+      await signOut(auth);
+      resetSession();
+      showSignedOut();
+    }catch(e){
+      UI.toast('تعذّر تسجيل الخروج، حاول مرة تانية');
+      if(button){ button.disabled = false; button.textContent = 'تسجيل الخروج'; }
+    }finally{ Auth.signingOut = false; }
+  }
 };
 window.Auth = Auth;
 
 /* ================= AUTH STATE / BOOT ================= */
-onAuthStateChanged(auth, async (user) => {
+let authEpoch = 0;
+function resetSession(){
   clearSubs();
-  if(!user){
-    S.user=null; S.profile=null; S.cart=[];
-    document.getElementById('loadingScreen').classList.add('hidden');
-    document.getElementById('appShell').classList.add('hidden');
-    document.getElementById('authScreen').classList.remove('hidden');
-    try{ Auth.switchTab('login'); }catch(e){}
-    return;
-  }
+  window.MarketerTools?.reset();
+  Object.keys(S).forEach(key=>delete S[key]);
+  Object.assign(S, JSON.parse(JSON.stringify(INITIAL_STATE)));
+  document.getElementById('modalRoot').classList.add('hidden');
+  document.getElementById('modalSheet').innerHTML='';
+  document.getElementById('mainContent').innerHTML='';
+}
+function showSignedOut(){
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('appShell').classList.add('hidden');
+  document.getElementById('authScreen').classList.remove('hidden');
+  Auth.switchTab('login');
+  applyMarketerLanding();
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+}
+onAuthStateChanged(auth, async (user) => {
+  const epoch = ++authEpoch;
+  clearSubs();
+  if(!user){ resetSession(); showSignedOut(); return; }
   S.user = user;
   const psnap = await getDoc(doc(db,'users',user.uid));
   if(!psnap.exists()){
-    await setDoc(doc(db,'users',user.uid), {id:user.uid, firstName:user.displayName||'مستخدم', lastName:'', phone:'', email:user.email, role:'CUSTOMER', merchantId:null, createdAt: nowMs()});
+    await setDoc(doc(db,'users',user.uid), {id:user.uid, firstName:user.displayName||'مستخدم', lastName:'', phone:'', email:user.email, role:'CUSTOMER', merchantId:null, ...userDefaults(user.uid), createdAt: nowMs()});
   }
   const finalSnap = psnap.exists() ? psnap : await getDoc(doc(db,'users',user.uid));
+  if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
   S.profile = finalSnap.data();
+  const missing = userDefaults(user.uid, S.profile);
+  if(Object.keys(missing).length){
+    try{ await updateDoc(doc(db,'users',user.uid), missing); Object.assign(S.profile, missing); }
+    catch(e){ console.warn('User defaults need admin repair', e.code); }
+  }
+  if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
   S.role = (S.profile.role||'CUSTOMER').toLowerCase();
   loadCart();
   loadWishlist();
@@ -746,6 +793,12 @@ onAuthStateChanged(auth, async (user) => {
   renderShell();
 });
 
+function userDefaults(id, profile={}){
+  const patch = {};
+  if(!profile.referralCode) patch.referralCode = 'MK-' + id.toUpperCase();
+  if(profile.loyaltyPoints===undefined) patch.loyaltyPoints = 0;
+  return patch;
+}
 function clearSubs(){ S.unsubs.forEach(u=>{try{u()}catch(e){}}); S.unsubs=[]; }
 
 
@@ -758,15 +811,21 @@ function mergeProducts(list){
 }
 window.loadProductsFor = async (kind, id)=>{
   if(S.role==='admin') return;
+  const requestEpoch = authEpoch;
   const key = kind+':'+(id||''); const now = Date.now();
   if(S._pTs && S._pTs[key] && now - S._pTs[key] < PROD_TTL) return;
   (S._pTs = S._pTs||{})[key] = now;
   try{
     let q;
     if(kind==='merchant') q = query(collection(db,'products'), where('merchantId','==',id), where('isActive','==',true), limit(STORE_LIMIT));
-    else if(kind==='category') q = query(collection(db,'products'), where('categoryId','==',id), where('isActive','==',true), limit(STORE_LIMIT));
+    else if(kind==='category'){
+      const snapshots = await Promise.all(categoryIdsFor(id).map(cid=>getDocs(query(collection(db,'products'), where('categoryId','==',cid), where('isActive','==',true), limit(STORE_LIMIT)))));
+      if(requestEpoch!==authEpoch || !S.user) return;
+      mergeProducts(snapshots.flatMap(s=>s.docs.map(d=>d.data()))); render(); return;
+    }
     else q = query(collection(db,'products'), where('isActive','==',true), limit(HOME_LIMIT));
     const snap = await getDocs(q);
+    if(requestEpoch!==authEpoch || !S.user) return;
     mergeProducts(snap.docs.map(d=>d.data()));
     render();
   }catch(e){ delete S._pTs[key]; console.warn('products load', e); }
@@ -780,7 +839,9 @@ function needProducts(){
   const miss = [...ids].filter(i=>i && !have.has(i) && !S._pFetch.has(i)).slice(0,30);
   if(!miss.length) return;
   miss.forEach(i=>S._pFetch.add(i));
+  const requestEpoch = authEpoch;
   Promise.all(miss.map(i=>getDoc(doc(db,'products',i)).then(d=>d.exists()?d.data():null).catch(()=>null))).then(arr=>{
+    if(requestEpoch!==authEpoch || !S.user) return;
     const got = arr.filter(Boolean); if(got.length){ mergeProducts(got); render(); }
   });
 }
@@ -914,6 +975,53 @@ function subscribeAdmin(){
 
 
 
+window.previewCatalogRepair = async ()=>{
+  if(!isSuperAdmin()) return;
+  try{
+    const snaps = await Promise.all(['categories','products','merchants'].map(name=>getDocs(collection(db,name))));
+    const cats = snaps[0].docs.map(d=>({...d.data(),id:d.id}));
+    const products = snaps[1].docs.map(d=>({...d.data(),id:d.id}));
+    const merchants = snaps[2].docs.map(d=>({...d.data(),id:d.id}));
+    const ops = [];
+    const lines = [];
+    for(const family of ['grocery','stationery']){
+      const group = cats.filter(c=>categoryFamily(c.name)===family);
+      if(!group.length) continue;
+      const name = family==='grocery'?'سوبر ماركت':'أدوات مكتبية';
+      const canonical = group.find(c=>c.name===name && c.isActive!==false) || group.find(c=>c.isActive!==false) || group[0];
+      const oldIds = group.filter(c=>c.id!==canonical.id).map(c=>c.id);
+      const affected = products.filter(p=>oldIds.includes(p.categoryId));
+      affected.forEach(p=>ops.push({table:'products',id:p.id,patch:{categoryId:canonical.id}}));
+      if(canonical.name!==name) ops.push({table:'categories',id:canonical.id,patch:{name}});
+      group.filter(c=>c.id!==canonical.id && (c.isActive!==false || c.aliasOf!==canonical.id)).forEach(c=>ops.push({table:'categories',id:c.id,patch:{isActive:false,aliasOf:canonical.id}}));
+      lines.push(`${name}: نقل ${affected.length} منتج ودمج ${group.length} قسم`);
+    }
+    const demoIds = new Set(merchants.filter(m=>m.isDemo===true || (m.businessName==='متجر على بابك التجريبي' && !m.ownerId)).map(m=>m.id));
+    const excluded = new Set(cats.filter(c=>['إلكترونيات وأجهزة','ملابس وأزياء','حيوانات أليفة'].includes(c.name)).map(c=>c.id));
+    const offTopic = products.filter(p=>p.isActive!==false && demoIds.has(p.merchantId) && excluded.has(p.categoryId));
+    offTopic.forEach(p=>ops.push({table:'products',id:p.id,patch:{isActive:false,archivedReason:'demo-catalog-cleanup'}}));
+    lines.push(`إخفاء ${offTopic.length} منتج تجريبي خارج نطاق طلبات البيت، بدون حذف`);
+    S.catalogRepair = ops;
+    UI.openModal(`<div class="modal-head"><h3>مراجعة إصلاح الكتالوج</h3><button class="modal-close" onclick="UI.closeModal()">×</button></div>
+      <p style="line-height:1.8">${lines.map(esc).join('<br>')}</p>
+      <p class="hint-box">لن يتغير سعر أو مخزون أي منتج. المنتجات الحقيقية لا يتم إخفاؤها. الأقسام القديمة يتم أرشفتها بدل حذفها لحماية المراجع القديمة.</p>
+      ${ops.length?'<button class="btn btn-primary" id="catalogRepairConfirm" onclick="applyCatalogRepair()">تطبيق التغييرات المذكورة</button>':'<p>مفيش تغييرات مطلوبة.</p>'}`);
+  }catch(e){ UI.toast('تعذّر فحص الكتالوج، تأكد من الصلاحيات'); }
+};
+window.applyCatalogRepair = async ()=>{
+  if(!isSuperAdmin() || !S.catalogRepair?.length || S.catalogRepairBusy) return;
+  S.catalogRepairBusy = true;
+  const btn = document.getElementById('catalogRepairConfirm'); if(btn) btn.disabled=true;
+  try{
+    const ops = S.catalogRepair;
+    // Product references first, aliases last. Rerunning the preview is safe after a partial failure.
+    await chunked(ops.map(op=>batch=>batch.update(doc(db,op.table,op.id),op.patch)));
+    await logAudit('إصلاح تصنيف الكتالوج', `${ops.length} تحديث بدون حذف`);
+    S.catalogRepair=[]; UI.closeModal(); UI.toast('تم إصلاح الكتالوج');
+  }catch(e){ UI.toast('توقف الإصلاح، أعد الفحص قبل المحاولة من جديد'); }
+  finally{ S.catalogRepairBusy=false; if(btn) btn.disabled=false; }
+};
+
 /* ================= فحص وتهيئة قاعدة البيانات (أدمن رئيسي) =================
    الفحص للقراءة فقط. الإصلاحات "إضافية وآمنة": بتضيف الناقص بس، ومابتمسحش ولا بتغيّر قيمة موجودة. بنكتب كل إصلاح في سجل النشاط.
    الحاجات الخطرة (بيانات يتيمة/علاقات مكسورة) بتتعرض كتقرير بس عشان تقرر انت. */
@@ -954,7 +1062,7 @@ async function scanDatabase(){
   // 4) المستخدمون: حقول أساسية ناقصة
   const uFix = users.filter(u=>!u.referralCode || u.loyaltyPoints===undefined);
   add('users','حقول المستخدمين (كود الدعوة / النقاط)', uFix.length, uFix.length?`${uFix.length} مستخدم ينقصه كود دعوة أو رصيد نقاط`:`${users.length} مستخدم سليم`,
-    uFix.length ? async()=>{ await chunked(uFix.map(u=>b=>{ const up={}; if(!u.referralCode) up.referralCode=u._id.slice(-6).toUpperCase(); if(u.loyaltyPoints===undefined) up.loyaltyPoints=0; b.update(doc(db,'users',u._id),up); })); } : null);
+    uFix.length ? async()=>{ await chunked(uFix.map(u=>b=>{ const up=userDefaults(u._id,u); b.update(doc(db,'users',u._id),up); })); } : null);
   // 5) المتاجر: حقول ناقصة
   const mDef = { status:'PENDING', registeredAt:nowMs(), categoryIds:'', rating:4.8, totalOrdersCount:0 };
   const mFix = merchants.filter(m=>Object.keys(mDef).some(k=>m[k]===undefined));
@@ -982,6 +1090,7 @@ function renderAdminDbSetup(){
   const sc = S.dbScan;
   const fixable = sc ? sc.items.filter(x=>x.status==='fix') : [];
   return `
+    <button class="btn btn-ghost" style="margin-bottom:14px" onclick="previewCatalogRepair()">مراجعة دمج الأقسام وتنظيف المنتجات التجريبية</button>
     <div class="card" style="margin-bottom:14px">
       <h3 style="margin:0 0 8px;font-size:15px"><i class="fa-solid fa-database"></i> فحص وتهيئة قاعدة البيانات</h3>
       <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">بيفحص بياناتك ويضيف أي حاجة ناقصة (إعدادات، أقسام، باقات، حقول جديدة) بدون ما يمسح أو يغيّر أي بيانات موجودة. استخدمه بعد أي تحديث للتطبيق. الفحص بيقرأ جداول المستخدمين والمتاجر والمنتجات.</p>
@@ -1246,6 +1355,15 @@ function mkTier(activeCount){
   t.forEach((x,i)=>{ if(activeCount>=x.min) idx=i; });
   return { idx, cur:t[idx], next: t[idx+1]||null, need: t[idx+1] ? Math.max(0,t[idx+1].min-activeCount) : 0, count:activeCount };
 }
+function mkSubRate(plan){ return plan?.marketerPercent ?? S.settings.marketerSubPercent ?? 10; }
+function mkBaseRateLabel(){
+  const src = mkSource();
+  return (src!=='ORDERS' ? `اشتراكات ${mkSubRate(null)}% افتراضيًا` : '') +
+    (src==='BOTH' ? ' · ' : '') + (src!=='SUBSCRIPTIONS' ? `طلبات ${mkRate(S.profile)}%` : '');
+}
+function mkTierProgress(tr){
+  return tr.next ? Math.max(0, Math.min(100, (tr.count-tr.cur.min)/(tr.next.min-tr.cur.min)*100)) : 100;
+}
 function mkSource(){ return S.settings.marketerCommissionSource || 'SUBSCRIPTIONS'; }
 /* مصدر نسبة المسوّق (من إعدادات الأدمن): SUBSCRIPTIONS = من اشتراكات محلاته | ORDERS = من عمولة الطلبات | BOTH = الاثنين */
 function mkCalc(rate, merchants, subOrders, subs, marketerId){
@@ -1268,6 +1386,10 @@ function mkCalc(rate, merchants, subOrders, subs, marketerId){
 }
 function subscribeMarketer(){
   const uid_ = S.user.uid;
+  S.unsubs.push(onSnapshot(doc(db,'users',uid_), d=>{
+    if(d.exists()) S.profile = {...S.profile, ...d.data()};
+    render();
+  }));
   S.mkMerchants = []; S.mkSubOrders = []; S.mkPayouts = []; S.mkSubs = []; S.mkWithdrawals = [];
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((x,y)=>(x.sortOrder||0)-(y.sortOrder||0)||x.price-y.price); render(); }));
   S.unsubs.push(onSnapshot(query(collection(db,'withdrawals'), where('marketerId','==',uid_)), snap=>{ S.mkWithdrawals = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
@@ -1316,7 +1438,8 @@ window.refreshVerified = async ()=>{
   else UI.toast('لسه ماتأكدش، افتح الرابط في بريدك الأول');
 };
 window.shareReferral = ()=>{
-  const code = S.profile.referralCode.replace(/'/g,'');
+  const code = S.profile?.referralCode || '';
+  if(!code) return UI.toast('كود الدعوة غير متاح، اطلب من الإدارة إصلاح بيانات الحساب');
   window.open(waLink('', 'استخدم كود الدعوة ده «'+code+'» وسجّل في تطبيق على بابك، وهياخد كل واحد فينا نقاط ولاء هدية! 🎁'),'_blank');
   UI.toast('تم فتح واتساب للمشاركة 📤');
 };
@@ -1328,13 +1451,15 @@ function renderMarketerDashboard(){
   return `
     <div class="card" style="margin-bottom:14px;border-color:var(--teal)">
       <div style="font-size:12px;color:var(--ink-soft)">كودك كمسوّق — لما التاجر يكتبه عند التسجيل يتنسب لك</div>
-      <div class="row-between" style="margin-top:6px"><b style="font-size:22px;letter-spacing:2px;color:var(--teal)">${esc(code)}</b>
-        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(code)}')"><i class="fa-solid fa-copy"></i> نسخ</button></div>
+      <div class="row-between" style="margin-top:6px"><b style="font-size:16px;overflow-wrap:anywhere;color:var(--teal)">${esc(code)||'الكود غير متاح'}</b>
+        <button class="btn btn-ghost btn-sm" style="width:auto" ${code?'':'disabled'} onclick="copyText('${esc(code)}')"><i class="fa-solid fa-copy"></i> نسخ</button></div>
+      ${code?'':'<p class="hint-box">اطلب من الإدارة إصلاح حقول الحساب لتفعيل كودك.</p>'}
       <div style="font-size:12px;color:var(--ink-soft);margin-top:6px">${mkSource()!=='ORDERS'?'نسبتك من كل اشتراك بتعتمده الإدارة لمحلاتك (النسبة بتتحدد لكل باقة). ':''}${mkSource()!=='SUBSCRIPTIONS'?`وكمان ${mkRate(S.profile)}% من عمولة المنصة على طلبات محلاتك المسلّمة${(S.settings.marketerCommissionMonths||0)>0?` لمدة ${S.settings.marketerCommissionMonths} شهر من تاريخ تسجيل كل محل`:''}.`:''}</div>
     </div>
     ${(()=>{ const tr = mkTier(ms.filter(m=>m.status==='ACTIVE').length); const tiers = mkTiers(); return `<div class="card" style="margin-bottom:14px">
-      <div class="row-between"><b style="font-size:14px">مستواك: ${esc(tr.cur.name)}</b><span class="badge-chip">${tr.cur.bonus>0?'+'+tr.cur.bonus+'% على كل باقة':'النسبة الأساسية'}</span></div>
-      <div style="display:flex;gap:6px;margin:10px 0 6px">${tiers.map((x,i)=>`<div style="flex:1;height:8px;border-radius:99px;background:${i<=tr.idx?'var(--teal)':'var(--line)'}"></div>`).join('')}</div>
+      <div class="row-between"><b style="font-size:14px">مستواك: ${esc(tr.cur.name)}</b><span class="badge-chip">${tr.cur.bonus>0?'+'+tr.cur.bonus+'% على كل باقة':mkBaseRateLabel()}</span></div>
+      <div role="progressbar" aria-label="التقدم للمستوى التالي" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${mkTierProgress(tr)}" style="height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 6px"><div style="width:${mkTierProgress(tr)}%;height:100%;background:var(--teal)"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft)">${tiers.map(x=>`<span>${esc(x.name)} (${x.min})</span>`).join('')}</div>
       <div style="font-size:12px;color:var(--ink-soft)">${tr.next?`باقي ${tr.need} محل نشط للوصول لمستوى «${esc(tr.next.name)}» (+${tr.next.bonus}%)`:'وصلت لأعلى مستوى 🎉'}</div></div>`; })()}
     <div class="stat-grid">
       <div class="stat-card"><div class="num">${ms.length}</div><div class="lbl">محلاتي (${ms.filter(m=>m.status==='ACTIVE').length} نشط)</div></div>
@@ -1342,7 +1467,8 @@ function renderMarketerDashboard(){
       <div class="stat-card"><div class="num">${fmtMoney(t.earn)}</div><div class="lbl">إجمالي نسبتي</div></div>
       <div class="stat-card"><div class="num" style="color:var(--success)">${fmtMoney(t.available)}</div><div class="lbl">الرصيد المتاح للسحب${t.pendingW>0?` (+${fmtMoney(t.pendingW)} قيد السحب)`:''}</div></div>
     </div>
-    <button class="btn btn-primary" style="margin-top:16px" onclick="openWithdrawRequest()"><i class="fa-solid fa-hand-holding-dollar"></i> طلب سحب الرصيد</button>
+    <button class="btn btn-primary" style="margin-top:16px" onclick="go('mk_tools')"><i class="fa-solid fa-bullhorn"></i> افتح أدواتك التسويقية</button>
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="openWithdrawRequest()"><i class="fa-solid fa-hand-holding-dollar"></i> طلب سحب الرصيد</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openMarketerMerchantForm()"><i class="fa-solid fa-plus"></i> تسجيل محل جديد</button>
     <div class="hint-box" style="margin-top:14px"><i class="fa-solid fa-circle-info"></i> المحل اللي تسجّله بيبقى «قيد المراجعة» لحد ما الإدارة توافق عليه وتربط حساب صاحبه. النسبة بتتحسب بعد ما الإدارة تعتمد الاشتراك (أو الطلب يوصل للعميل حسب إعدادات الإدارة).</div>`;
 }
@@ -1412,7 +1538,9 @@ window.saveMarketerMerchant = async ()=>{
 window.makeMarketer = async (id)=>{
   if(!isSuperAdmin()) return;
   if(!confirm('تعيين هذا العضو كمسوّق؟ هيشوف لوحة المسوّق بدل لوحة العميل.')) return;
-  await updateDoc(doc(db,'users',id), { role:'MARKETER' });
+  const member = await getDoc(doc(db,'users',id));
+  if(!member.exists()){ UI.toast('العضو غير موجود'); return; }
+  await updateDoc(doc(db,'users',id), { role:'MARKETER', ...userDefaults(id, member.data()) });
   await logAudit('تعيين مسوّق', id); UI.toast('تم تعيين العضو كمسوّق ✅');
 };
 window.removeMarketer = async (id)=>{
@@ -1461,8 +1589,8 @@ function renderMyRates(){
   const src = mkSource();
   return `<div class="section-head"><h3>نسبتك</h3></div><div class="card" style="margin-bottom:14px">
     <div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px">مستواك: <b style="color:var(--ink)">${esc(tr.cur.name)}</b>${tr.cur.bonus>0?` (+${tr.cur.bonus}% على كل باقة)`:''}</div>
-    ${src!=='ORDERS'?(plans.length?plans.map(p=>{ const base = p.marketerPercent!=null?p.marketerPercent:(S.settings.marketerSubPercent!=null?S.settings.marketerSubPercent:10); const pct=Math.min(100,base+tr.cur.bonus);
-      return `<div class="row-between" style="padding:5px 0;font-size:13px"><span>${esc(p.name)} <span style="color:var(--ink-soft);font-size:11.5px">(${fmtMoney(p.price)})</span></span><span><b style="color:var(--success)">${pct}%</b> = ${fmtMoney(roundMoney(p.price*pct/100))}</span></div>`; }).join(''):'<div style="font-size:12px;color:var(--ink-soft)">لا توجد باقات حاليًا</div>'):''}
+    ${src!=='ORDERS'?(plans.length?plans.map(p=>{ const base = mkSubRate(p); const pct=Math.min(100,base+tr.cur.bonus);
+      return `<div class="row-between" style="padding:5px 0;font-size:13px"><span>${esc(p.name)} <span style="color:var(--ink-soft);font-size:11.5px">(${fmtMoney(p.price)})${p.marketerPercent==null?' · نسبة افتراضية':' · نسبة مخصصة'}</span></span><span><b style="color:var(--success)">${pct}%</b> = ${fmtMoney(roundMoney(p.price*pct/100))}</span></div>`; }).join(''):'<div style="font-size:12px;color:var(--ink-soft)">لا توجد باقات حاليًا</div>'):''}
     ${src!=='SUBSCRIPTIONS'?`<div class="row-between" style="padding:5px 0;font-size:13px;border-top:${src==='BOTH'?'1px dashed var(--line)':'0'}"><span>عمولة الطلبات المسلّمة</span><b style="color:var(--success)">${mkRate(S.profile)}% من عمولة المنصة</b></div>`:''}
   </div>`;
 }
@@ -1609,6 +1737,7 @@ window.waLink = waLink;
 function unreadCount(){ return S.notifications.filter(n=>!n.isRead).length; }
 
 function renderShell(){
+  if(!S.profile) return;
   const tb = document.getElementById('topbar');
   const bn = document.getElementById('bottomNav');
   const sb = document.getElementById('searchBar');
@@ -1646,7 +1775,7 @@ function renderShell(){
   ];
   if(S.role==='marketer') navItems = [
     ['mk_dashboard','fa-chart-line','الرئيسية'], ['mk_merchants','fa-shop','محلاتي', ()=>(S.mkMerchants||[]).filter(m=>m.status==='PENDING').length],
-    ['mk_earnings','fa-sack-dollar','أرباحي']
+    ['mk_earnings','fa-sack-dollar','أرباحي'], ['mk_tools','fa-bullhorn','أدواتي']
   ];
   if(S.role==='delivery') navItems = [
     ['d_dashboard','fa-motorcycle','مهامي', ()=>(S.myAgentSubOrders||[]).filter(o=>o.status==='OUT_FOR_DELIVERY').length],
@@ -1671,7 +1800,8 @@ function renderShell(){
 }
 window.go = (tab, opts)=>{
   S.tab = tab;
-  if(tab!=='home' && tab!=='browse') S.searchQuery='';
+  if(tab==='mk_tools' && MARKETING_CONFIG.backendEnabled) S.settings.marketerToolsBackend=true;
+  if(tab!=='browse') S.searchQuery='';
   window.scrollTo(0,0);
   // نضيف خطوة في تاريخ المتصفح عشان زرار الرجوع في الموبايل يرجع لآخر شاشة بدل ما يقفل التطبيق أو ميعملش حاجة
   // (opts.skipHistory بتتستخدم لما التنقل جاي أصلاً من ضغطة "رجوع" نفسها، عشان مانضيفش خطوة مكررة)
@@ -1692,6 +1822,7 @@ window.addEventListener('popstate', (e)=>{
   }
   if(!e.state && location.hash && !tabFromHash()){ try{ history.replaceState({tab:S.tab},'','#'+S.tab); }catch(_){} return; }   // hash غير صالح: خليك مكانك
   const tab = (e.state && e.state.tab) || tabFromHash() || defaultTabForRole();
+  if(tab==='home') S.searchQuery='';
   S.tab = tab;
   renderShell();
 });
@@ -1699,14 +1830,14 @@ window.addEventListener('popstate', (e)=>{
 window.addEventListener('hashchange', ()=>{
   if(!S.profile) return;
   const t = tabFromHash();
-  if(t && t!==S.tab){ S.tab = t; window.scrollTo(0,0); renderShell(); }
+  if(t && t!==S.tab){ if(t==='home') S.searchQuery=''; S.tab = t; window.scrollTo(0,0); renderShell(); }
 });
 // الشاشات اللي ينفع تتفتح من الـ hash لكل دور (الشاشات اللي محتاجة بيانات مختارة زي orderDetail/merchantPage مستثناة)
 const HASH_TABS = {
   customer: ['home','browse','cart','checkout','orders','profile','addresses','notifications','wishlist','recurringOrders','groupBuys'],
   merchant: ['m_dashboard','m_products','m_orders','m_profile','m_reports','m_subscription','notifications'],
   delivery: ['d_dashboard','d_history','d_profile','notifications'],
-  marketer: ['mk_dashboard','mk_merchants','mk_earnings','notifications'],
+  marketer: ['mk_dashboard','mk_merchants','mk_earnings','mk_tools','notifications'],
   admin: ['a_dashboard','a_new_orders','a_merchants','a_categories','a_products','a_orders','a_users','a_settlements','a_settings','a_agents','a_coupons','a_reports','a_audit','a_marketers','a_dbsetup','a_subscriptions','notifications']
 };
 function tabFromHash(){
@@ -1738,6 +1869,7 @@ function render(){
   renderShell();
 }
 function renderMain(){
+  if(!S.profile) return;
   const el = document.getElementById('mainContent');
   if(!el) return;
   // نحفظ موضع سكرول شريط الأقسام الأفقي قبل إعادة الرسم، عشان مايرجعش لأول الشريط
@@ -1754,7 +1886,7 @@ function renderMain(){
     a_products: renderAdminProducts, a_orders: renderAdminOrders, a_users: renderAdminUsers,
     a_settlements: renderAdminSettlements, a_settings: renderAdminSettings, a_agents: renderAdminAgents, a_coupons: renderAdminCoupons,
     a_reports: renderAdminReports, a_audit: renderAdminAuditLog, a_marketers: renderAdminMarketers, a_dbsetup: renderAdminDbSetup, a_subscriptions: renderAdminSubscriptions, m_subscription: renderMerchantSubscription,
-    mk_dashboard: renderMarketerDashboard, mk_merchants: renderMarketerMerchants, mk_earnings: renderMarketerEarnings
+    mk_dashboard: renderMarketerDashboard, mk_merchants: renderMarketerMerchants, mk_earnings: renderMarketerEarnings, mk_tools: ()=>MarketerTools.render()
   };
   const fn = routes[S.tab] || renderHome;
   el.innerHTML = fn();
@@ -1777,6 +1909,28 @@ setInterval(()=>{
     if(sig!==_flashSig){ const first=_flashSig===''&&sig===''; _flashSig=sig; if(!first && !modalOpen && S.tab!=='checkout') renderMain(); }
   }catch(e){}
 }, 30000); // نفس سبب window.S: onclick="...;renderMain()" محتاجها على window
+
+/* Category aliases preserve old product references until an admin runs the migration. */
+function categoryFamily(name){
+  const n = String(name||'').replace(/[أإآ]/g,'ا').replace(/\s+/g,' ').trim();
+  if(['سوبر ماركت','سوبر ماركت ومؤن'].includes(n)) return 'grocery';
+  if(['ادوات مكتبات','مكتبات وقرطاسية','ادوات مكتبية'].includes(n)) return 'stationery';
+  return null;
+}
+function categoryIdsFor(id){
+  const category = S.categories.find(c=>c.id===id);
+  const family = categoryFamily(category?.name);
+  return family ? S.categories.filter(c=>categoryFamily(c.name)===family).map(c=>c.id) : [id];
+}
+function displayCategories(){
+  const seen = new Set();
+  return S.categories.filter(c=>c.isActive!==false).flatMap(c=>{
+    const family = categoryFamily(c.name);
+    if(family && seen.has(family)) return [];
+    if(family) seen.add(family);
+    return [{...c, name:family==='grocery'?'سوبر ماركت':family==='stationery'?'أدوات مكتبية':c.name}];
+  });
+}
 
 /* ================= HELPERS ================= */
 const merchantSubOk = m => !S.settings.subsEnforced || (m && (m.subEndsAt||0) > Date.now());
@@ -2182,7 +2336,7 @@ function renderHome(){
     <div class="banner-strip">${banners.map(b=>`<div class="banner"><i class="fa-solid ${b.i}"></i><h4>${b.t}</h4><p>${b.s}</p></div>`).join('')}</div>
 
     <div class="section-head"><h3>الأقسام</h3><span class="more" onclick="go('browse')">عرض الكل</span></div>
-    <div class="cat-scroll">${S.categories.filter(c=>c.isActive!==false).map(c=>`
+    <div class="cat-scroll">${displayCategories().map(c=>`
       <div class="cat-chip" onclick="openCategory('${c.id}')"><span class="em">${c.iconEmoji||'🛍️'}</span><span>${esc(c.name)}</span></div>
     `).join('') || ''}</div>
 
@@ -2207,9 +2361,9 @@ window.openMerchant = (mid)=>{ S.activeMerchantId=mid; loadProductsFor('merchant
 
 /* ================= CUSTOMER: BROWSE ================= */
 function renderBrowse(){
-  const cats = [{id:null,name:'الكل',iconEmoji:'🔎'}, ...S.categories.filter(c=>c.isActive!==false)];
+  const cats = [{id:null,name:'الكل',iconEmoji:'🔎'}, ...displayCategories()];
   let filteredAll = S.selectedCategory
-    ? activeProducts().filter(p=>p.categoryId===S.selectedCategory)
+    ? activeProducts().filter(p=>categoryIdsFor(S.selectedCategory).includes(p.categoryId))
     : activeProducts();
   const bq = (S.searchQuery||'').trim().toLowerCase();
   if(bq) filteredAll = filteredAll.filter(p=>{
@@ -3219,20 +3373,17 @@ function renderAdminDashboard(){
 /* أقسام شاملة مبنية على دراسة تطبيقات التوصيل المصرية الشهيرة (طلبات، أكلني، بريدفاست، إنستاشوب، يوداوي، روكيت) */
 const CATEGORY_SEED = [
   ['مطاعم ومأكولات','أشهى الوجبات السريعة والمشويات والمأكولات الجاهزة','🍔'],
-  ['سوبر ماركت ومؤن','المواد الغذائية ومستلزمات المنزل والبقالة','🛒'],
+  ['سوبر ماركت','المواد الغذائية ومستلزمات المنزل والبقالة','🛒'],
   ['خضار وفاكهة','خضروات وفواكه طازجة يوميًا','🥦'],
   ['لحوم ودواجن وأسماك','لحوم ودواجن وأسماك طازجة ومجمدة','🍗'],
   ['حلويات ومخبوزات','كيك وحلويات ومخبوزات طازجة','🍰'],
   ['مشروبات ومياه','مياه وعصائر ومشروبات غازية وساخنة','🥤'],
   ['صيدلية وعناية','أدوية ومستلزمات العناية الصحية','💊'],
   ['عناية وتجميل','مستحضرات تجميل وعناية بالبشرة والشعر','💄'],
-  ['إلكترونيات وأجهزة','هواتف وملحقات وأجهزة إلكترونية','📱'],
-  ['ملابس وأزياء','أحدث صيحات الملابس والأحذية','👕'],
   ['مستلزمات أطفال','ألعاب ومستلزمات ولوازم الأطفال والرضع','🧸'],
   ['مستلزمات منزلية','أدوات وتجهيزات ومستلزمات المنزل','🏠'],
   ['ورد وهدايا','باقات ورد وهدايا لكل المناسبات','💐'],
-  ['حيوانات أليفة','أطعمة ومستلزمات الحيوانات الأليفة','🐾'],
-  ['مكتبات وقرطاسية','أدوات مكتبية وقرطاسية ومستلزمات دراسية','📚']
+  ['أدوات مكتبية','أدوات مكتبية وقرطاسية ومستلزمات دراسية','📚']
 ];
 window.seedCategories = async ()=>{
   const batch = writeBatch(db);
@@ -3246,7 +3397,7 @@ window.seedCategories = async ()=>{
 /* يضيف فقط الأقسام المفقودة من القائمة المقترحة، من غير ما يكرر أو يمسّ أي قسم موجود بالفعل */
 window.syncCategories = async ()=>{
   const existingNames = new Set(S.categories.map(c=>c.name));
-  const missing = CATEGORY_SEED.filter(([name])=>!existingNames.has(name));
+  const missing = CATEGORY_SEED.filter(([name])=>!existingNames.has(name) && !S.categories.some(c=>categoryFamily(name) && categoryFamily(c.name)===categoryFamily(name)));
   if(!missing.length){ UI.toast('كل الأقسام المقترحة موجودة بالفعل'); return; }
   const batch = writeBatch(db);
   const startOrder = S.categories.length;
@@ -3260,29 +3411,26 @@ window.syncCategories = async ()=>{
 /* منتجات تجريبية واقعية لكل قسم — تُربط بتاجر تجريبي واحد لتجربة المنصة فورًا */
 const DEMO_PRODUCTS_BY_CATEGORY = {
   'مطاعم ومأكولات':[['برجر لحم مزدوج','ساندوتش برجر لحم بقري مع جبنة وصوص خاص',95,'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500'],['بيتزا خضار مشكلة','بيتزا إيطالية بعجينة رفيعة وخضار طازجة',110,'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500'],['وجبة شاورما فراخ','شاورما فراخ مع أرز وسلطة وبطاطس',85,'https://images.unsplash.com/photo-1529006557810-274b9b2fc783?w=500']],
-  'سوبر ماركت ومؤن':[['أرز أبيض مصري 5 كجم','أرز مصري فاخر عبوة 5 كيلو',180,'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500'],['زيت عباد الشمس 1.5 لتر','زيت طبخ صافي عبوة بلاستيك',95,'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500'],['سكر أبيض 1 كجم','سكر أبيض ناعم عبوة كيلو',35,'https://images.unsplash.com/photo-1610725664285-7c57e6eeac3f?w=500']],
+  'سوبر ماركت':[['أرز أبيض مصري 5 كجم','أرز مصري فاخر عبوة 5 كيلو',180,'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500'],['زيت عباد الشمس 1.5 لتر','زيت طبخ صافي عبوة بلاستيك',95,'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500'],['سكر أبيض 1 كجم','سكر أبيض ناعم عبوة كيلو',35,'https://images.unsplash.com/photo-1610725664285-7c57e6eeac3f?w=500']],
   'خضار وفاكهة':[['طماطم بلدي 1 كجم','طماطم طازجة مختارة',20,'https://images.unsplash.com/photo-1546470427-e26264be0b0d?w=500'],['موز 1 كجم','موز طازج حلو المذاق',30,'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=500'],['خيار 1 كجم','خيار بلدي طازج',18,'https://images.unsplash.com/photo-1449300079323-02e209d9d3a6?w=500']],
   'لحوم ودواجن وأسماك':[['فراخ بيضاء كاملة','فرخة بيضاء طازجة نظيفة',150,'https://images.unsplash.com/photo-1587593810167-a84920ea0781?w=500'],['لحم بقري مفروم 1 كجم','لحم بقري طازج مفروم للكفتة والبرجر',320,'https://images.unsplash.com/photo-1602470520998-f4a52199a3d6?w=500'],['سمك بلطي طازج 1 كجم','سمك بلطي مصري طازج',110,'https://images.unsplash.com/photo-1524704796725-9fc3044a58b2?w=500']],
   'حلويات ومخبوزات':[['كيك شوكولاتة','قطعة كيك شوكولاتة غنية بالطبقات',140,'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=500'],['كرواسون زبدة','كرواسون فرنسي طازج بالزبدة',25,'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=500'],['بسبوسة بالقشطة','بسبوسة شرقية طازجة بالقشطة',60,'https://images.unsplash.com/photo-1519676867240-f03562e64548?w=500']],
   'مشروبات ومياه':[['مياه معدنية كرتونة 12 زجاجة','مياه معدنية نقية عبوة كرتونة',48,'https://images.unsplash.com/photo-1560023907-5f339617ea30?w=500'],['عصير برتقال طازج 1 لتر','عصير برتقال طبيعي 100%',45,'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=500'],['قهوة تركي معلبة 250 جم','بن تركي محمص ومطحون',85,'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=500']],
   'صيدلية وعناية':[['باراسيتامول 500 مجم','مسكن وخافض حرارة، علبة 20 قرص',15,'https://images.unsplash.com/photo-1584308972272-9e4e7685e80f?w=500'],['فيتامين سي فوار','فيتامين سي فوار لتقوية المناعة',60,'https://images.unsplash.com/photo-1550572017-edd951b55104?w=500'],['كمامات طبية علبة 50 قطعة','كمامات طبية ثلاثية الطبقات',45,'https://images.unsplash.com/photo-1584634731339-252c581abfc5?w=500']],
   'عناية وتجميل':[['كريم مرطب للوجه','كريم ترطيب يومي لجميع أنواع البشرة',150,'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=500'],['شامبو للشعر الجاف','شامبو مغذي للشعر الجاف والتالف',95,'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500'],['أحمر شفاه مطفي','أحمر شفاه بتركيبة مطفية طويلة الثبات',110,'https://images.unsplash.com/photo-1631214540242-3cd8c4b0b3c9?w=500']],
-  'إلكترونيات وأجهزة':[['سماعة بلوتوث لاسلكية','سماعة أذن لاسلكية بجودة صوت عالية',450,'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=500'],['شاحن سريع للموبايل','شاحن حائط سريع مع كابل USB-C',180,'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=500'],['باور بانك 10000 مللي أمبير','بطارية شحن متنقلة سريعة الشحن',350,'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=500']],
-  'ملابس وأزياء':[['تيشيرت قطن رجالي','تيشيرت قطن مريح بألوان متعددة',180,'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500'],['حذاء رياضي رجالي','حذاء رياضي مريح للاستخدام اليومي',650,'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=500'],['فستان صيفي نسائي','فستان صيفي خفيف بتصميم أنيق',320,'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=500']],
   'مستلزمات أطفال':[['حفاضات أطفال مقاس 3','عبوة حفاضات أطفال فائقة الامتصاص',220,'https://images.unsplash.com/photo-1519689680058-324335c77eba?w=500'],['لبن أطفال صناعي','لبن أطفال مدعم بالفيتامينات',280,'https://images.unsplash.com/photo-1620394654706-5c88fce54619?w=500'],['لعبة تعليمية للأطفال','لعبة تعليمية تنمي مهارات الطفل',150,'https://images.unsplash.com/photo-1558877385-81a1c7e67d72?w=500']],
   'مستلزمات منزلية':[['طقم أواني طهي','طقم أواني طهي غير لاصقة 5 قطع',850,'https://images.unsplash.com/photo-1584990347449-a5d9f800a783?w=500'],['منظف أرضيات معطر','منظف أرضيات برائحة منعشة 1 لتر',40,'https://images.unsplash.com/photo-1585421514738-01798e348b17?w=500'],['مفارش سرير قطن','طقم مفارش سرير قطن مقاس مزدوج',380,'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=500']],
   'ورد وهدايا':[['باقة ورد جوري','باقة ورد جوري طبيعي فاخرة',350,'https://images.unsplash.com/photo-1561181286-d3fee7d55364?w=500'],['بوكيه ورد مشكل مع شوكولاتة','بوكيه ورد متنوع مع علبة شوكولاتة',420,'https://images.unsplash.com/photo-1519378058457-4c29a0a2efac?w=500'],['صندوق هدايا مناسبات','صندوق هدية أنيق لجميع المناسبات',250,'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?w=500']],
-  'حيوانات أليفة':[['طعام قطط جاف 1 كجم','طعام جاف متكامل للقطط',160,'https://images.unsplash.com/photo-1589924691995-400dc9ecc119?w=500'],['طعام كلاب جاف 2 كجم','طعام جاف متكامل للكلاب',280,'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?w=500'],['رمل قطط معطر 5 كجم','رمل قطط عالي الامتصاص برائحة معطرة',110,'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=500']],
-  'مكتبات وقرطاسية':[['كراسة 100 ورقة','كراسة مدرسية مسطرة 100 ورقة',15,'https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=500'],['طقم أقلام رصاص وألوان','طقم أقلام رصاص وألوان خشبية',45,'https://images.unsplash.com/photo-1600861194942-f883de0dfe96?w=500'],['حقيبة مدرسية','حقيبة ظهر مدرسية متينة وعملية',280,'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=500']]
+  'أدوات مكتبية':[['كراسة 100 ورقة','كراسة مدرسية مسطرة 100 ورقة',15,'https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=500'],['طقم أقلام رصاص وألوان','طقم أقلام رصاص وألوان خشبية',45,'https://images.unsplash.com/photo-1600861194942-f883de0dfe96?w=500'],['حقيبة مدرسية','حقيبة ظهر مدرسية متينة وعملية',280,'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=500']]
 };
 window.seedDemoProducts = async ()=>{
   if(!S.categories.length){ UI.toast('حمّل الأقسام أولًا'); return; }
-  let merchantId = (S.allMerchants && S.allMerchants[0] && S.allMerchants[0].id) || null;
+  let merchantId = (S.allMerchants||[]).find(m=>m.isDemo===true || (m.businessName==='متجر على بابك التجريبي' && !m.ownerId))?.id || null;
   const batch = writeBatch(db);
   if(!merchantId){
     merchantId = 'merch_'+uid();
     batch.set(doc(db,'merchants',merchantId), {
-      id:merchantId, businessName:'متجر على بابك التجريبي', managerName:'إدارة المنصة',
+      id:merchantId, isDemo:true, businessName:'متجر على بابك التجريبي', managerName:'إدارة المنصة',
       phone:'01000000000', whatsappNumber:'01000000000', email:'', activityType:'سوبر ماركت',
       categoryIds:'', address:'القاهرة، مصر', description:'متجر تجريبي لعرض المنتجات على المنصة',
       logoUrl:'', coverUrl:'', status:'ACTIVE', rating:4.8, totalOrdersCount:0,
@@ -3292,7 +3440,7 @@ window.seedDemoProducts = async ()=>{
   const existingTitles = new Set(S.products.map(p=>p.categoryId+'|'+p.title));
   let addedCount = 0;
   const DEMO_SKIP = ['إلكترونيات وأجهزة','ملابس وأزياء','حيوانات أليفة'];   // خارج هوية طلبات البيت والسوبر ماركت
-  S.categories.forEach(cat=>{
+  displayCategories().forEach(cat=>{
     if(DEMO_SKIP.includes(cat.name)) return;
     const items = DEMO_PRODUCTS_BY_CATEGORY[cat.name];
     if(!items) return;
@@ -3301,7 +3449,7 @@ window.seedDemoProducts = async ()=>{
       const id = 'prod_'+uid();
       batch.set(doc(db,'products',id), {
         id, merchantId, categoryId:cat.id, title, description:desc, price, oldPrice:null, discountPercent:0,
-        stock:50, imageUrl:img, isActive:true, isPopular:false, isNew:true, rating:4.7
+        stock:50, imageUrl:img, isActive:true, isDemo:true, isPopular:false, isNew:true, rating:4.7
       });
       addedCount++;
     });
@@ -4183,6 +4331,29 @@ window.demoteAdmin = async (uid_)=>{
   await logAudit('إلغاء صلاحية أدمن', uid_);
   UI.toast('تم إلغاء صلاحية الإدارة');
 };
+
+window.MarketerTools = createMarketerTools({state:()=>S, ui:UI, escape:esc,
+  callBackend:async(name,data)=>{
+    if(!MARKETING_CONFIG.backendEnabled) throw new Error('marketing-backend-disabled');
+    return (await httpsCallable(fns,name)(data||{})).data;
+  }});
+let _appliedMarketerLanding = false;
+function applyMarketerLanding(){
+  if(_appliedMarketerLanding) return;
+  _appliedMarketerLanding=true;
+  const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
+  if(!/^[A-Z0-9-]{4,64}$/.test(code)) return;
+  Auth.switchTab('register'); Auth.pickRole('merchant');
+  document.getElementById('regMarketer').value=code;
+  if(MARKETING_CONFIG.backendEnabled){
+    try{
+      const key='marketer-visit-'+code;
+      let visitId=sessionStorage.getItem(key);
+      if(!visitId){visitId=crypto.randomUUID();sessionStorage.setItem(key,visitId);}
+      httpsCallable(fns,'trackMarketerVisit')({code,visitId}).catch(()=>{});
+    }catch(e){}
+  }
+}
 </script>
 
 <script>
@@ -4192,5 +4363,6 @@ if('serviceWorker' in navigator){
   });
 }
 </script>
+<script type="module" src="/pwa-install.js"></script>
 </body>
 </html>
