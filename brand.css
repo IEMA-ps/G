@@ -18,3 +18,15 @@ body>button{background:#30251F!important;border:1px solid #30251F!important;font
 .cat-chip .em i{font-size:25px;color:#72513A}.cat-chip.active .em i{color:var(--teal)}
 
 .auth-hero .logo img{width:88px!important;height:88px!important;border-radius:0!important;margin:0 auto 16px!important}#loadingScreen .brand img{display:inline-block;width:48px;height:48px;vertical-align:middle;margin-inline-end:10px}.brand-loading{display:flex;align-items:center;gap:12px}
+
+/* Admin catalog: reserve readable text space and a separate mobile action row. */
+.admin-catalog-row{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:12px;align-items:center}
+.admin-catalog-thumb{width:56px;height:56px;border-radius:12px;display:grid;place-items:center}
+.admin-catalog-info{min-width:0;overflow-wrap:anywhere;line-height:1.8}
+.admin-catalog-info>b{display:block}
+.admin-catalog-actions{display:flex;gap:8px;align-items:center}
+.admin-catalog-actions .icon-btn{flex:none;min-width:44px;min-height:44px}
+@media(max-width:560px){
+ .admin-catalog-row{grid-template-columns:56px minmax(0,1fr)}
+ .admin-catalog-actions{grid-column:1/-1;justify-content:flex-end;border-top:1px solid var(--line);padding-top:12px}
+}

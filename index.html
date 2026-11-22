@@ -499,7 +499,8 @@ async function recomputeOrderStatus(orderId){
 const MERCHANT_STATUS = {
   PENDING:{label:'قيد المراجعة', cls:'status-pending'},
   ACTIVE:{label:'نشط ومعتمد', cls:'status-active'},
-  SUSPENDED:{label:'معلّق', cls:'status-suspended'}
+  SUSPENDED:{label:'معلّق', cls:'status-suspended'},
+  REJECTED:{label:'مرفوض', cls:'status-suspended'}
 };
 
 /* ================= STATE ================= */
@@ -508,6 +509,7 @@ const S = {
   categories:[], merchants:[], products:[], banners:[],
   myAddresses:[], myOrders:[], mySubOrders:[], myRecurringOrders:[], openGroupBuys:[], myGroupBuys:[],
   allMerchants:[], allCategories:[], allOrders:[], allSubOrders:[], allUsers:[], allSettlements:[], allDeliveryAgents:[], allCoupons:[], allAuditLogs:[],
+  allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
   myAgent:null, myAgentSubOrders:[], agentNoLink:false, activeAgents:[], myRatings:[], appliedCoupon:null, appliedPoints:null,
   notifications:[],
   settings:{ appNameArabic:'على بابك', supportWhatsapp:'201000000000', defaultDeliveryFee:25, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
@@ -968,7 +970,7 @@ function subscribeAdmin(){
   S.unsubs.push(onSnapshot(collection(db,'withdrawals'), snap=>{ S.allWithdrawals = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'marketerPayouts'), snap=>{ S.allMkPayouts = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'coupons'), snap=>{ S.allCoupons = snap.docs.map(d=>d.data()); render(); }));
-  S.unsubs.push(onSnapshot(query(collection(db,'auditLogs'), orderBy('createdAt','desc'), limit(150)), snap=>{ S.allAuditLogs = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
+  if(isSuperAdmin()) S.unsubs.push(onSnapshot(query(collection(db,'auditLogs'), orderBy('createdAt','desc'), limit(150)), snap=>{ S.allAuditLogs = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
   S.unsubs.push(onSnapshot(query(collection(db,'notifications'), where('targetType','==','ADMIN')), snap=>{
     S.notifications = snap.docs.map(d=>({...d.data(), _id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render();
   }));
@@ -1840,7 +1842,7 @@ const HASH_TABS = {
   merchant: ['m_dashboard','m_products','m_orders','m_profile','m_reports','m_subscription','notifications'],
   delivery: ['d_dashboard','d_history','d_profile','notifications'],
   marketer: ['mk_dashboard','mk_merchants','mk_earnings','mk_tools','notifications'],
-  admin: ['a_dashboard','a_new_orders','a_merchants','a_categories','a_products','a_orders','a_users','a_settlements','a_settings','a_agents','a_coupons','a_reports','a_audit','a_marketers','a_dbsetup','a_subscriptions','notifications']
+  admin: ['a_dashboard','a_new_orders','a_merchants','a_categories','a_products','a_orders','a_recurring','a_users','a_settlements','a_settings','a_agents','a_coupons','a_reports','a_audit','a_marketers','a_dbsetup','a_subscriptions','notifications']
 };
 function tabFromHash(){
   const h = decodeURIComponent((location.hash||'').replace(/^#/,''));
@@ -1878,6 +1880,9 @@ function renderMain(){
   // كل مرة نضغط على قسم أو نغيّر ترتيب/فلتر (كان بيحصل لأن innerHTML بيتغيّر بالكامل)
   const prevCatScroll = el.querySelector('.cat-scroll');
   const savedScrollLeft = prevCatScroll ? prevCatScroll.scrollLeft : null;
+  const renderKey = `${S.role}:${S.tab}`;
+  const filterScroll = el.dataset.renderKey===renderKey
+    ? [...el.querySelectorAll('.seg')].map(seg=>seg.scrollLeft) : [];
   const routes = {
     home: renderHome, browse: renderBrowse, merchantPage: renderMerchantPage,
     cart: renderCart, checkout: renderCheckout, orders: renderOrders, orderDetail: renderOrderDetail, orderDone: renderOrderDone,
@@ -1885,13 +1890,23 @@ function renderMain(){
     m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports,
     d_dashboard: renderDeliveryDashboard, d_history: renderDeliveryHistory, d_profile: renderDeliveryProfile,
     a_dashboard: renderAdminDashboard, a_new_orders: renderAdminNewOrders, a_merchants: renderAdminMerchants, a_categories: renderAdminCategories,
-    a_products: renderAdminProducts, a_orders: renderAdminOrders, a_users: renderAdminUsers,
+    a_products: renderAdminProducts, a_orders: renderAdminOrders, a_recurring: renderAdminRecurringOrders, a_users: renderAdminUsers,
     a_settlements: renderAdminSettlements, a_settings: renderAdminSettings, a_agents: renderAdminAgents, a_coupons: renderAdminCoupons,
     a_reports: renderAdminReports, a_audit: renderAdminAuditLog, a_marketers: renderAdminMarketers, a_dbsetup: renderAdminDbSetup, a_subscriptions: renderAdminSubscriptions, m_subscription: renderMerchantSubscription,
     mk_dashboard: renderMarketerDashboard, mk_merchants: renderMarketerMerchants, mk_earnings: renderMarketerEarnings, mk_tools: ()=>MarketerTools.render()
   };
   const fn = routes[S.tab] || renderHome;
   el.innerHTML = fn();
+  el.dataset.renderKey = renderKey;
+  // Preserve each filter strip on selection and live refresh, then reveal only if needed.
+  el.querySelectorAll('.seg').forEach((seg,index)=>{
+    if(filterScroll[index]!=null) seg.scrollLeft = filterScroll[index];
+    const active = seg.querySelector('button.active');
+    if(!active) return;
+    const box = seg.getBoundingClientRect(), item = active.getBoundingClientRect();
+    const delta = item.left < box.left ? item.left-box.left-4 : item.right > box.right ? item.right-box.right+4 : 0;
+    if(delta) seg.scrollBy({left:delta,behavior:'instant'});
+  });
   // نرجّع موضع السكرول بعد ما الـ DOM يتحدّث
   if(savedScrollLeft!=null){
     const newCatScroll = el.querySelector('.cat-scroll');
@@ -2928,6 +2943,7 @@ function renderMerchantDashboard(){
   if(S.merchantNoLink) return `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><h4>حسابك غير مربوط بأي متجر</h4><p>حساب صلاحيتك «تاجر» لكنه غير مرتبط بمتجر فعلي بعد. تواصل مع الإدارة عشان تربط حسابك بالمتجر الصحيح (حقل merchantId في بيانات المستخدم).</p></div>`;
   if(!m) return emptyState('fa-hourglass-half','جاري تحميل بيانات متجرك','');
   if(m.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>هيتم تفعيل متجرك بعد موافقة فريق الإدارة، هتوصلك رسالة فور التفعيل.</p></div>`;
+  if(m.status==='REJECTED') return `<div class="empty-state"><i class="fa-solid fa-circle-xmark"></i><h4>طلب انضمام المتجر مرفوض</h4><p>${esc(m.rejectionReason||'تواصل مع الإدارة لمعرفة السبب وإعادة المراجعة.')}</p></div>`;
   if(m.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>متجرك معلّق حاليًا</h4><p>تواصل مع الإدارة لمعرفة السبب.</p></div>`;
   const subs = S.mySubOrders||[];
   const pending = subs.filter(s=>s.status==='SENT_TO_MERCHANT').length;
@@ -3329,10 +3345,46 @@ function renderDeliveryProfile(){
 }
 
 /* ================= ADMIN VIEWS ================= */
+window.loadAdminRecurringOrders = async ()=>{
+  if(S.role!=='admin' || !S.user) return;
+  const uid = S.user.uid;
+  S.adminRecurringLoading = true; S.adminRecurringError = ''; renderMain();
+  try{
+    const snap = await getDocs(query(collection(db,'recurringOrders'), orderBy('createdAt','desc'), limit(100)));
+    if(S.role!=='admin' || S.user?.uid!==uid) return;
+    S.allRecurringOrders = snap.docs.map(d=>({...d.data(),_id:d.id}));
+  }catch(e){
+    if(S.role==='admin' && S.user?.uid===uid) S.adminRecurringError = 'تعذّر تحميل التذكيرات الأسبوعية. تحقق من صلاحيات حساب الأدمن ثم أعد المحاولة.';
+  }finally{
+    if(S.role==='admin' && S.user?.uid===uid){
+      S.adminRecurringLoading = false; S.adminRecurringLoaded = true; renderMain();
+    }
+  }
+};
+function renderAdminRecurringOrders(){
+  if(S.role!=='admin') return '';
+  if(!S.adminRecurringLoaded && !S.adminRecurringLoading){
+    S.adminRecurringLoading = true; queueMicrotask(()=>loadAdminRecurringOrders());
+  }
+  const filter = S.aRecurringFilter || 'ALL';
+  const list = (S.allRecurringOrders||[]).filter(r=>filter==='ALL' || r.status===filter);
+  const tabs = [['ALL','الكل'],['ACTIVE','مفعّل'],['PAUSED','موقّف']];
+  return `<div class="section-head" style="margin-top:0"><h3>الطلبات الأسبوعية</h3></div>
+    <p class="hint-box" style="padding:12px;margin-bottom:14px">دي تذكيرات أسبوعية للعميل، مش طلبات مؤكدة. الطلب بيتسجل بعد تأكيد العميل فقط، ومفيش إرسال تلقائي للتاجر.</p>
+    <button class="btn btn-ghost" style="margin-bottom:14px" onclick="loadAdminRecurringOrders()" ${S.adminRecurringLoading?'disabled':''}><i class="fa-solid fa-rotate"></i> ${S.adminRecurringLoading?'جاري التحميل…':'تحديث القائمة'}</button>
+    <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${filter===k?'active':''}" onclick="S.aRecurringFilter='${k}';renderMain()">${l}</button>`).join('')}</div>
+    <p style="font-size:12px;color:var(--ink-soft)">عرض حتى ١٠٠ تذكير، الأحدث أولًا. الشاشة للعرض فقط.</p>
+    ${S.adminRecurringLoading?emptyState('fa-hourglass-half','جاري تحميل التذكيرات',''):S.adminRecurringError?`<p class="hint-box" role="alert" style="padding:12px">${esc(S.adminRecurringError)}</p>`:list.length?`<div class="list-gap">${list.map(r=>`<div class="card" style="overflow-wrap:anywhere">
+      <div style="display:flex;gap:12px;align-items:flex-start"><b style="flex:1;min-width:0;font-size:14px">${esc(r.productTitle||'منتج غير مسمّى')}</b><span class="status-pill ${r.status==='ACTIVE'?'status-active':'status-suspended'}" style="flex-shrink:0">${r.status==='ACTIVE'?'مفعّل':r.status==='PAUSED'?'موقّف':esc(r.status||'غير محدد')}</span></div>
+      <p style="font-size:13px;margin:10px 0 4px">العميل: ${esc(r.customerName||r.customerId||'غير محدد')}</p>
+      <p style="font-size:13px;margin:4px 0">كل ${esc(WEEKDAY_NAMES[r.dayOfWeek]||'يوم غير محدد')} · الكمية ${Number(r.quantity)||0}</p>
+      <div style="font-size:11px;color:var(--ink-soft);margin-top:8px">${esc(r._id)}${r.createdAt?' · '+fmtDate(r.createdAt):''}</div>
+    </div>`).join('')}</div>`:emptyState('fa-repeat','لا توجد تذكيرات في هذا الفلتر','')}`;
+}
 function renderAdminDashboard(){
   const merchants = S.allMerchants||[];
   const orders = S.allOrders||[];
-  const revenue = orders.filter(o=>o.status==='DELIVERED'||true).reduce((a,o)=>a+o.total,0);
+  const revenue = orders.filter(o=>o.status==='DELIVERED').reduce((a,o)=>a+(Number(o.total)||0),0);
   const pendingMerchants = merchants.filter(m=>m.status==='PENDING').length;
   const pendingAgents = (S.allDeliveryAgents||[]).filter(a=>a.status==='PENDING').length;
   const newOrdersCount = orders.filter(o=>o.status==='PENDING_ADMIN').length;
@@ -3358,6 +3410,7 @@ function renderAdminDashboard(){
       return `<div class="order-card"><div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}">${st.label}</span></div><div class="date">${fmtDate(o.createdAt)} · ${esc(o.customerName)}</div><div class="row-between" style="margin-top:8px"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div></div>`;
     }).join('')}</div>` : emptyState('fa-receipt','لا توجد طلبات بعد','')}
     <button class="btn btn-primary" style="margin-top:16px" onclick="go('a_settlements')"><i class="fa-solid fa-sack-dollar"></i> التسويات الأسبوعية للتجار</button>
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_recurring')"><i class="fa-solid fa-repeat"></i> الطلبات الأسبوعية</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_agents')"><i class="fa-solid fa-motorcycle"></i> إدارة مناديب التوصيل</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_subscriptions')"><i class="fa-solid fa-gem"></i> الاشتراكات والباقات${(S.allSubs||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allSubs||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('a_marketers')"><i class="fa-solid fa-bullhorn"></i> المسوّقون وعمولاتهم${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
@@ -3517,7 +3570,7 @@ window.adminSendToMerchant = async (subId)=>{
 function renderAdminMerchants(){
   const filter = S.aMerchFilter || 'ALL';
   const list = filter==='ALL' ? S.allMerchants : S.allMerchants.filter(m=>m.status===filter);
-  const tabs = [['ALL','الكل'],['PENDING','قيد المراجعة'],['ACTIVE','نشط'],['SUSPENDED','معلّق']];
+  const tabs = [['ALL','الكل'],['PENDING','قيد المراجعة'],['ACTIVE','نشط'],['REJECTED','مرفوض'],['SUSPENDED','معلّق']];
   return `
     <button class="btn btn-primary" style="margin-bottom:14px" onclick="openAdminMerchantForm()"><i class="fa-solid fa-plus"></i> إضافة تاجر جديد</button>
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${filter===k?'active':''}" onclick="S.aMerchFilter='${k}';renderMain()">${l}</button>`).join('')}</div>
@@ -3538,7 +3591,10 @@ function renderAdminMerchants(){
           <span style="font-size:12px;color:var(--ink-soft)"><i class="fa-solid fa-percent"></i> عمولة المنصة: <b style="color:var(--ink)">${m.commissionPercent!=null?m.commissionPercent:S.settings.platformCommissionPercent}%</b>${m.commissionPercent!=null?'':' (افتراضية)'}</span>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMerchantCommission('${m.id}')"><i class="fa-solid fa-pen"></i> تعديل</button>
         </div>
+        ${m.status==='REJECTED' && m.rejectionReason?`<p class="hint-box" style="margin-top:10px">سبب الرفض: ${esc(m.rejectionReason)}</p>`:''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          ${m.status==='PENDING'?`<button class="btn btn-danger btn-sm" style="width:auto;flex:1" onclick="openRejectMerchant('${m.id}')">رفض الطلب</button>`:''}
+          ${m.status==='REJECTED'?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="returnMerchantToReview('${m.id}')">إعادة للمراجعة</button>`:''}
           ${m.status!=='ACTIVE'?`<button class="btn btn-primary btn-sm" style="width:auto;flex:1" onclick="setMerchantStatus('${m.id}','ACTIVE')">تفعيل</button>`:''}
           ${m.status!=='SUSPENDED'?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="setMerchantStatus('${m.id}','SUSPENDED')">تعليق</button>`:''}
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openGrantSub('${m.id}')"><i class="fa-solid fa-gem"></i> اشتراك</button>
@@ -3632,6 +3688,42 @@ window.saveMerchantCommission = async (id)=>{
   await updateDoc(doc(db,'merchants',id), {commissionPercent});
   UI.closeModal();
   UI.toast('تم تحديث نسبة العمولة');
+};
+window.openRejectMerchant = (id)=>{
+  if(S.role!=='admin') return;
+  const m = S.allMerchants.find(x=>x.id===id);
+  if(!m || m.status!=='PENDING') return;
+  UI.openModal(`<div class="modal-head"><h3>رفض طلب انضمام متجر</h3><button class="modal-close" aria-label="إغلاق" onclick="UI.closeModal()">×</button></div>
+    <p style="line-height:1.8">${esc(m.businessName)}. لن يظهر المتجر للعملاء. يمكن إعادة الطلب للمراجعة لاحقًا.</p>
+    <div class="field"><label for="merchantRejectReason">سبب الرفض</label><textarea id="merchantRejectReason" maxlength="500" required></textarea></div>
+    <button class="btn btn-danger" id="merchantRejectConfirm" onclick="confirmRejectMerchant('${id}')">تأكيد الرفض</button>`);
+};
+window.confirmRejectMerchant = async (id)=>{
+  if(S.role!=='admin' || S.merchantReviewBusy) return;
+  const m = S.allMerchants.find(x=>x.id===id);
+  const reason = (document.getElementById('merchantRejectReason')?.value||'').trim();
+  if(!m || m.status!=='PENDING') return;
+  if(!reason){ UI.toast('اكتب سبب الرفض أولًا'); return; }
+  S.merchantReviewBusy = true;
+  const button = document.getElementById('merchantRejectConfirm'); if(button) button.disabled = true;
+  try{
+    await updateDoc(doc(db,'merchants',id), {status:'REJECTED',rejectionReason:reason.slice(0,500)});
+    await logAudit('رفض طلب انضمام متجر', id+' — '+reason.slice(0,500));
+    UI.closeModal(); UI.toast('تم رفض الطلب، ويمكن إعادته للمراجعة');
+  }catch(e){ UI.toast('تعذّر رفض الطلب، تحقق من الصلاحيات وحاول مرة أخرى'); }
+  finally{ S.merchantReviewBusy = false; if(button) button.disabled = false; }
+};
+window.returnMerchantToReview = async (id)=>{
+  if(S.role!=='admin' || S.merchantReviewBusy) return;
+  const m = S.allMerchants.find(x=>x.id===id);
+  if(!m || m.status!=='REJECTED') return;
+  if(!confirm('إعادة طلب المتجر للمراجعة؟ سيظل غير ظاهر للعملاء حتى التفعيل.')) return;
+  S.merchantReviewBusy = true;
+  try{
+    await updateDoc(doc(db,'merchants',id), {status:'PENDING',rejectionReason:null});
+    await logAudit('إعادة متجر للمراجعة', id); UI.toast('تمت إعادة الطلب للمراجعة');
+  }catch(e){ UI.toast('تعذّرت إعادة الطلب للمراجعة، تحقق من الصلاحيات'); }
+  finally{ S.merchantReviewBusy = false; }
 };
 window.setMerchantStatus = async (id,status)=>{ await updateDoc(doc(db,'merchants',id), {status}); await logAudit('تغيير حالة تاجر', `${id} → ${MERCHANT_STATUS[status].label}`); UI.toast('تم تحديث حالة التاجر إلى: '+MERCHANT_STATUS[status].label); };
 window.removeMerchant = async (id)=>{
@@ -3766,12 +3858,14 @@ function renderAdminCategories(){
     <button class="btn btn-primary" style="margin-bottom:10px" onclick="openCategoryForm()"><i class="fa-solid fa-plus"></i> إضافة قسم جديد</button>
     <button class="btn btn-ghost" style="margin-bottom:16px" onclick="syncCategories()"><i class="fa-solid fa-wand-magic-sparkles"></i> إضافة الأقسام المقترحة الناقصة (${CATEGORY_SEED.length} قسم مقترح إجمالًا)</button>
     ${S.categories.length? `<div class="list-gap">${S.categories.map(c=>`
-      <div class="card" style="display:flex;align-items:center;gap:10px${c.isActive===false?';opacity:.55':''}">
-        <span style="font-size:22px">${c.iconEmoji||'🛍️'}</span>
-        <div style="flex:1"><b style="font-size:13.5px">${esc(c.name)}</b><div style="font-size:12px;color:var(--ink-soft)">${esc(c.description||'')}${c.isActive===false?' · <span style="color:var(--danger)">معطّل</span>':''}</div></div>
-        <button class="icon-btn" style="background:${c.isActive===false?'var(--success-tint);color:var(--success)':'var(--gold-tint);color:#8A5B00'}" onclick="toggleCategoryActive('${c.id}',${c.isActive!==false})" title="${c.isActive===false?'تفعيل':'تعطيل'}"><i class="fa-solid ${c.isActive===false?'fa-toggle-off':'fa-toggle-on'}"></i></button>
-        <button class="icon-btn" style="background:var(--teal-tint);color:var(--teal)" onclick="openCategoryForm('${c.id}')"><i class="fa-solid fa-pen"></i></button>
-        <button class="icon-btn" style="background:var(--danger-tint);color:var(--danger)" onclick="removeCategory('${c.id}')"><i class="fa-solid fa-trash"></i></button>
+      <div class="card admin-catalog-row" style="${c.isActive===false?'opacity:.55':''}">
+        <span class="admin-catalog-thumb" style="font-size:26px">${c.iconEmoji||'🛍️'}</span>
+        <div class="admin-catalog-info"><b style="font-size:13.5px">${esc(c.name)}</b><div style="font-size:12px;color:var(--ink-soft)">${esc(c.description||'')}${c.isActive===false?' · <span style="color:var(--danger)">معطّل</span>':''}</div></div>
+        <div class="admin-catalog-actions">
+        <button class="icon-btn" aria-label="${c.isActive===false?'تفعيل القسم':'تعطيل القسم'}" style="background:${c.isActive===false?'var(--success-tint);color:var(--success)':'var(--gold-tint);color:#8A5B00'}" onclick="toggleCategoryActive('${c.id}',${c.isActive!==false})" title="${c.isActive===false?'تفعيل':'تعطيل'}"><i class="fa-solid ${c.isActive===false?'fa-toggle-off':'fa-toggle-on'}"></i></button>
+        <button class="icon-btn" aria-label="تعديل القسم" style="background:var(--teal-tint);color:var(--teal)" onclick="openCategoryForm('${c.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="icon-btn" aria-label="حذف القسم" style="background:var(--danger-tint);color:var(--danger)" onclick="removeCategory('${c.id}')"><i class="fa-solid fa-trash"></i></button>
+        </div>
       </div>`).join('')}</div>` : emptyState('fa-tags','لا توجد أقسام بعد','')}
   `;
 }
@@ -3824,16 +3918,18 @@ function renderAdminProducts(){
     <button class="btn btn-ghost" style="margin-bottom:16px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
     ${list.length? `<div class="list-gap">${visible.map(p=>{
       const m = getMerchant(p.merchantId);
-      return `<div class="card" style="display:flex;gap:10px;align-items:center${p.isActive===false?';opacity:.55':''}">
-        <div class="thumb" style="width:56px;height:56px;border-radius:10px;background:var(--teal-tint) center/cover no-repeat;background-image:url('${esc(p.imageUrl||'')}');flex-shrink:0"></div>
-        <div style="flex:1;min-width:0">
+      return `<div class="card admin-catalog-row" style="${p.isActive===false?'opacity:.55':''}">
+        <div class="thumb admin-catalog-thumb" style="background:var(--teal-tint) center/cover no-repeat;background-image:url('${esc(p.imageUrl||'')}')"></div>
+        <div class="admin-catalog-info">
           <b style="font-size:13.5px">${esc(p.title)}</b>
           <div style="font-size:12px;color:var(--ink-soft)">${fmtMoney(p.price)} · مخزون ${p.stock}${p.isActive===false?' · <span style="color:var(--danger)">متوقف</span>':''}</div>
           <div style="font-size:11.5px;color:var(--ink-soft)"><i class="fa-solid fa-shop"></i> ${esc(m?m.businessName:'—')}</div>
         </div>
-        <button class="icon-btn" style="background:${p.isActive===false?'var(--success-tint);color:var(--success)':'var(--gold-tint);color:#8A5B00'}" onclick="toggleProductActive('${p.id}',${p.isActive!==false})" title="${p.isActive===false?'تفعيل':'إلغاء تفعيل'}"><i class="fa-solid ${p.isActive===false?'fa-toggle-off':'fa-toggle-on'}"></i></button>
-        <button class="icon-btn" style="background:var(--teal-tint);color:var(--teal)" onclick="openAdminProductForm('${p.id}')"><i class="fa-solid fa-pen"></i></button>
-        <button class="icon-btn" style="background:var(--danger-tint);color:var(--danger)" onclick="deleteProduct('${p.id}')"><i class="fa-solid fa-trash"></i></button>
+        <div class="admin-catalog-actions">
+        <button class="icon-btn" aria-label="${p.isActive===false?'تفعيل المنتج':'إلغاء تفعيل المنتج'}" style="background:${p.isActive===false?'var(--success-tint);color:var(--success)':'var(--gold-tint);color:#8A5B00'}" onclick="toggleProductActive('${p.id}',${p.isActive!==false})" title="${p.isActive===false?'تفعيل':'إلغاء تفعيل'}"><i class="fa-solid ${p.isActive===false?'fa-toggle-off':'fa-toggle-on'}"></i></button>
+        <button class="icon-btn" aria-label="تعديل المنتج" style="background:var(--teal-tint);color:var(--teal)" onclick="openAdminProductForm('${p.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="icon-btn" aria-label="حذف المنتج" style="background:var(--danger-tint);color:var(--danger)" onclick="deleteProduct('${p.id}')"><i class="fa-solid fa-trash"></i></button>
+        </div>
       </div>`;
     }).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','أضف أول منتج من هنا')}
     ${list.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:12px" onclick="S.aProdPageSize=(S.aProdPageSize||20)+20;renderMain()">عرض المزيد (${list.length-visible.length} منتج آخر)</button>` : ''}
