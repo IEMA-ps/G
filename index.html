@@ -299,6 +299,31 @@ img{max-width:100%; display:block;}
   body[data-role="customer"] #toast{bottom:32px;}
 }
 
+/* ---------- ديسكتوب: لوحة التاجر (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+@media (min-width:1024px){
+  body[data-role="merchant"]{background:var(--paper);}
+  body[data-role="merchant"] #appRoot{max-width:none; margin:0; box-shadow:none; background:var(--paper);}
+  body[data-role="merchant"] #appShell{margin-right:250px;}
+  body[data-role="merchant"] #topbar{padding:16px 36px;}
+  body[data-role="merchant"] #topbar .tb-title{font-size:20px;}
+  body[data-role="merchant"] #mainContent{width:100%; max-width:1240px; margin:0 auto; padding:28px 36px 48px;}
+  body[data-role="merchant"] #bottomNav{top:0; bottom:0; right:0; left:auto; transform:none; width:250px; max-width:none; flex-direction:column; justify-content:flex-start; gap:2px; overflow-y:auto; border-top:none; border-left:1px solid var(--line); padding:20px 12px; border-radius:0; margin:0; box-shadow:none; height:auto;}
+  body[data-role="merchant"] #bottomNav::before{content:'على بابك'; display:block; font-weight:800; font-size:20px; color:var(--teal); padding:4px 14px 18px;}
+  body[data-role="merchant"] .nav-btn{flex:none; flex-direction:row; justify-content:flex-start; gap:12px; padding:11px 14px; border-radius:12px; font-size:14px; text-align:right;}
+  body[data-role="merchant"] .nav-btn i{font-size:16px; width:20px; text-align:center;}
+  body[data-role="merchant"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="merchant"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="merchant"] .nav-btn .badge{position:static; margin:0 6px 0 0;}
+  body[data-role="merchant"] .stat-grid{grid-template-columns:repeat(4,1fr); gap:16px;}
+  body[data-role="merchant"] .stat-card{padding:20px;}
+  body[data-role="merchant"] .stat-card .num{font-size:28px;}
+  body[data-role="merchant"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; align-items:start;}
+  body[data-role="merchant"][data-tab="m_profile"] #mainContent, body[data-role="merchant"][data-tab="m_subscription"] #mainContent, body[data-role="merchant"][data-tab="m_statement"] #mainContent{max-width:900px;}
+  body[data-role="merchant"] #modalRoot{align-items:center;}
+  body[data-role="merchant"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="merchant"] #toast{bottom:32px;}
+}
+
 /* ---------- modal ---------- */
 #modalRoot{position:fixed; inset:0; z-index:60; display:flex; align-items:flex-end; justify-content:center;}
 #modalRoot.hidden{display:none;}
