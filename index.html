@@ -1375,7 +1375,7 @@ function renderAdminSubscriptions(){
     ${!plans.length && sa ? `<button class="btn btn-ghost" style="margin-bottom:12px" onclick="seedDefaultPlans()"><i class="fa-solid fa-wand-magic-sparkles"></i> إنشاء 3 باقات جاهزة (أساسية / متوسطة / مميزة)</button>` : ''}
     ${plans.length? `<div class="list-gap" style="margin-bottom:16px">${plans.map(p=>`<div class="card" style="${p.active===false?'opacity:.55':''}">
       <div class="row-between"><b style="font-size:14px">${esc(p.name)}</b><b style="color:var(--teal)">${fmtMoney(p.price)}</b></div>
-      <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${p.months} شهر · ${MerchantPlans.isNewPlan(p)?(p.kind==='PROFILE'?'تعريفية فقط':'طلبات + 2% على التاجر'):p.maxProducts>0?`حتى ${p.maxProducts} منتج`:'غير محدود'} · نسبة المسوّق: <b>${p.marketerPercent!=null?p.marketerPercent:(st.marketerSubPercent!=null?st.marketerSubPercent:10)}%</b>${p.active===false?' · <b style="color:var(--danger)">موقوفة</b>':''}</div>
+      <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${p.months} شهر · ${MerchantPlans.isNewPlan(p)?(p.kind==='PROFILE'?'تعريفية فقط':'طلبات + 2% على التاجر'):p.maxProducts>0?`حتى ${p.maxProducts} منتج`:'غير محدود'} · نسبة المسوّق: <b>${MerchantPlans.marketerPercentFor(p,st)}%</b>${p.active===false?' · <b style="color:var(--danger)">موقوفة</b>':''}</div>
       ${sa?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openPlanForm('${p._id}')"><i class="fa-solid fa-pen"></i> تعديل</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="togglePlan('${p._id}')">${p.active===false?'تفعيل':'إيقاف'}</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="deletePlan('${p._id}')"><i class="fa-solid fa-trash"></i></button></div>`:''}</div>`).join('')}</div>` : emptyState('fa-box-open','لا توجد باقات بعد','اضغط «إضافة باقة»')}
     ${sa?`<div class="card" style="margin-bottom:16px"><h3 style="margin:0 0 12px;font-size:15px">إعدادات الاشتراكات</h3>
       <div class="field"><label>إلزام الاشتراك (إخفاء المتاجر غير المشتركة عن العملاء)</label><select id="ssEnforce"><option value="0" ${!st.subsEnforced?'selected':''}>اختياري (غير مُلزِم حاليًا)</option><option value="1" ${st.subsEnforced?'selected':''}>إلزامي</option></select></div>
@@ -1410,7 +1410,17 @@ window.saveSubSettings = async ()=>{
 };
 window.openPlanForm = (id)=>{
   const p = id ? (S.plans||[]).find(x=>x._id===id) : null;
-  if(MerchantPlans.isNewPlan(p)){ UI.toast('الباقات الجديدة ثابتة بالشروط المعروضة. راجع تعديل أسعارها في إصدار مستقل.'); return; }
+  if(MerchantPlans.isNewPlan(p)){
+    const defPct = MerchantPlans.marketerPercentFor(null,S.settings);
+    UI.openModal(`
+      <div class="modal-head"><h3>تعديل «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="card" style="margin-bottom:12px"><div class="row-between"><span>السعر</span><b>${fmtMoney(p.price)}</b></div><div class="row-between"><span>المدة</span><b>${p.months} شهر</b></div><div class="row-between"><span>النوع</span><b>${p.kind==='PROFILE'?'تعريفية فقط':'طلبات + عمولة '+p.orderCommissionPercent+'% على التاجر'}</b></div></div>
+      <p style="font-size:12px;color:var(--ink-soft);line-height:1.7;margin-bottom:10px">السعر والمدة والعمولة ثابتة لحماية الاشتراكات المعتمدة. يمكن تغيير نسبة المسوّق فقط.</p>
+      <div class="field"><label>نسبة المسوّق (%)</label><input id="plPct" type="number" min="0" max="100" step="0.1" value="${p.marketerPercent!=null?p.marketerPercent:''}" placeholder="افتراضي ${defPct}"></div>
+      <p style="font-size:11.5px;color:var(--ink-soft);line-height:1.7">اتركها فارغة للعودة للنسبة الافتراضية (${defPct}%). تُطبّق على طلبات الاشتراك الجديدة؛ الاشتراكات المعتمدة تحتفظ بنسبتها المحفوظة وقت الاعتماد.</p>
+      <button class="btn btn-primary" onclick="savePlan('${id}')">حفظ</button>`);
+    return;
+  }
   UI.openModal(`
     <div class="modal-head"><h3>${p?'تعديل الباقة':'باقة جديدة'}</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="field"><label>اسم الباقة</label><input id="plName" value="${esc(p?p.name:'')}" placeholder="مثال: الباقة الذهبية"></div>
@@ -1423,6 +1433,16 @@ window.openPlanForm = (id)=>{
 };
 window.savePlan = async (id)=>{
   if(!isSuperAdmin()) return;
+  const editing = id ? (S.plans||[]).find(x=>x._id===id) : null;
+  if(MerchantPlans.isNewPlan(editing)){
+    const pctRaw = document.getElementById('plPct').value.trim(), pctVal = parseFloat(pctRaw);
+    if(pctRaw!=='' && !(pctVal>=0 && pctVal<=100)){ UI.toast('النسبة لازم تكون بين 0 و 100'); return; }
+    const marketerPercent = pctRaw==='' ? null : Math.round(pctVal*10)/10;
+    await updateDoc(doc(db,'plans',id), {marketerPercent});
+    await logAudit('تعديل نسبة مسوّق باقة', `${editing.name} — ${marketerPercent==null?'النسبة الافتراضية':marketerPercent+'%'}`);
+    UI.closeModal(); UI.toast('تم الحفظ ✅');
+    return;
+  }
   const name = document.getElementById('plName').value.trim(), price = parseFloat(document.getElementById('plPrice').value);
   const months = parseInt(document.getElementById('plMonths').value);
   if(!name || !(price>=0) || !(months>=1)){ UI.toast('أدخل الاسم والسعر والمدة'); return; }
@@ -1463,7 +1483,7 @@ function mkTier(activeCount){
   t.forEach((x,i)=>{ if(activeCount>=x.min) idx=i; });
   return { idx, cur:t[idx], next: t[idx+1]||null, need: t[idx+1] ? Math.max(0,t[idx+1].min-activeCount) : 0, count:activeCount };
 }
-function mkSubRate(plan){ return plan?.marketerPercent ?? S.settings.marketerSubPercent ?? 10; }
+function mkSubRate(plan){ return MerchantPlans.marketerPercentFor(plan,S.settings); }
 function mkBaseRateLabel(){
   const src = mkSource();
   return (src!=='ORDERS' ? `اشتراكات ${mkSubRate(null)}% افتراضيًا` : '') +

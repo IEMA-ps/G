@@ -34,6 +34,7 @@ export function feeSnapshot(m,subtotal){
   const base=Math.round(Math.max(0,Number(subtotal)||0)*100)/100;
   return {commissionModel:MODEL,commissionTermsVersion:1,commissionPayer:'MERCHANT',commissionPercent:2,commissionBase:base,commissionAmount:Math.round(base*2)/100,commissionBasis:'GOODS_AFTER_MERCHANT_DISCOUNTS_EXCLUDES_DELIVERY'};
 }
+export const marketerPercentFor = (p,settings) => p?.marketerPercent!=null ? p.marketerPercent : (settings?.marketerSubPercent!=null ? settings.marketerSubPercent : 10);
 export const millisOf = value => typeof value?.toMillis==='function'?value.toMillis():Number(value);
 export function cairoMonth(ms){
   const value=millisOf(ms);
