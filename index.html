@@ -13,6 +13,7 @@
 <meta property="og:url" content="https://3alababk.com/">
 <meta property="og:image" content="https://3alababk.com/icon-512.png">
 <meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/shared-catalog.css?v=shared-1">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -399,6 +400,7 @@ img{max-width:100%; display:block;}
 </style>
 <link rel="stylesheet" href="/brand.css?v=modals1">
 <script src="/brand.js" defer></script>
+<link rel="stylesheet" href="/admin-panel.css?v=admin-2">
 </head>
 <body>
 
@@ -437,7 +439,7 @@ img{max-width:100%; display:block;}
         <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" required></div>
         <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" required minlength="8" autocomplete="new-password" aria-describedby="regPasswordHint regPasswordChecks" oninput="updatePasswordChecklist(this,'regPasswordChecks')" placeholder="8 أحرف على الأقل"><p id="regPasswordHint" class="password-hint">8 أحرف على الأقل، حرف إنجليزي كبير وصغير ورقم. الرموز مسموحة ومش إلزامية.</p><div id="regPasswordChecks"></div></div>
         <p class="location-note">اختار منطقتك لعرض المتاجر المسجلة في نفس المنطقة، مش حسب مسافة فعلية. عنوان التوصيل بالتفصيل تضيفه بعد الدخول.</p><div id="regLocation"></div>
-        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="لو صاحبك دعاك، اكتب كوده هنا" style="text-transform:uppercase"></div>
+        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase"></div>
 
         <button class="btn btn-primary" type="submit" id="registerBtn"><i class="fa-solid fa-user-plus"></i> إنشاء الحساب</button>
       </form>
@@ -484,6 +486,8 @@ img{max-width:100%; display:block;}
 <script src="/qrcode.js"></script>
 <script type="module">
 import {marketerBenefits} from '/marketer-benefits.js?v=human-1';
+import {installCatalog} from '/shared-catalog-ui.js?v=shared-1';
+import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-2';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
 import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
@@ -658,7 +662,7 @@ const MERCHANT_STATUS = {
 /* ================= STATE ================= */
 const S = {
   user:null, profile:null, role:'customer',
-  categories:[], merchants:[], products:[], banners:[],
+  categories:[], merchants:[], products:[], banners:[], catalogOpen:false,
   myAddresses:[], myOrders:[], mySubOrders:[], myRecurringOrders:[], openGroupBuys:[], myGroupBuys:[],
   allMerchants:[], allCategories:[], allOrders:[], allSubOrders:[], allUsers:[], allSettlements:[], allDeliveryAgents:[], allCoupons:[], allAuditLogs:[],
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
@@ -801,12 +805,16 @@ const Auth = {
   async googleLogin(){
     if(Auth.googleBusy || Auth.registering || Auth.loginBusy) return;
     Auth.googleBusy = true;
+    // Capture this attempt only. New Google profiles consume it; existing accounts never reattribute.
+    Auth.googleReferralCode=(document.getElementById('regReferral')?.value||'').trim().toUpperCase();
     const button = document.getElementById('googleLoginBtn'); button.disabled = true;
     try{
       // A direct user click opens the popup. No extra Google API scopes or token storage.
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const result=await signInWithPopup(auth, new GoogleAuthProvider());
+      // Own the bootstrap so the captured code outlives the popup promise.
+      if(result?.user){try{await bootAuthUser(result.user);}catch(e){showAccountLoadFailure(e);}}
     }catch(e){ Auth.showError(googleError(e.code)); }
-    finally{ Auth.googleBusy = false; button.disabled = false; }
+    finally{ Auth.googleReferralCode=''; Auth.googleBusy = false; button.disabled = false; }
   },
   switchTab(t){
     document.getElementById('tabLogin').classList.toggle('active', t==='login');
@@ -969,6 +977,7 @@ function showSignedOut(){
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
 async function bootAuthUser(user) {
+  const googleSignupCode=Auth.googleReferralCode||new URLSearchParams(location.search).get('marketer')||'';
   S.showAllStores=false;
   const epoch = ++authEpoch;
   clearSubs();
@@ -988,7 +997,7 @@ async function bootAuthUser(user) {
       const ref = doc(db,'users',user.uid); const existing = await tx.get(ref);
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
-    await window.Program?.recordSignup(new URLSearchParams(location.search).get('marketer')||'');
+    await window.Program?.recordSignup(googleSignupCode);
   }
   bootStage='profile-read-back';
   const finalSnap = psnap.exists() ? psnap : await getDoc(doc(db,'users',user.uid));
@@ -1037,7 +1046,7 @@ function showAccountLoadFailure(e){
   Auth.showError(problem.message);
 }
 onAuthStateChanged(auth, async user=>{
-  if(Auth.registering) return;
+  if(Auth.registering || Auth.googleBusy) return;
   try{ await bootAuthUser(user); }
   catch(e){ showAccountLoadFailure(e);
   }
@@ -1212,10 +1221,13 @@ function subscribeDeliveryAgent(){
 }
 
 function subscribeAdmin(){
+  S.allUsersReady=false;S.allUsersError='';
+  S.adminAttributionStatus=isSuperAdmin()?'loading':'legacy';S.adminAttributions=[];
+  if(isSuperAdmin()) S.unsubs.push(onSnapshot(collection(db,'signupAttributions'),snap=>{S.adminAttributions=snap.docs.map(d=>({...d.data(),id:d.id}));S.adminAttributionStatus='ready';render();},()=>{S.adminAttributions=[];S.adminAttributionStatus='error';render();}));
   S.unsubs.push(onSnapshot(collection(db,'merchants'), snap=>{ S.allMerchantsReady=true;S.allMerchants = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'orders'), snap=>{ S.allOrders = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'subOrders'), snap=>{ S.allSubOrders = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
-  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsersReady=true;S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
+  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsersReady=true;S.allUsersError='';S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); },()=>{S.allUsersReady=false;S.allUsersError='تعذر تحميل الأعضاء. راجع صلاحية حساب الإدارة ثم أعد تحميل الصفحة.';render();}));
   S.unsubs.push(onSnapshot(collection(db,'settlements'), snap=>{ S.allSettlements = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'deliveryAgents'), snap=>{ S.allDeliveryAgents = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.price-b.price); render(); }));
@@ -2240,6 +2252,7 @@ function renderShell(){
       <span>${label}</span></button>`;
   }).join('') + adminExtra.map(x=>x==='sep' ? '<div class="nav-sep nav-extra"></div>' : `<button class="nav-btn nav-extra ${S.tab===x[0]?'active':''}" onclick="go('${x[0]}')"><span style="position:relative"><i class="fa-solid ${x[1]}"></i></span><span>${x[2]}</span></button>`).join('');
 
+  if(S.role==='admin') bn.innerHTML=adminNavigation(S.tab,isSuperAdmin(),{a_new_orders:S.allOrders.filter(o=>o.status==='PENDING_ADMIN').length,a_merchants:S.allMerchants.filter(m=>m.status==='PENDING').length});
   _shellBusy = true;
   renderMain();
   _shellBusy = false;
@@ -2331,7 +2344,7 @@ function renderMain(){
     mk_dashboard: renderMarketerDashboard, mk_merchants: renderMarketerMerchants, mk_earnings: renderMarketerEarnings, mk_tools: ()=>MarketerTools.render()
   };
   const fn = routes[S.tab] || renderHome;
-  el.innerHTML = fn();
+  el.innerHTML = (S.role==='admin'?adminPageHeading(S.tab,isSuperAdmin()):'')+fn();
   el.dataset.renderKey = renderKey;
   // Preserve each filter strip on selection and live refresh, then reveal only if needed.
   el.querySelectorAll('.seg').forEach((seg,index)=>{
@@ -3588,8 +3601,10 @@ function renderMerchantProducts(){
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const m = S.myMerchant;
   if(!m || m.status!=='ACTIVE') return emptyState('fa-lock','متجرك غير مفعّل بعد','لا يمكنك إضافة منتجات حتى تتم الموافقة على متجرك');
+  if(S.catalogOpen) return `<button class="btn btn-ghost" onclick="SharedCatalog.close()">رجوع لمنتجاتي</button>`+SharedCatalog.render();
   const prods = S.myProducts||[];
   return `
+    <button class="btn btn-primary" style="margin-bottom:12px" onclick="SharedCatalog.open()">اختار من كتالوج المنتجات</button>
     <button class="btn btn-primary" style="margin-bottom:16px" onclick="openProductForm()"><i class="fa-solid fa-plus"></i> إضافة منتج جديد</button>
     ${prods.length? `<div class="list-gap">${prods.map(p=>`
       <div class="card" style="display:flex;gap:10px;align-items:center${p.isActive===false?';opacity:.55':''}">
@@ -4414,6 +4429,7 @@ window.removeCategory = async (id)=>{ if(confirm('حذف هذا القسم؟')){
 window.toggleCategoryActive = async (id, cur)=>{ await updateDoc(doc(db,'categories',id), {isActive:!cur}); UI.toast(!cur?'تم تفعيل القسم':'تم تعطيل القسم'); };
 
 function renderAdminProducts(){
+  if(S.catalogOpen&&isSuperAdmin()) return `<button class="btn btn-ghost" onclick="SharedCatalog.close()">رجوع للمنتجات</button>`+SharedCatalog.render();
   const filterM = S.aProdMerchantFilter || 'ALL';
   const list = filterM==='ALL' ? S.products : S.products.filter(p=>p.merchantId===filterM);
   const pageSize = S.aProdPageSize || 20;
@@ -4427,6 +4443,7 @@ function renderAdminProducts(){
       </select>
     </div>
     <button class="btn btn-primary" style="margin-bottom:10px" onclick="openAdminProductForm()"><i class="fa-solid fa-plus"></i> إضافة منتج جديد</button>
+    ${isSuperAdmin()?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="SharedCatalog.open()">إدارة كتالوج المنتجات المشترك</button>`:''}
     <button class="btn btn-ghost" style="margin-bottom:16px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
     ${list.length? `<div class="list-gap">${visible.map(p=>{
       const m = getMerchant(p.merchantId);
@@ -4908,21 +4925,33 @@ window.saveAppSettings = async ()=>{
   UI.toast('تم حفظ الإعدادات بنجاح ✅');
 };
 
+window.openAdminMenu=()=>{if(S.role==='admin')UI.openModal(adminMenu(isSuperAdmin()));};
+window.searchAdminMembers=value=>{
+ S.aUserSearch=value;S.aUserPageSize=20;renderMain();
+ const input=document.getElementById('adminMemberSearch');if(input){input.focus();input.setSelectionRange(value.length,value.length);}
+};
 function renderAdminUsers(){
+  const search=S.aUserSearch||'',q=search.trim().toLocaleLowerCase();
+  const head=memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
+  if(S.allUsersError)return head+`<section class="card" role="alert">${esc(S.allUsersError)}</section>`;
+  if(S.aUserView==='codes')return head+acquisitionHTML({users:S.allUsers,usersReady:S.allUsersReady===true,attributions:isSuperAdmin()?S.adminAttributions||[]:[],status:S.adminAttributionStatus||'loading',search},esc);
+  if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
+
   const seg = S.aUserFilter || 'ALL';
   const tabs = [['ALL','الكل'],['CUSTOMER','عملاء'],['MERCHANT','تجار'],['DELIVERY','مناديب'],['MARKETER','مسوّقون'],['ADMIN','إدارة']];
-  const list = seg==='ALL' ? S.allUsers : S.allUsers.filter(u=>(u.role||'').toUpperCase()===seg);
+  const list = S.allUsers.filter(u=>(seg==='ALL'||(u.role||'').toUpperCase()===seg)&&(!q||[u.firstName,u.lastName,[u.firstName,u.lastName].filter(Boolean).join(' '),u.email,u.phone,u.referralCode].some(v=>String(v||'').toLocaleLowerCase().includes(q))));
   const canManageAdmins = isSuperAdmin();
   const pageSize = S.aUserPageSize || 20;
   const visible = list.slice(0, pageSize);
-  return `
+  return head+`
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${seg===k?'active':''}" onclick="S.aUserFilter='${k}';S.aUserPageSize=20;renderMain()">${l}</button>`).join('')}</div>
     ${list.length? `<div class="list-gap">${visible.map(u=>{
       const roleLabel = u.role==='ADMIN' ? (u.adminRole==='STAFF'?'أدمن مساعد':'أدمن رئيسي') : u.role==='MERCHANT'?'تاجر':u.role==='DELIVERY'?'مندوب توصيل':u.role==='MARKETER'?'مسوّق':'عميل';
       return `<div class="card">
         <div class="row-between">
           <div><b style="font-size:13.5px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b>
-            <div style="font-size:12px;color:var(--ink-soft)">${esc(u.email||'')} ${u.phone?' · '+esc(u.phone):''}</div>
+            <div class="admin-member-contact">${esc(u.email||'')} ${u.phone?' · '+esc(u.phone):''}</div>
+            <div class="admin-code" dir="ltr">${esc(u.referralCode||'')}</div>
           </div>
           <span class="badge-chip">${roleLabel}</span>
         </div>
@@ -5007,6 +5036,7 @@ window.MarketerTools = createMarketerTools({state:()=>S, ui:UI, escape:esc,
     if(!MARKETING_CONFIG.backendEnabled) throw new Error('marketing-backend-disabled');
     return (await httpsCallable(fns,name)(data||{})).data;
   }});
+const SharedCatalog=installCatalog({S,db,collection,query,where,orderBy,documentId,limit,startAfter,getDocs,doc,runTransaction,writeBatch,UI,renderMain,canEdit:merchantCanEditProducts,isSuper:isSuperAdmin,now:nowMs});
 let _appliedMarketerLanding = false;
 function applyMarketerLanding(){
   if(_appliedMarketerLanding) return;

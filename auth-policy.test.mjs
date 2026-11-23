@@ -16,7 +16,7 @@ assert.match(e('auth/account-exists-with-different-credential'),/الطريقة 
 assert.match(e('auth/popup-blocked'),/منع/); assert.match(e('auth/unauthorized-domain'),/عنوان الموقع/);
 const html=readFileSync('index.html','utf8');
 const authCode=html.slice(html.indexOf('const Auth = {'),html.indexOf('window.Auth = Auth;')+'window.Auth = Auth;'.length);
-const elements=new Map(); const el=id=>{if(!elements.has(id)) elements.set(id,{disabled:false,textContent:'',classList:{add(){},remove(){},toggle(){}}});return elements.get(id)};
+const elements=new Map(); const el=id=>{if(!elements.has(id)) elements.set(id,{disabled:false,value:'',textContent:'',classList:{add(){},remove(){},toggle(){}}});return elements.get(id)};
 let sends=0,reloads=0,tokenRefreshes=0,boots=0,throwSend=false,popupError=null;
 const user={uid:'u',email:'u@example.test',emailVerified:false,getIdToken:async force=>{assert.equal(force,true);tokenRefreshes++}};
 const ctx={window:{},document:{getElementById:el},auth:{currentUser:user},Date,Math,console,
@@ -30,7 +30,7 @@ A.verificationSentAt=0;throwSend=true;await A.sendVerification();assert.match(A.
 await A.checkEmail();assert.equal(boots,0);assert.equal(reloads,1);
 user.emailVerified=true;await A.checkEmail();assert.equal(boots,1);assert.equal(tokenRefreshes,1);
 popupError='auth/popup-blocked';await A.googleLogin();assert.match(el('authError').textContent,/منع/);assert.equal(el('googleLoginBtn').disabled,false);
-assert.match(html,/if\(Auth.registering\) return;/);
+assert.match(html,/if\(Auth.registering \|\| Auth.googleBusy\) return;/);
 assert.match(html,/if\(Auth.googleBusy \|\| Auth.registering \|\| Auth.loginBusy\) return;/);
 assert.match(html,/if\(!existing.exists\(\)\) tx.set/);
 assert.doesNotMatch(html,/localStorage.*accessToken/);
@@ -38,7 +38,7 @@ assert.doesNotMatch(html,/localStorage.*accessToken/);
 const bootCode=html.slice(html.indexOf('async function bootAuthUser(user)'),html.indexOf('onAuthStateChanged(auth, async user=>'));
 let stored, writes=0;
 const snap=()=>({exists:()=>!!stored,data:()=>stored});
-const bootCtx={...ctx,authEpoch:0,clearSubs(){},resetSession(){},showSignedOut(){},S:{},needsEmailVerification:()=>false,
+const bootCtx={...ctx,URLSearchParams,authEpoch:0,clearSubs(){},resetSession(){},showSignedOut(){},S:{},needsEmailVerification:()=>false,
  db:{},doc:()=>({}),getDoc:async()=>snap(),runTransaction:async(db,fn)=>fn({get:async()=>snap(),set:(ref,p)=>{stored=p;writes++}}),
  googleProfile:g,userDefaults:()=>({}),nowMs:()=>123,updateDoc:async()=>{},loadCart(){},loadWishlist(){},
  location:{pathname:'/',search:''},routeFromLocation:()=>null,routeURL:()=>'/customer/home',defaultTabForRole:()=> 'home',history:{replaceState(){}},subscribeShared(){},subscribeAdmin(){},renderShell(){},Auth:A};
