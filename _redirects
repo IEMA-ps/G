@@ -7,3 +7,4 @@
 /login /index.html 200
 /register /index.html 200
 /store/* /store 200
+/s/* /store 200
