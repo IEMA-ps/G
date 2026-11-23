@@ -15,3 +15,8 @@ Authenticated clean-route entry seeds a dashboard fallback when opened directly.
 
 Source: https://developers.cloudflare.com/pages/configuration/redirects/
 Preview: https://pr41-store-back.3alababk.pages.dev/store/iema-stor-G02-A227-T09~u6Y99guP2Sk-MogQADvxuhA
+
+## Shorter share link and simpler QR window
+New links use /s/G02A227T09~token. Name and code separators are removed. The full reversible token stays intact, with no truncated identity or new lookup collection. All prior /store and query links still resolve. No rules/data change. The QR window now has only its title, store name, link, QR, and copy/download/print actions. Code reference tables remain in STORE-LINK-CODES.md only. Requires fresh approval after screenshots.
+
+Short-link Preview tested: https://pr41-store-short.3alababk.pages.dev/s/G02A227T09~u6Y99guP2Sk-MogQADvxuhA . New production-form URL is57 characters versus73 previously,16 fewer (22%). All41 runtime files will be byte-checked against this branch.
