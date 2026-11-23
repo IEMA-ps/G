@@ -26,11 +26,11 @@ firestore.shared-catalog.proposed.rules مبنية على آخر نسخة قوا
 - أضف الفهرس المقترح عند الحاجة لفلتر القسم. لا تنشر ملفات الفهارس أو القواعد تلقائيًا.
 
 ## الاختبار
-- `node --test shared-catalog.test.mjs`، ستة اختبارات ناجحة.
+- `node --test shared-catalog.test.mjs`، سبعة اختبارات ناجحة.
 - 22 تحقق صلاحيات ناجح في Firestore emulator: إدارة رئيسية/مساعد/تاجر/تاجر آخر/عميل/غير مسجل، أصل موقوف، تكرار، تغيير هوية/سعر غير صالح، وتعديل التاجر لعرضه.
 - تجربة متصفح محلية بنفس shared-catalog-ui.js وبـ mock للبيانات: إضافة التاجر ثم تغيير السعر، واستيراد CSV ومعاينته وتأكيده. لا اتصال بفايربيز في صفحة المعاينة.
 - فحص صور 390px للتاجر وإدخال السعر والإدارة والاستيراد، بلا تداخل أو تمدد أفقي. راجع screenshots المرفقة.
 
 تشغيل emulator (Node 22 وJava 17):
-`npm install --prefix tests/catalog firebase-tools@13.35.1 @firebase/rules-unit-testing@3.0.3 firebase@10.13.2`
-`tests/catalog/node_modules/.bin/firebase emulators:exec --config catalog-emulator.firebase.json --only firestore --project demo-shared-catalog 'node shared-catalog-emulator.fixture.mjs'`
+`npm install --no-save firebase-tools@13.35.1 @firebase/rules-unit-testing@3.0.3 firebase@10.13.2`
+`node_modules/.bin/firebase emulators:exec --config catalog-emulator.firebase.json --only firestore --project demo-shared-catalog 'node shared-catalog-emulator.fixture.mjs'`
