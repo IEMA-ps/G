@@ -3,10 +3,9 @@
 // ملاحظة أمنية: APP_SECRET ظاهر في سورس الصفحة زي باقي كود الواجهة، فهو بس بيقلل العبث العشوائي
 // في endpoint الإشعارات (تأثيره إشعار مزعج، مش بيانات). ربط الحساب نفسه محمي بتوكن Firebase ID الحقيقي.
 
-// TODO قبل النشر: يتحدد رابط الـ Worker الحقيقي بعد أول deploy (wrangler deploy).
-export const WORKER_URL = 'https://ala-babk-tg-notify.PUT-SUBDOMAIN.workers.dev';
-// TODO قبل النشر: نفس القيمة اللي هتتحط في الـ Worker كسر APP_SECRET.
-export const APP_SECRET = 'PUT-APP-SECRET-HERE';
+export const WORKER_URL = 'https://ala-babk-tg-notify.iemasam89.workers.dev';
+// نفس القيمة المتحطوطة في الـ Worker كسر APP_SECRET (قيمة واجهة مش سر حقيقي — شوف التعليق فوق).
+export const APP_SECRET = '64e91e0c81d615163ab84f1ea8058f59b50a685f312b1d79';
 
 export const ADMIN_KEY = 'role:ADMIN';
 export const merchantKey = merchantId => 'm:' + merchantId;
