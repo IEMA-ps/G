@@ -6,4 +6,4 @@
 /admin/* /index.html 200
 /login /index.html 200
 /register /index.html 200
-/store/* /store.html 200
+/store/* /store 200
