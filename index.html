@@ -483,6 +483,7 @@ img{max-width:100%; display:block;}
 
 <script src="/qrcode.js"></script>
 <script type="module">
+import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
 import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
 import { renderFoundingOffer } from '/founding-merchants.js?v=review-2';
@@ -886,6 +887,8 @@ const Auth = {
         }catch(e){ console.error('referral code lookup failed', e); }
       }
 
+      await window.Program?.recordSignup(referralInput||new URLSearchParams(location.search).get('marketer')||'');
+
       try{
         await sendEmailVerification(cred.user); Auth.verificationSentAt = Date.now();
         Auth.verificationNotice = 'بعتنا رابط التأكيد على بريدك. راجع Inbox وSpam.';
@@ -960,7 +963,8 @@ function showSignedOut(){
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab(authRoute(location));
   applyMarketerLanding();
-  let team=document.getElementById('teamLanding');if(!team){team=document.createElement('div');team.id='teamLanding';document.getElementById('authScreen').prepend(team);}team.innerHTML=Program.joinLanding();
+  const drawTeam=()=>{let team=document.getElementById('teamLanding');if(!team){team=document.createElement('div');team.id='teamLanding';document.getElementById('authScreen').prepend(team);}team.innerHTML=Program.joinLanding();};drawTeam();
+  if(new URLSearchParams(location.search).has('team'))getDoc(doc(db,'settings','app')).then(d=>{if(!auth.currentUser&&d.exists()){S.settings={...S.settings,...d.data()};drawTeam();}}).catch(()=>{});
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
 async function bootAuthUser(user) {
@@ -983,6 +987,7 @@ async function bootAuthUser(user) {
       const ref = doc(db,'users',user.uid); const existing = await tx.get(ref);
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
+    await window.Program?.recordSignup(new URLSearchParams(location.search).get('marketer')||'');
   }
   bootStage='profile-read-back';
   const finalSnap = psnap.exists() ? psnap : await getDoc(doc(db,'users',user.uid));
@@ -1037,7 +1042,7 @@ onAuthStateChanged(auth, async user=>{
   }
 });
 
-installProgram({state:()=>S,db,auth,api:{doc,collection,query,where,onSnapshot,getDoc,getDocs,setDoc,runTransaction,serverTimestamp},ui:UI,esc,superAdmin:isSuperAdmin,logAudit,render,totals:mkMyTotals});
+installProgram({state:()=>S,db,auth,api:{doc,collection,query,where,onSnapshot,getDoc,getDocs,setDoc,runTransaction,serverTimestamp},ui:UI,esc,superAdmin:isSuperAdmin,logAudit,render,totals:mkMyTotals,referralReport,referralReportHTML});
 
 function userDefaults(id, profile={}){
   const patch = {};
@@ -1097,7 +1102,7 @@ function subscribeShared(){
   S.unsubs.push(onSnapshot(doc(db,'settings','app'), d=>{
     const programWasEnabled=window.Program?.enabled();
     if(d.exists()) S.settings = {...S.settings, ...d.data()};
-    if(window.Program?.enabled()&&!programWasEnabled) window.Program.subscribe();
+    if(window.Program?.enabled()!==programWasEnabled) window.Program.subscribe();
     if(S._rawMerchants) recomputeMerchants();
     render();
   }));
@@ -1206,14 +1211,14 @@ function subscribeDeliveryAgent(){
 }
 
 function subscribeAdmin(){
-  S.unsubs.push(onSnapshot(collection(db,'merchants'), snap=>{ S.allMerchants = snap.docs.map(d=>d.data()); render(); }));
+  S.unsubs.push(onSnapshot(collection(db,'merchants'), snap=>{ S.allMerchantsReady=true;S.allMerchants = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'orders'), snap=>{ S.allOrders = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'subOrders'), snap=>{ S.allSubOrders = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
-  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
+  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsersReady=true;S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'settlements'), snap=>{ S.allSettlements = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'deliveryAgents'), snap=>{ S.allDeliveryAgents = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.price-b.price); render(); }));
-  S.unsubs.push(onSnapshot(collection(db,'subscriptions'), snap=>{ S.allSubs = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
+  S.unsubs.push(onSnapshot(collection(db,'subscriptions'), snap=>{ S.allSubsReady=true;S.allSubs = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'withdrawals'), snap=>{ S.allWithdrawals = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'marketerPayouts'), snap=>{ S.allMkPayouts = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'coupons'), snap=>{ S.allCoupons = snap.docs.map(d=>d.data()); render(); }));
@@ -1829,7 +1834,7 @@ function mkMyTotals(){
   const paid = roundMoney((S.mkPayouts||[]).reduce((a,x)=>a+(x.amount||0),0));
   const pendingW = roundMoney((S.mkWithdrawals||[]).filter(x=>x.status==='PENDING').reduce((a,x)=>a+(x.amount||0),0));
   const balance = roundMoney(c.earn+Program.creditTotal(S.user.uid)-paid);
-  return { ...c, paid, balance, pendingW, available: roundMoney(Math.max(0, balance-pendingW)) };
+  return { ...c, earn:roundMoney(c.earn+Program.creditTotal(S.user.uid)), paid, balance, pendingW, available: roundMoney(Math.max(0, balance-pendingW)) };
 }
 // حسابات التجار/المسوقين اللي الأدمن بينشئها بيوزر نيم (إيميل داخلي) معفية من تأكيد البريد
 const isSyntheticEmail = e => /@users\.alababak\.app$/i.test(e||'');
@@ -1856,6 +1861,7 @@ window.shareReferral = ()=>{
 window.copyText = async (t)=>{ try{ await navigator.clipboard.writeText(t); UI.toast('تم النسخ ✅'); }catch(e){ UI.toast(t); } };
 
 function renderMarketerDashboard(){
+  if(Program.enabled()&&!Program.creditsReady())return '<div class="card">انتظر تحميل سجل الحوافز قبل عرض الرصيد.</div>';
   const t = mkMyTotals(); const ms = S.mkMerchants||[];
   const code = S.profile.referralCode || '';
   return `
@@ -1893,6 +1899,7 @@ function renderMarketerMerchants(){
       </div>`; }).join('')}</div>` : emptyState('fa-shop','لسه ما سجّلتش محلات','اضغط «تسجيل محل جديد» أو اطلب من التاجر يكتب كودك عند التسجيل')}`;
 }
 function renderMarketerEarnings(){
+  if(Program.enabled()&&!Program.creditsReady())return '<div class="card">انتظر تحميل سجل الحوافز قبل عرض الرصيد.</div>';
   const t = mkMyTotals(); const pays = S.mkPayouts||[];
   return `
     <div class="card" style="margin-bottom:14px">
@@ -2014,6 +2021,7 @@ function renderMyWithdrawals(){
       <div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px">${new Date(x.createdAt).toLocaleDateString('ar-EG')} · ${esc(x.method||'')} ${esc(x.account||'')}${x.status==='REJECTED'&&x.reason?`<br><span style="color:var(--danger)">السبب: ${esc(x.reason)}</span>`:''}</div></div>`; }).join('')}</div>`;
 }
 window.openWithdrawRequest = ()=>{
+  if(!Program.creditsReady()){UI.toast('انتظر تحميل سجل الحوافز');return;}
   const t = mkMyTotals(); const min = S.settings.marketerMinWithdraw!=null?S.settings.marketerMinWithdraw:100;
   const last = (S.mkWithdrawals||[])[0];
   if(t.available < min){ UI.toast(`الحد الأدنى للسحب ${fmtMoney(min)} — رصيدك المتاح ${fmtMoney(t.available)}`); return; }
@@ -2026,6 +2034,7 @@ window.openWithdrawRequest = ()=>{
     <button class="btn btn-primary" id="wdBtn" onclick="submitWithdrawRequest()">إرسال الطلب</button>`);
 };
 window.submitWithdrawRequest = async ()=>{
+  if(!Program.creditsReady()){UI.toast('انتظر تحميل سجل الحوافز');return;}
   const t = mkMyTotals(); const min = S.settings.marketerMinWithdraw!=null?S.settings.marketerMinWithdraw:100;
   const amount = roundMoney(parseFloat(document.getElementById('wdAmt').value)||0);
   const account = document.getElementById('wdAcc').value.trim();
@@ -2046,6 +2055,7 @@ function mkBalanceOf(u){
   return { earn:c.earn+Program.creditTotal(u._id), paid, balance: roundMoney(c.earn+Program.creditTotal(u._id)-paid) };
 }
 window.payWithdrawal = async (id)=>{
+  if(!Program.creditsReady()){UI.toast('انتظر تحميل سجل الحوافز');return;}
   if(!isSuperAdmin()){ UI.toast('للأدمن الرئيسي فقط'); return; }
   const w = (S.allWithdrawals||[]).find(x=>x._id===id); if(!w || w.status!=='PENDING') return;
   const u = S.allUsers.find(x=>x._id===w.marketerId);
@@ -2086,21 +2096,24 @@ function renderAdminWithdrawals(){
 }
 
 function renderAdminMarketers(){
+  if(Program.enabled()&&(!isSuperAdmin()||!Program.creditsReady()))return '<div class="card">أرصدة الحوافز ومراجعتها للأدمن الرئيسي بعد اكتمال تحميل السجل.</div>';
+  const report=Program.enabled()&&isSuperAdmin()?Program.referrals():'';
   const mks = S.allUsers.filter(u=>u.role==='MARKETER');
-  if(!mks.length) return (isSuperAdmin()?Program.admin():'')+emptyState('fa-bullhorn','لا يوجد مسوّقون بعد','من «الأعضاء» اختر عضوًا واضغط «تعيين كمسوّق»');
+  if(!mks.length) return report+(isSuperAdmin()?Program.admin():'')+emptyState('fa-bullhorn','لا يوجد مسوّقون بعد','من «الأعضاء» اختر عضوًا واضغط «تعيين كمسوّق»');
   const pays = S.allMkPayouts||[];
-  return `${isSuperAdmin()?Program.admin():''}${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
+  return `${report}${isSuperAdmin()?Program.admin():''}${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
   <div class="list-gap">${mks.map(u=>{
     const ms = S.allMerchants.filter(m=>m.marketerId===u._id);
     const c = mkCalc(mkRate(u), ms, S.allSubOrders||[], S.allSubs||[], u._id);
     const myPays = pays.filter(x=>x.marketerId===u._id);
     const paid = roundMoney(myPays.reduce((a,x)=>a+(x.amount||0),0));
-    const bal = roundMoney(c.earn-paid);
+    const programEarn=roundMoney(c.earn+Program.creditTotal(u._id));
+    const bal = roundMoney(programEarn-paid);
     return `<div class="card">
       <div class="row-between"><b style="font-size:14px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b><span class="badge-chip">${esc(mkTier(ms.filter(m=>m.status==='ACTIVE').length).cur.name)}</span></div>
       <div style="font-size:12px;color:var(--ink-soft);margin:4px 0 8px">${esc(u.phone||'')} · كود: <b>${esc(u.referralCode||'')}</b> · محلات: ${ms.length} (${ms.filter(m=>m.status==='ACTIVE').length} نشط)</div>
       <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>مبيعات محلاته المسلّمة</span><span>${fmtMoney(c.gross)}</span></div>
-      <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>إجمالي نسبته</span><span>${fmtMoney(c.earn)}</span></div>
+      <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>إجمالي نسبته</span><span>${fmtMoney(programEarn)}</span></div>
       <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>المصروف</span><span>-${fmtMoney(paid)}</span></div>
       <div class="summary-row" style="font-size:13.5px;display:flex;justify-content:space-between;font-weight:800;border-top:1px dashed var(--line);padding-top:6px"><span>الرصيد المستحق</span><span style="color:var(--success)">${fmtMoney(bal)}</span></div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
@@ -2111,6 +2124,7 @@ function renderAdminMarketers(){
     </div>`; }).join('')}</div>`;
 }
 window.openMarketerPayout = (mkId, balance)=>{
+  if(Program.enabled()&&(!isSuperAdmin()||!Program.creditsReady())){UI.toast('انتظر اكتمال السجل لدى الأدمن الرئيسي');return;}
   UI.openModal(`
     <div class="modal-head"><h3>تسجيل صرف للمسوّق</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="field"><label>المبلغ المصروف (جنيه)</label><input id="mkPayAmt" type="number" step="0.01" min="0" value="${balance>0?balance:''}"></div>
@@ -2118,6 +2132,7 @@ window.openMarketerPayout = (mkId, balance)=>{
     <button class="btn btn-primary" onclick="saveMarketerPayout('${mkId}')">تأكيد</button>`);
 };
 window.saveMarketerPayout = async (mkId)=>{
+  if(!Program.creditsReady()){UI.toast('انتظر تحميل سجل الحوافز');return;}
   if(!isSuperAdmin()){ UI.toast('تسجيل الصرف للأدمن الرئيسي فقط'); return; }
   const amount = roundMoney(parseFloat(document.getElementById('mkPayAmt').value)||0);
   if(amount<=0){ UI.toast('أدخل مبلغًا صحيحًا'); return; }
