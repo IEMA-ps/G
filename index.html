@@ -493,7 +493,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
-import { assignmentType, assignMemberRole } from './member-roles.js';
+import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from './member-roles.js?v=create-record-1';
 import { requestMessage, requestForm } from './support-requests.js';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from './auth-policy.js?v=account-diagnostics-1';
 
@@ -4852,29 +4852,33 @@ window.openAssignMemberRole = (userId,role)=>{
   if(!isSuperAdmin()) return;
   const type=assignmentType(role), user=(S.allUsers||[]).find(u=>u._id===userId);
   if(!type || !user || user.role!=='CUSTOMER' || user.merchantId || user.deliveryAgentId){ UI.toast('العضو لم يعد عميلًا متاحًا للتعيين'); return; }
-  const records=(role==='MERCHANT'?S.allMerchants:S.allDeliveryAgents)||[];
-  const available=records.filter(r=>r.id && !r.ownerId);
-  const name=esc(((user.firstName||'')+' '+(user.lastName||'')).trim()||user.email||'العضو');
-  UI.openModal(`
-    <div class="modal-head"><h3>تعيين ${type.label}</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <p style="line-height:1.8;margin-bottom:12px">ربط <b>${name}</b> بسجل ${type.recordLabel} موجود وغير مربوط بحساب. لن تتغير حالة التفعيل أو الاشتراك.</p>
-    ${available.length?`<div class="field"><label>${type.recordLabel}</label><select id="memberRoleRecord">${available.map(r=>`<option value="${esc(r.id)}">${esc(r.businessName||r.name||r.id)}${r.phone?' · '+esc(r.phone):''}</option>`).join('')}</select></div>
-    <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-bottom:12px">بعد التأكيد سيدخل العضو كـ${type.label} بنفس حسابه. لن يُنشأ حساب جديد.</p>
-    <button id="memberRoleSave" class="btn btn-primary" onclick="saveMemberRole('${userId}','${role}')">تأكيد تعيين ${type.label}</button>`:`<div class="hint-box">لا يوجد سجل ${type.recordLabel} متاح. أضفه أولًا من شاشة ${role==='MERCHANT'?'التجار':'المناديب'}، ثم ارجع للتعيين.</div>`}`);
+  window._memberRecordDraft={userId,role,recordId:(role==='MERCHANT'?'merch_':'agent_')+uid()};
+  UI.openModal(memberRecordForm(user,role,esc));
+};
+window.fillMemberRecordFromRequest = role=>{
+  const draft=window._memberRecordDraft;if(!draft || draft.role!==role) return;
+  const text=document.getElementById('memberRequestPaste')?.value||'',result=parseMemberRequest(text,role);
+  const ids={name:'memberRecordName',manager:'memberRecordManager',phone:'memberRecordPhone',whatsapp:'memberRecordWhatsapp',activity:'memberRecordActivity',vehicle:'memberRecordVehicle',address:'memberRecordAddress'};
+  for(const [key,value] of Object.entries(result.fields)){const el=document.getElementById(ids[key]);if(el)el.value=value;}
+  const notice=document.getElementById('memberPasteNotice');
+  notice.textContent=result.accountId && result.accountId!==draft.userId?'تنبيه: معرّف الحساب في الرسالة مختلف عن العضو المختار. راجع العضو والرسالة قبل الإنشاء.':Object.keys(result.fields).length?'تمت تعبئة الحقول المعروفة. راجع الاسم والهاتف وباقي البيانات قبل الإنشاء.':'لم أجد حقولًا معروفة. يمكنك إكمال البيانات يدويًا.';
+  notice.style.color=result.accountId && result.accountId!==draft.userId?'var(--danger)':'var(--ink-soft)';
 };
 window.saveMemberRole = async (userId,role)=>{
   if(!isSuperAdmin()) return;
-  const recordId=document.getElementById('memberRoleRecord')?.value, btn=document.getElementById('memberRoleSave');
-  if(!recordId || !btn || btn.disabled) return;
-  if(!confirm('تأكيد تغيير صلاحية العضو وربطه بالسجل المختار؟')) return;
-  btn.disabled=true;
+  const draft=window._memberRecordDraft,btn=document.getElementById('memberRoleSave'),error=document.getElementById('memberRecordError');
+  if(!draft || draft.userId!==userId || draft.role!==role || !btn || btn.disabled) return;
+  const value=id=>document.getElementById(id)?.value||'';
+  const input={name:value('memberRecordName'),manager:value('memberRecordManager'),phone:value('memberRecordPhone'),whatsapp:value('memberRecordWhatsapp'),activity:value('memberRecordActivity'),vehicle:value('memberRecordVehicle'),address:value('memberRecordAddress'),description:value('memberRecordDescription')};
+  error.textContent=''; btn.disabled=true;
   try{
-    await assignMemberRole({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId,recordId,role});
-    UI.closeModal(); UI.toast('تم التعيين وربط الحساب بنجاح');
-    try{await logAudit('تعيين عضو '+assignmentType(role).label,userId+' / '+recordId);}catch(e){UI.toast('تم التعيين، لكن تعذّر تسجيله في سجل التدقيق');}
+    await createMemberRecord({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId,recordId:draft.recordId,role,input,now:nowMs()});
+    window._memberRecordDraft=null;UI.closeModal();UI.toast('تم إنشاء السجل قيد المراجعة وربطه بالعضو');
+    try{await logAudit('إنشاء وتعيين '+assignmentType(role).label,userId+' / '+draft.recordId);}catch(e){UI.toast('تم الإنشاء، لكن تعذّر تسجيله في سجل التدقيق');}
   }catch(e){
     btn.disabled=false;
-    UI.toast(['customer-required','record-unavailable'].includes(e?.message)?'تغيرت بيانات العضو أو السجل. أغلق النافذة واختر سجلًا متاحًا.':e?.message==='super-required'?'التعيين متاح للأدمن الرئيسي فقط':'تعذّر التعيين. لم يتم حفظ ربط جزئي. حاول مرة أخرى.');
+    const messages={'invalid-contact':'أدخل الاسم ورقم هاتف وواتساب صحيحين.','missing-store-details':'أدخل نوع النشاط وعنوان المتجر.','missing-courier-details':'أدخل وسيلة التوصيل ومنطقة العمل.','customer-required':'العضو لم يعد عميلًا غير مربوط. أغلق النافذة وراجع حسابه.','record-already-exists':'السجل موجود بالفعل. أغلق النافذة وحدّث قائمة الأعضاء قبل المحاولة.','super-required':'الإنشاء والتعيين متاحان للأدمن الرئيسي فقط.'};
+    error.textContent=messages[e?.message]||'تعذّر تأكيد الإنشاء. حدّث قائمة الأعضاء قبل المحاولة مجددًا. لا يتم حفظ ربط جزئي.';
   }
 };
 window.promoteToAdmin = async (uid_)=>{
