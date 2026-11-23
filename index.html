@@ -391,6 +391,7 @@ img{max-width:100%; display:block;}
 }
 
 .plan-pair{display:grid;grid-template-columns:1fr;gap:14px}.plan-card{padding:20px}.plan-card.ordering-plan{border-color:var(--teal);background:linear-gradient(155deg,var(--teal-tint),var(--surface) 60%)}.plan-intro{font-size:12.5px;color:var(--ink-soft);line-height:1.9;min-height:72px}.plan-fee{font-size:11.5px;line-height:1.8;background:var(--paper);padding:10px;border-radius:10px;margin:10px 0}.plan-option{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-top:1px solid var(--line);font-size:12px}.plan-option b{color:var(--teal);font-size:14px;white-space:nowrap}@media(max-width:600px){.plan-pair{grid-template-columns:1fr}.plan-intro{min-height:0}}
+.merchant-welcome{text-align:right;padding:18px}.merchant-welcome h3{font-size:19px;margin:12px 0 8px;overflow-wrap:anywhere}.welcome-note{font-size:12px;color:var(--ink-soft);line-height:1.85}.welcome-plans{display:grid;gap:10px}.welcome-plan{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface);min-width:0}.welcome-plan> b{font-size:15px;color:var(--teal)}.welcome-plan p{font-size:12px;line-height:1.8;margin:6px 0}.welcome-prices{display:flex;flex-wrap:wrap;gap:6px}.welcome-prices span{display:flex;gap:7px;align-items:center;background:var(--paper);border-radius:8px;padding:7px;font-size:11.5px}.welcome-prices b{color:var(--teal);white-space:nowrap}.welcome-plan .welcome-fee{color:var(--ink-soft);font-size:11px;margin-bottom:0}.sub-payment-guide{font-size:12px;line-height:1.85}.sub-payment-guide ol{padding-inline-start:22px;margin:8px 0 12px}.sub-payment-guide li{padding-inline-start:2px;margin-bottom:6px}.sub-payment-destination{font-size:13px;line-height:1.85;white-space:pre-line;overflow-wrap:anywhere;background:var(--teal-tint);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px;margin:7px 0;font-weight:700;unicode-bidi:plaintext}
 </style>
 <link rel="stylesheet" href="/brand.css?v=modals1">
 <script src="/brand.js" defer></script>
@@ -1350,11 +1351,32 @@ window.runDbFixAll = async ()=>{
 const addMonths = MerchantPlans.addCalendarMonths;
 const fmtDay = ms => new Date(ms).toLocaleDateString('ar-EG');
 const subOk = m => !!m && (m.subEndsAt||0) > Date.now();
+// Used only when the admin has not supplied payment instructions. No database write.
+const DEFAULT_SUB_PAYMENT_INSTRUCTIONS = 'فودافون كاش على رقم 01067666047';
+function subscriptionPaymentInstructions(){
+  return String(S.settings.subPaymentInstructions||'').trim() || DEFAULT_SUB_PAYMENT_INSTRUCTIONS;
+}
+function availableMerchantPlans(){
+  return (S.plans||[]).filter(p=>p.active!==false && (!S.settings.merchantPlansV2 || MerchantPlans.isNewPlan(p)));
+}
+function merchantWelcomePlans(){
+  const plans=availableMerchantPlans();
+  if(!plans.length) return '<p class="welcome-note">الباقات مش متاحة حاليًا. راجع صفحة الاشتراك أو تواصل مع الإدارة.</p>';
+  const newPlans=plans.filter(MerchantPlans.isNewPlan);
+  if(!newPlans.length) return `<div class="welcome-plans">${plans.map(p=>`<div class="welcome-plan"><b>${esc(p.name)}</b><div>${esc(p.months)} شهر · ${fmtMoney(p.price)}</div>${p.description?`<p>${esc(p.description)}</p>`:''}</div>`).join('')}</div>`;
+  return `<div class="welcome-plans">${['PROFILE','ORDERING'].map(kind=>{
+    const options=newPlans.filter(p=>p.kind===kind).sort((a,b)=>a.months-b.months);
+    if(!options.length) return '';
+    return `<div class="welcome-plan"><b>${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</b><p>${kind==='PROFILE'?'صفحة لمتجرك، عنوان ولوكيشن وأرقام تواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها للمندوب.'}</p><div class="welcome-prices">${options.map(p=>`<span>${p.months===12?'سنة':esc(p.months)+' شهور'} <b>${fmtMoney(p.price)}</b></span>`).join('')}</div>${kind==='ORDERING'?'<p class="welcome-fee">+ 2% على التاجر من قيمة المنتجات بعد خصم التاجر، في الطلبات المسلّمة فقط، من غير رسوم التوصيل. دفع الطلبات كاش فقط حاليًا.</p>':'<p class="welcome-fee">اشتراك ثابت، والتواصل مع المتجر مباشرة.</p>'}</div>`;
+  }).join('')}</div>`;
+}
 function merchantPaywall(){
   const m = S.myMerchant;
   if(!m || (!(S.settings.subsEnforced || MerchantPlans.isNewMerchant(m))) || subOk(m)) return '';
-  return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>اشتراكك منتهي أو غير مفعّل</h4><p>متجرك مخفي عن العملاء لحد ما تشترك في إحدى الباقات.</p>
-    <button class="btn btn-primary" style="margin-top:12px" onclick="go('m_subscription')">اختيار باقة</button></div>`;
+  return `<section class="card merchant-welcome"><span class="badge-chip"><i class="fa-solid fa-store"></i> أهلاً بيك على بابك</span><h3>منوّرنا يا ${esc(m.businessName||'صاحب المتجر')}</h3><p class="welcome-note">اختار الباقة المناسبة لشغلك. اشتراكك ${m.subEndsAt?'منتهي':'لسه مش مفعّل'}، ومتجرك مش ظاهر للعملاء حاليًا.</p>
+    ${m.status!=='ACTIVE'?'<div class="hint-box" style="margin-bottom:12px">طلب انضمام متجرك لسه محتاج موافقة الإدارة. استنى الموافقة قبل تحويل قيمة الاشتراك. الظهور للعملاء محتاج موافقة المتجر واشتراك ساري.</div>':''}
+    ${merchantWelcomePlans()}
+    <button class="btn btn-primary" style="margin-top:14px" onclick="go('m_subscription')">اختيار باقة</button><p class="welcome-note" style="margin-bottom:0">هتلاقي طريقة الدفع والخطوات قبل إرسال طلب الاشتراك. التفعيل بعد مراجعة الإدارة وتأكيد الدفع.</p></section>`;
 }
 /* ===== 3 خطوات للتاجر الجديد ===== */
 function onboardingCard(){
@@ -1384,7 +1406,7 @@ function subBanner(){
 }
 function renderMerchantSubscription(){
   const m = S.myMerchant; if(!m) return emptyState('fa-hourglass-half','جاري التحميل','');
-  const plans = (S.plans||[]).filter(p=>p.active!==false && (!S.settings.merchantPlansV2 || MerchantPlans.isNewPlan(p)));
+  const plans = availableMerchantPlans();
   const mine = S.mySubs||[];
   const pending = mine.find(x=>x.status==='PENDING');
   const active = subOk(m);
@@ -1397,7 +1419,7 @@ function renderMerchantSubscription(){
     </div>
     ${S.settings.merchantPlansV2?`<div class="hint-box" style="margin-bottom:14px">باقة تعريفية: لوكيشن وأرقام تواصل فقط. باقة الطلبات: منتجات وطلبات وتجهيز للاستلام من المندوب، وعمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، بدون رسوم التوصيل. الدفع كاش فقط. تغيير نوع باقة سارية يتم بعد انتهاء مدتها.</div>`:''}
     ${pending?`<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-clock"></i> طلب «${esc(pending.planName)}» قيد المراجعة${pending.reference?` (مرجع: ${esc(pending.reference)})`:''}.</div>`:''}
-    ${S.settings.subPaymentInstructions?`<div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة الدفع</b><div style="font-size:12.5px;color:var(--ink-soft);margin-top:6px;white-space:pre-line;line-height:1.8">${esc(S.settings.subPaymentInstructions)}</div></div>`:''}
+    <div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة دفع الاشتراك</b><div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></div>
     <div class="section-head"><h3>الباقات المتاحة</h3></div>
     ${plans.some(MerchantPlans.isNewPlan)?renderNewPlanCatalog(plans,pending):plans.length? `<div class="list-gap">${plans.map(p=>`<div class="card">
       <div class="row-between"><b style="font-size:15px">${esc(p.name)}</b><b style="color:var(--teal);font-size:16px">${fmtMoney(p.price)}</b></div>
@@ -1414,9 +1436,13 @@ window.openSubscribe = (planId)=>{
   UI.openModal(`
     <div class="modal-head"><h3>${upg?'طلب ترقية إلى':'الاشتراك في'} «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: 6 شهور بـ ${fmtMoney(offer.price)}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
-    ${upg?`<div class="hint-box" style="margin-bottom:12px">طلب ترقية من الباقة التعريفية لباقة الطلبات. تبدأ باقة الطلبات من تاريخ اعتماد الإدارة بعد استلام المبلغ كاش، وباقي مدة التعريفية الحالية لا يُخصم من السعر. الطلب يظهر للإدارة للمراجعة.</div>`:''}
-    ${S.settings.subPaymentInstructions?`<p style="font-size:12.5px;color:var(--ink-soft);white-space:pre-line;line-height:1.8">${esc(S.settings.subPaymentInstructions)}</p>`:''}
-    <div class="field"><label>رقم عملية التحويل / ملاحظة الدفع</label><input id="subRef" placeholder="مثال: آخر 4 أرقام من رقم العملية"></div>
+    ${upg?`<div class="hint-box" style="margin-bottom:12px">طلب ترقية من الباقة التعريفية لباقة الطلبات. تبدأ باقة الطلبات من تاريخ اعتماد الإدارة بعد تأكيد استلام المبلغ، وباقي مدة التعريفية الحالية لا يُخصم من السعر. الطلب يظهر للإدارة للمراجعة.</div>`:''}
+    <div class="sub-payment-guide"><b>إزاي تدفع وتفعّل الاشتراك؟</b>
+      <ol><li>راجع الباقة والمبلغ والمدة اللي فوق.</li><li>حوّل المبلغ الموضّح بالطريقة دي:<div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></li><li>اكتب رقم عملية التحويل في الخانة تحت، واضغط «إرسال طلب الاشتراك».</li><li>استنى مراجعة الإدارة وتأكيد استلام المبلغ. إرسال الطلب مش تفعيل تلقائي.</li></ol>
+      ${S.myMerchant?.status!=='ACTIVE'?'<div class="hint-box">متجرك لسه محتاج موافقة الإدارة على الانضمام. استنى الموافقة قبل التحويل.</div>':''}
+      <p class="welcome-note">احتفظ بإيصال التحويل. متشاركش الرقم السري أو كود تأكيد المحفظة.</p>
+    </div>
+    <div class="field"><label for="subRef">رقم عملية التحويل / ملاحظة الدفع</label><input id="subRef" autocomplete="off" placeholder="رقم العملية الموجود في إيصال التحويل"></div>
     <button class="btn btn-primary" onclick="submitSubscription('${planId}')">إرسال طلب الاشتراك</button>`);
 };
 window.submitSubscription = async (planId)=>{
@@ -1603,7 +1629,7 @@ function renderAdminSubscriptions(){
         <div style="display:flex;gap:8px"><input id="ssT2" type="number" min="1" value="${mkTiers()[1].min}" placeholder="فضي"><input id="ssT3" type="number" min="2" value="${mkTiers()[2].min}" placeholder="ذهبي"></div></div>
       <div class="field"><label>نقاط النسبة الإضافية (%) — برونزي / فضي / ذهبي</label>
         <div style="display:flex;gap:8px"><input id="ssB1" type="number" step="0.1" min="0" value="${mkTiers()[0].bonus}"><input id="ssB2" type="number" step="0.1" min="0" value="${mkTiers()[1].bonus}"><input id="ssB3" type="number" step="0.1" min="0" value="${mkTiers()[2].bonus}"></div></div>
-      <div class="field"><label>تعليمات الدفع (تظهر للتاجر: رقم فودافون كاش / انستاباي ...)</label><textarea id="ssPay">${esc(st.subPaymentInstructions||'')}</textarea></div>
+      <div class="field"><label>تعليمات الدفع (تظهر للتاجر: رقم فودافون كاش / انستاباي ...)</label><textarea id="ssPay">${esc(subscriptionPaymentInstructions())}</textarea></div>
       <button class="btn btn-primary" onclick="saveSubSettings()">حفظ</button></div>`:''}
     <div class="section-head"><h3>المشتركون الحاليون (${activeMerchants.length})</h3></div>
     ${activeMerchants.length?`<div class="list-gap">${activeMerchants.map(m=>`<div class="card row-between"><div><b style="font-size:13px">${esc(m.businessName)}</b><div style="font-size:11.5px;color:var(--ink-soft)">${esc(m.subPlanName||'')} · حتى ${fmtDay(m.subEndsAt)}</div></div></div>`).join('')}</div>`:emptyState('fa-store','لا يوجد مشتركون حاليًا','')}`;
