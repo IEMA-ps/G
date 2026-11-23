@@ -13,10 +13,10 @@
 <meta property="og:url" content="https://3alababk.com/">
 <meta property="og:image" content="https://3alababk.com/icon-512.png">
 <meta name="twitter:card" content="summary">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
-<link rel="icon" type="image/svg+xml" href="icon.svg">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#FFF8EE">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -416,8 +416,8 @@ img{max-width:100%; display:block;}
     </div>
     <div class="auth-card">
       <div class="auth-tabs">
-        <button class="auth-tab active" id="tabLogin" onclick="Auth.switchTab('login')">تسجيل الدخول</button>
-        <button class="auth-tab" id="tabRegister" onclick="Auth.switchTab('register')">حساب جديد</button>
+        <button class="auth-tab active" id="tabLogin" onclick="Auth.switchTab('login');history.replaceState(null,'','/login'+location.search)">تسجيل الدخول</button>
+        <button class="auth-tab" id="tabRegister" onclick="Auth.switchTab('register');history.replaceState(null,'','/register'+location.search)">حساب جديد</button>
       </div>
       <div id="authError" class="auth-error hidden"></div>
       <div id="accountRecovery" class="hidden" style="margin-bottom:14px"><p style="font-size:13px;line-height:1.8">حساب Google دخل بالفعل. تقدر تعيد تحميل بياناته بدون إنشاء حساب جديد.</p><button class="btn btn-primary" id="accountRetryBtn" type="button" onclick="Auth.retryAccount()">إعادة تحميل الحساب</button><button class="btn btn-ghost" style="margin-top:8px" type="button" onclick="Auth.confirmLogout()">خروج من الحساب الحالي</button></div>
@@ -481,11 +481,13 @@ img{max-width:100%; display:block;}
   <div id="toast"></div>
 </div>
 
-<script src="./qrcode.js"></script>
+<script src="/qrcode.js"></script>
 <script type="module">
-import { createMarketerTools, renderMarketerGrowth } from "./marketer-tools.js?v=growth-review-1";
-import { renderFoundingOffer } from './founding-merchants.js?v=review-2';
-import { MARKETING_CONFIG } from "./marketing-config.js";
+import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
+import { renderFoundingOffer } from '/founding-merchants.js?v=review-2';
+import { routeFromLocation, routeURL, authRoute, normalizeLegacy } from '/app-routes.js?v=clean-1';
+const legacyURL=normalizeLegacy(location);if(legacyURL)history.replaceState(null,'',legacyURL);
+import { MARKETING_CONFIG } from "/marketing-config.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
@@ -500,16 +502,16 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
-import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from './member-roles.js?v=egypt-locations-1';
-import { locationPicker, installLocations } from './egypt-locations.js?v=eg-2';
+import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=egypt-locations-1';
+import { locationPicker, installLocations } from '/egypt-locations.js?v=eg-2';
 installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
-import { nearbyStores } from './nearby-stores.js?v=nearby-1';
-import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from './password-policy.js?v=policy-1';
-import { requestMessage, requestForm } from './support-requests.js?v=egypt-locations-1';
-import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from './auth-policy.js?v=account-diagnostics-1';
+import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
+import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
+import { requestMessage, requestForm } from '/support-requests.js?v=egypt-locations-1';
+import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
-import * as MerchantPlans from './merchant-plans.js?v=ca9d7bc';
+import * as MerchantPlans from '/merchant-plans.js?v=ca9d7bc';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE",
@@ -952,7 +954,7 @@ function showSignedOut(){
   document.getElementById('accountRecovery').classList.add('hidden');
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
-  Auth.switchTab('login');
+  Auth.switchTab(authRoute(location));
   applyMarketerLanding();
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
@@ -996,8 +998,8 @@ async function bootAuthUser(user) {
   document.getElementById('authScreen').classList.add('hidden');
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appShell').classList.remove('hidden');
-  S.tab = tabFromHash() || defaultTabForRole();
-  try{ history.replaceState({tab:S.tab}, '', '#'+S.tab); }catch(e){}
+  S.tab = routeFromLocation(location,S.role) || defaultTabForRole();
+  try{ history.replaceState({tab:S.tab}, '', routeURL(S.tab,S.role,location.search)); }catch(e){}
   subscribeShared();
   if(S.role==='customer') subscribeCustomer();
   if(S.role==='merchant') subscribeMerchant();
@@ -1557,7 +1559,7 @@ function merchantCanEditProducts(){
   if(!MerchantPlans.canOrder(S.myMerchant,S.settings.subsEnforced)){UI.toast('إضافة المنتجات متاحة لمتجر نشط بباقة طلبات سارية');return false;}
   return true;
 }
-function publicStoreUrl(id){const u=new URL('store.html',location.href);u.searchParams.set('id',id);return u.href;}
+function publicStoreUrl(id){const u=new URL('/store.html',location.origin);u.searchParams.set('id',id);return u.href;}
 function publicMerchantData(m){
   const out={};
   for(const k of ['id','businessName','description','address','phone','whatsappNumber','latitude','longitude','logoUrl','activityType','openTime','closeTime','status','subEndsAt','subPlanType']) if(m[k]!==undefined) out[k]=m[k];
@@ -2217,22 +2219,22 @@ window.go = (tab, opts)=>{
   // نضيف خطوة في تاريخ المتصفح عشان زرار الرجوع في الموبايل يرجع لآخر شاشة بدل ما يقفل التطبيق أو ميعملش حاجة
   // (opts.skipHistory بتتستخدم لما التنقل جاي أصلاً من ضغطة "رجوع" نفسها، عشان مانضيفش خطوة مكررة)
   if(!opts || !opts.skipHistory){
-    try{ history.pushState({tab}, '', '#'+tab); }catch(e){}
+    try{ history.pushState({tab}, '', routeURL(tab,S.role,location.search)||location.pathname+location.search); }catch(e){}
   }
   renderShell();
 };
 // دعم زرار الرجوع في الموبايل (وزرار رجوع المتصفح):
 // لو فيه مودال مفتوح، يقفله بس من غير ما يغيّر الشاشة. لو مفيش، يرجع لآخر تبويب كان مفتوح.
 window.addEventListener('popstate', (e)=>{
-  if(!S.profile) return; // لسه مسجّلناش دخول، سيب السلوك الافتراضي
+  if(!S.profile){Auth.switchTab(authRoute(location));return;}
   const modalWasOpen = !document.getElementById('modalRoot').classList.contains('hidden');
   if(modalWasOpen){
     document.getElementById('modalRoot').classList.add('hidden');
     document.getElementById('modalSheet').innerHTML='';
     return;
   }
-  if(!e.state && location.hash && !tabFromHash()){ try{ history.replaceState({tab:S.tab},'','#'+S.tab); }catch(_){} return; }   // hash غير صالح: خليك مكانك
-  const tab = (e.state && e.state.tab) || tabFromHash() || defaultTabForRole();
+  if(!e.state && location.hash && !routeFromLocation(location,S.role)){ try{ history.replaceState({tab:S.tab},'',routeURL(S.tab,S.role,location.search)||location.pathname+location.search); }catch(_){} return; }   // hash غير صالح: خليك مكانك
+  const tab = (e.state && e.state.tab) || routeFromLocation(location,S.role) || defaultTabForRole();
   if(tab==='home') S.searchQuery='';
   S.tab = tab;
   renderShell();
@@ -2240,21 +2242,11 @@ window.addEventListener('popstate', (e)=>{
 // لو المستخدم غيّر الـ hash بإيده (أو فتح لينك فيه hash) من غير ما يعدّي على go()
 window.addEventListener('hashchange', ()=>{
   if(!S.profile) return;
-  const t = tabFromHash();
+  const t = routeFromLocation(location,S.role);
+  if(t)history.replaceState({tab:t},'',routeURL(t,S.role,location.search));
   if(t && t!==S.tab){ if(t==='home') S.searchQuery=''; S.tab = t; window.scrollTo(0,0); renderShell(); }
 });
 // الشاشات اللي ينفع تتفتح من الـ hash لكل دور (الشاشات اللي محتاجة بيانات مختارة زي orderDetail/merchantPage مستثناة)
-const HASH_TABS = {
-  customer: ['home','browse','cart','checkout','orders','profile','addresses','notifications','wishlist','recurringOrders','groupBuys'],
-  merchant: ['m_dashboard','m_products','m_orders','m_profile','m_reports','m_subscription','m_statement','notifications'],
-  delivery: ['d_dashboard','d_history','d_profile','notifications'],
-  marketer: ['mk_dashboard','mk_merchants','mk_earnings','mk_tools','notifications'],
-  admin: ['a_dashboard','a_new_orders','a_merchants','a_categories','a_products','a_orders','a_recurring','a_users','a_settlements','a_settings','a_agents','a_coupons','a_reports','a_audit','a_marketers','a_dbsetup','a_subscriptions','notifications']
-};
-function tabFromHash(){
-  const h = decodeURIComponent((location.hash||'').replace(/^#/,''));
-  return h && (HASH_TABS[S.role]||[]).includes(h) ? h : null;
-}
 function defaultTabForRole(){
   return S.role==='customer' ? 'home' : S.role==='marketer' ? 'mk_dashboard' : S.role==='merchant' ? 'm_dashboard' : S.role==='delivery' ? 'd_dashboard' : 'a_dashboard';
 }

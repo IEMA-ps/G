@@ -41,7 +41,7 @@ const snap=()=>({exists:()=>!!stored,data:()=>stored});
 const bootCtx={...ctx,authEpoch:0,clearSubs(){},resetSession(){},showSignedOut(){},S:{},needsEmailVerification:()=>false,
  db:{},doc:()=>({}),getDoc:async()=>snap(),runTransaction:async(db,fn)=>fn({get:async()=>snap(),set:(ref,p)=>{stored=p;writes++}}),
  googleProfile:g,userDefaults:()=>({}),nowMs:()=>123,updateDoc:async()=>{},loadCart(){},loadWishlist(){},
- tabFromHash:()=>null,defaultTabForRole:()=> 'home',history:{replaceState(){}},subscribeShared(){},subscribeAdmin(){},renderShell(){},Auth:A};
+ location:{pathname:'/',search:''},routeFromLocation:()=>null,routeURL:()=>'/customer/home',defaultTabForRole:()=> 'home',history:{replaceState(){}},subscribeShared(){},subscribeAdmin(){},renderShell(){},Auth:A};
 vm.createContext(bootCtx);vm.runInContext(bootCode,bootCtx);
 const googleUser={uid:'u',email:'u@example.test',providerData:[{providerId:'google.com'}]};
 bootCtx.auth.currentUser=googleUser;stored={id:'u',role:'ADMIN',balance:500};

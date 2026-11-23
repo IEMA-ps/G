@@ -2,7 +2,7 @@
 export function marketerReferralLink(code){
   const value=String(code||'').trim();
   if(!/^[A-Z0-9-]{4,128}$/.test(value)) return '';
-  const url=new URL('https://3alababk.com/');url.searchParams.set('marketer',value);url.hash='register';return url.href;
+  const url=new URL('https://3alababk.com/register');url.searchParams.set('marketer',value);return url.href;
 }
 export function marketerFunnel(merchants,subscriptions,marketerId){
   const stores=new Map((merchants||[]).filter(m=>m.marketerId===marketerId && (m.id||m._id)).map(m=>[m.id||m._id,m]));
