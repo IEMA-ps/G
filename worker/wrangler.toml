@@ -1,0 +1,19 @@
+name = "ala-babk-tg-notify"
+main = "worker.js"
+compatibility_date = "2026-11-23"
+
+[vars]
+# اسم البوت من BotFather (من غير @) — اتأكد من إسلام 24 نوفمبر
+BOT_USERNAME = "alababk_orders_bot"
+FIREBASE_PROJECT_ID = "ala-babk"
+
+# TODO قبل النشر: أنشئ الـ KV namespace وحط الـ id هنا
+# wrangler kv namespace create TG_LINKS
+[[kv_namespaces]]
+binding = "TG_LINKS"
+id = "4deabb4f83ff4413995f63f7bac2edb5"
+
+# الأسرار (متتحطش في الملف ده أبدًا):
+# wrangler secret put BOT_TOKEN        ← توكن البوت من BotFather
+# wrangler secret put APP_SECRET       ← سر مشترك مع التطبيق (نفس قيمة APP_SECRET في telegram-notify.js)
+# wrangler secret put WEBHOOK_SECRET   ← نص عشوائي طويل نعمله وقت النشر

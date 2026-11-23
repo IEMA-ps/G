@@ -517,6 +517,7 @@ import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
+import * as TelegramNotify from '/telegram-notify.js?v=tg-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=marketer-join-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
@@ -3194,6 +3195,8 @@ window.submitOrder = async ()=>{
     // ❌ ممنوع تمامًا: لا يصل أي إشعار للتاجر عند إنشاء الطلب.
     // ✅ إشعار الأدمن فقط، ليراجع الطلب ويرسله للتاجر المناسب يدويًا.
     await pushNotification('ADMIN', 'ALL', 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}، في انتظار المراجعة والإرسال للتاجر.`, orderId);
+    // إشعار تليجرام للإدارة بنفس نص إشعار التطبيق (fire-and-forget — فشله مش بيأثر على الطلب)
+    TelegramNotify.send([TelegramNotify.ADMIN_KEY], 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}، في انتظار المراجعة والإرسال للتاجر.`);
     S.lastOrderSummary = { id:orderId, total:Math.max(0, cartTotal()+fee-totalDiscount), fee, discount:totalDiscount, address:address.fullAddressText, payment:paymentLabel(),
       items: lines.map(l=>({title:l.product.title, qty:l.quantity, price:effPrice(l.product)})) };
     S.tab = 'orderDone';   // قبل clearCart عشان شاشة الدفع الفاضية ماترجّعش للسلة
@@ -3594,6 +3597,7 @@ window.confirmAssignAgent = async (subId)=>{
     status:'OUT_FOR_DELIVERY', deliveryAgentId:agentId, deliveryAgentName:agent?agent.name:'', deliveryAgentPhone:agent?agent.phone:''
   });
   await pushNotification('DELIVERY', agentId, 'طلب توصيل جديد 🛵', `لديك طلب جديد رقم #${s.parentOrderId} لتوصيله`, s.parentOrderId);
+  TelegramNotify.send([TelegramNotify.agentKey(agentId)], 'طلب توصيل جديد 🛵', `لديك طلب جديد رقم #${s.parentOrderId} لتوصيله\nالتاجر: ${s.merchantName||''}\nالعميل: ${s.customerName||''} — ${s.customerPhone||''}\nالعنوان: ${s.deliveryAddress||''}`);
   await pushNotification('CUSTOMER', s.customerId, 'تحديث حالة طلبك', `طلبك رقم #${s.parentOrderId} الآن: جاري التوصيل`, s.parentOrderId);
   await recomputeOrderStatus(s.parentOrderId);
   UI.closeModal();
@@ -3770,6 +3774,7 @@ function renderMerchantProfile(){
     ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">بعد اعتماد الاشتراك وتجهيز صلاحيات العرض، الزوار يقدروا يشوفوا أرقامك وعنوانك واللوكيشن من غير تسجيل دخول.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}">معاينة الصفحة</a><button class="btn btn-primary" onclick="openStoreShare('${m.id}')">رابط المتجر وQR · تحميل وطباعة</button></div>`:''}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="openTelegramLink('merchant')"><i class="fa-brands fa-telegram"></i> إشعارات الطلبات على تليجرام</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openChangePassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
     <button class="btn btn-danger" style="margin-top:10px" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
   `;
@@ -3874,10 +3879,52 @@ function renderDeliveryProfile(){
     </div>
     <div class="list-gap" style="margin-top:16px">
       ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة كمندوب توصيل')?`<div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة كمندوب توصيل')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
+            <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openTelegramLink('delivery')"><span><i class="fa-brands fa-telegram" style="color:var(--teal);margin-left:8px"></i> إشعارات الطلبات على تليجرام</span><i class="fa-solid fa-chevron-left"></i></div>
       <button class="btn btn-danger" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
     </div>
   `;
 }
+
+/* ================= TELEGRAM LINKING ================= */
+// ربط حساب المستخدم (تاجر/مندوب/أدمن) ببوت تليجرام عشان توصله إشعارات الطلبات فورًا.
+window.openTelegramLink = (kind)=>{
+  S.tgLinkKind = kind;
+  UI.openModal(`
+    <div class="modal-head"><h3><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> إشعارات تليجرام</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="tgLinkBody">${TelegramNotify.linkModalHTML('loading')}</div>
+  `);
+  checkTelegramLink();
+};
+window.checkTelegramLink = async ()=>{
+  const body = document.getElementById('tgLinkBody'); if(!body) return;
+  try{
+    const token = await S.user.getIdToken();
+    const st = await TelegramNotify.linkStatus(token);
+    body.innerHTML = TelegramNotify.linkModalHTML(st.linked ? 'linked' : 'unlinked');
+  }catch(e){ body.innerHTML = TelegramNotify.linkModalHTML('unavailable'); }
+};
+window.startTelegramLink = async ()=>{
+  const body = document.getElementById('tgLinkBody'); if(!body) return;
+  body.innerHTML = TelegramNotify.linkModalHTML('loading');
+  try{
+    const token = await S.user.getIdToken();
+    const kind = S.tgLinkKind;
+    const ids = kind==='merchant' ? {merchantId:S.profile.merchantId} : kind==='delivery' ? {deliveryAgentId:S.profile.deliveryAgentId} : {admin:true};
+    const {url} = await TelegramNotify.linkStart({token, ...ids});
+    window.open(url, '_blank');
+    body.innerHTML = TelegramNotify.linkModalHTML('pending');
+  }catch(e){ body.innerHTML = TelegramNotify.linkModalHTML('unavailable'); }
+};
+window.unlinkTelegram = async ()=>{
+  const body = document.getElementById('tgLinkBody'); if(!body) return;
+  body.innerHTML = TelegramNotify.linkModalHTML('loading');
+  try{
+    const token = await S.user.getIdToken();
+    await TelegramNotify.linkStop(token);
+    UI.toast('اتلغى ربط تليجرام');
+    body.innerHTML = TelegramNotify.linkModalHTML('unlinked');
+  }catch(e){ body.innerHTML = TelegramNotify.linkModalHTML('unavailable'); }
+};
 
 /* ================= ADMIN VIEWS ================= */
 window.loadAdminRecurringOrders = async ()=>{
@@ -4094,6 +4141,8 @@ window.adminSendToMerchant = async (subId)=>{
     });
     // ✅ التاجر يستلم إشعارًا فقط الآن، بعد إرسال الأدمن، وليس عند إنشاء العميل للطلب
     await pushNotification('MERCHANT', s.merchantId, 'لديك طلب جديد من على بابك', `رقم الطلب: #${s.parentOrderId}`, s.parentOrderId);
+    // نفس رسالة واتساب بتتبعت للتاجر على تليجرام لو رابط حسابه
+    TelegramNotify.send([TelegramNotify.merchantKey(s.merchantId)], 'لديك طلب جديد من على بابك 🔔', msg);
     await recomputeOrderStatus(s.parentOrderId);
     UI.toast('تم إرسال الطلب للتاجر عبر واتساب');
   }catch(err){
@@ -4865,6 +4914,11 @@ function renderAdminSettings(){
       <div class="field"><label>مدة احتساب نسبة الطلبات بالأشهر (0 = بدون حد)</label><input id="setMkMonths" type="number" step="1" min="0" max="120" value="${s.marketerCommissionMonths||0}"></div>
       <div class="field"><label>رسوم التوصيل لكل تاجر في الطلب (جنيه)</label><input id="setDeliveryFee" type="number" step="1" min="0" value="${s.defaultDeliveryFee}"></div>
       <button class="btn btn-primary" onclick="saveAppSettings()">حفظ الإعدادات</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> إشعارات الطلبات على تليجرام</h3>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">اربط حسابك ببوت «على بابك» على تليجرام عشان يوصلك إشعار فوري بأي طلب جديد على المنصة.</p>
+      <button class="btn btn-primary" onclick="openTelegramLink('admin')"><i class="fa-brands fa-telegram"></i> ربط تليجرام</button>
     </div>
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 14px;font-size:15px"><i class="fa-brands fa-whatsapp" style="color:var(--teal)"></i> الدعم الفني</h3>
