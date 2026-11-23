@@ -13,7 +13,7 @@ for(const role of ['MERCHANT','DELIVERY']){
 let writes=[];const data={'users/admin':actor,'users/customer':customer,'merchants/r':record};
 await policy.assignMemberRole({db:{},doc:(db,c,id)=>c+'/'+id,actorId:'admin',userId:'customer',recordId:'r',role:'MERCHANT',runTransaction:async(db,fn)=>fn({get:async ref=>({exists:()=>!!data[ref],data:()=>data[ref]}),update:(ref,patch)=>writes.push([ref,patch])})});
 assert.deepEqual(writes,[['users/customer',{role:'MERCHANT',merchantId:'r',deliveryAgentId:null}],['merchants/r',{ownerId:'customer'}]]);
-const base={S:{allUsers:[{_id:'customer',firstName:'اسم',role:'CUSTOMER'}],allMerchants:[{id:'r',businessName:'متجر تجربة'}],allDeliveryAgents:[]},esc:s=>String(s),emptyState:()=>'',mkRate:()=>0,isSuperAdmin:()=>true,window:{},assignmentType:policy.assignmentType,memberRecordForm:policy.memberRecordForm,uid:()=>'new'};
+const base={locationPicker:()=>'<section>المحافظة والمنطقة</section>',EgyptLocations:{address:(p,d)=>d},S:{allUsers:[{_id:'customer',firstName:'اسم',role:'CUSTOMER'}],allMerchants:[{id:'r',businessName:'متجر تجربة'}],allDeliveryAgents:[]},esc:s=>String(s),emptyState:()=>'',mkRate:()=>0,isSuperAdmin:()=>true,window:{},assignmentType:policy.assignmentType,memberRecordForm:policy.memberRecordForm,uid:()=>'new'};
 let modal='';base.UI={openModal:s=>modal=s,toast(){}};vm.createContext(base);
 vm.runInContext(html.slice(html.indexOf('function renderAdminUsers()'),html.indexOf('window.promoteToAdmin =')),base);
 assert.match(base.renderAdminUsers(),/تعيين تاجر/);assert.match(base.renderAdminUsers(),/تعيين مندوب/);
