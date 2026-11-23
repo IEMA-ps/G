@@ -14,7 +14,7 @@ const api=p.installLocations({}, {getElementById:el});
 assert.deepEqual(api.read('x'),{governorate:'',area:''});assert.throws(()=>api.read('x',{required:true}),/المحافظة/);
 el('xGov').value='الجيزة';api.changeGovernorate('x');assert.equal(el('xArea').disabled,false);assert.match(el('xArea').innerHTML,/الدقي/);assert.throws(()=>api.read('x'),/المنطقة/);
 el('xArea').value='مدينة نصر';assert.throws(()=>api.read('x'),/التابعة/);
-el('xArea').value='__other__';api.changeArea('x');assert.equal(el('xOtherField').hidden,false);assert.throws(()=>api.read('x'),/اكتب/);el('xOther').value='قرية تجربة';assert.equal(api.address('x','شارع 1'),'الجيزة - قرية تجربة - شارع 1');
+el('xArea').value='__other__';api.changeArea('x');assert.equal(el('xOtherField').hidden,false);assert.throws(()=>api.read('x'),/اكتب/);el('xOther').value='قرية تجربة';assert.equal(api.address('x','شارع 1'),'المحافظة: الجيزة | المنطقة: قرية تجربة | شارع 1');
 el('xGov').value='';el('xArea').value='';api.changeGovernorate('x');assert.equal(api.address('x','العنوان القديم دون تغيير'),'العنوان القديم دون تغيير');
 const html=readFileSync('index.html','utf8');
 for(const prefix of ['af','rqLoc','memberLoc','meLoc','amLoc','mkLoc'])assert.ok(html.includes(`locationPicker('${prefix}'`));
