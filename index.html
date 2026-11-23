@@ -506,6 +506,7 @@ import { assignmentType, createMemberRecord, memberRecordForm, parseMemberReques
 import { locationPicker, installLocations } from '/egypt-locations.js?v=eg-2';
 installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
+import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,typeOptions,filterStoresByType,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
@@ -715,7 +716,7 @@ const UI = {
     document.getElementById('modalSheet').innerHTML = html;
     document.getElementById('modalRoot').classList.remove('hidden');
     // نضيف خطوة في تاريخ المتصفح عشان زرار الرجوع في الموبايل يقفل المودال بدل ما يقفل الصفحة أو يغيّر التاب
-    try{ history.pushState({modal:true}, ''); }catch(e){}
+    try{ if(!history.state?.modal)history.pushState({...history.state,modal:true,localDepth:(history.state?.localDepth||0)+1}, ''); }catch(e){}
   },
   closeModal(){
     // لو المودال ده اللي فاتح آخر خطوة في التاريخ، نرجع خطوة (history.back) بدل ما نقفله يدوي،
@@ -1001,7 +1002,7 @@ async function bootAuthUser(user) {
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appShell').classList.remove('hidden');
   S.tab = routeFromLocation(location,S.role) || defaultTabForRole();
-  try{ history.replaceState({tab:S.tab}, '', routeURL(S.tab,S.role,location.search)); }catch(e){}
+  try{const current=routeURL(S.tab,S.role,location.search);seedHistory(routeURL(defaultTabForRole(),S.role,location.search),current);history.replaceState({...history.state,tab:S.tab},'',current);}catch(e){}
   subscribeShared();
   if(S.role==='customer') subscribeCustomer();
   if(S.role==='merchant') subscribeMerchant();
@@ -2217,15 +2218,17 @@ function renderShell(){
   renderMain();
   _shellBusy = false;
 }
+window.goBack=()=>previousOr(routeURL(defaultTabForRole(),S.role,location.search)||'/');
 window.go = (tab, opts)=>{
+  const previousTab=S.tab;
   S.tab = tab;
   if(tab==='mk_tools' && MARKETING_CONFIG.backendEnabled) S.settings.marketerToolsBackend=true;
   if(tab!=='browse') S.searchQuery='';
   window.scrollTo(0,0);
   // نضيف خطوة في تاريخ المتصفح عشان زرار الرجوع في الموبايل يرجع لآخر شاشة بدل ما يقفل التطبيق أو ميعملش حاجة
   // (opts.skipHistory بتتستخدم لما التنقل جاي أصلاً من ضغطة "رجوع" نفسها، عشان مانضيفش خطوة مكررة)
-  if(!opts || !opts.skipHistory){
-    try{ history.pushState({tab}, '', routeURL(tab,S.role,location.search)||location.pathname+location.search); }catch(e){}
+  if((!opts || !opts.skipHistory)&&(tab!==previousTab||(tab==='merchantPage'&&history.state?.activeMerchantId!==S.activeMerchantId)||(tab==='orderDetail'&&history.state?.viewOrderId!==S.viewOrderId))){
+    try{ history.pushState({tab,localEntry:true,localDepth:(history.state?.localDepth||0)+1,activeMerchantId:S.activeMerchantId,viewOrderId:S.viewOrderId}, '', routeURL(tab,S.role,location.search)||location.pathname+location.search); }catch(e){}
   }
   renderShell();
 };
@@ -2237,11 +2240,12 @@ window.addEventListener('popstate', (e)=>{
   if(modalWasOpen){
     document.getElementById('modalRoot').classList.add('hidden');
     document.getElementById('modalSheet').innerHTML='';
-    return;
+    if(!e.state?.tab)return;
   }
   if(!e.state && location.hash && !routeFromLocation(location,S.role)){ try{ history.replaceState({tab:S.tab},'',routeURL(S.tab,S.role,location.search)||location.pathname+location.search); }catch(_){} return; }   // hash غير صالح: خليك مكانك
   const tab = (e.state && e.state.tab) || routeFromLocation(location,S.role) || defaultTabForRole();
   if(tab==='home') S.searchQuery='';
+  if(e.state?.activeMerchantId)S.activeMerchantId=e.state.activeMerchantId;if(e.state?.viewOrderId)S.viewOrderId=e.state.viewOrderId;
   S.tab = tab;
   renderShell();
 });
@@ -2845,7 +2849,7 @@ function renderMerchantPage(){
   const prods = canOrder?S.products.filter(p=>p.merchantId===m.id && p.isActive):[];
   const openNow = isMerchantOpenNow(m);
   return `
-    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="go('browse')"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
+    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
     <div class="card" style="margin-bottom:16px">
       <div style="display:flex;gap:12px;align-items:center">
         <div class="merchant-card" style="border:none;padding:0;flex:0"><div class="logo" style="width:64px;height:64px">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-shop"></i>'}</div></div>
@@ -3278,7 +3282,7 @@ function renderOrderDetail(){
   if(!o) return emptyState('fa-triangle-exclamation','الطلب غير موجود','');
   const subs = S.mySubOrders.filter(s=>s.parentOrderId===o.id);
   return `
-    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="go('orders')"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
+    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
     <div class="card">
       <div class="top-row"><span class="oid">#${o.id}</span><span class="date">${fmtDate(o.createdAt)}</span></div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin:8px 0"><i class="fa-solid fa-location-dot"></i> ${esc(o.deliveryAddress)}</p>
@@ -3369,7 +3373,7 @@ function renderProfile(){
 }
 function renderAddresses(){
   return `
-    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="go('profile')"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
+    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
     <div class="section-head" style="margin-top:0"><h3>عناويني</h3><span class="more" onclick="openAddressForm()">+ إضافة عنوان</span></div>
     ${S.myAddresses.length? `<div class="list-gap">${S.myAddresses.map(a=>`
       <div class="card">
@@ -3383,7 +3387,7 @@ function renderWishlist(){
   const prods = (S.wishlist||[]).map(pid=>getProduct(pid)).filter(p=>p && MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced));
   if(!prods.length) return emptyState('fa-heart','قائمة المفضلة فاضية','اضغط على أيقونة القلب في أي منتج عشان تضيفه هنا');
   return `
-    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="go('profile')"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
+    <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
     <div class="product-grid">${prods.map(productCard).join('')}</div>
   `;
 }
@@ -3716,7 +3720,7 @@ function renderMerchantProfile(){
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-briefcase"></i> النشاط</span><b style="font-size:13px">${esc(typeLabel(m))}</b></div>
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-location-dot"></i> العنوان</span><b style="font-size:13px">${esc(m.address)}</b></div>
     </div>
-    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">الأرقام والعنوان واللوكيشن في الصفحة التعريفية متاحة للزوار بدون تسجيل دخول بعد اعتماد الاشتراك وإعداد صلاحيات القراءة.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}" target="_blank" rel="noopener">معاينة الصفحة</a><button class="btn btn-primary" onclick="openStoreShare('${m.id}')">رابط المتجر وQR · تحميل وطباعة</button></div>`:''}
+    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">الأرقام والعنوان واللوكيشن في الصفحة التعريفية متاحة للزوار بدون تسجيل دخول بعد اعتماد الاشتراك وإعداد صلاحيات القراءة.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}">معاينة الصفحة</a><button class="btn btn-primary" onclick="openStoreShare('${m.id}')">رابط المتجر وQR · تحميل وطباعة</button></div>`:''}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openChangePassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
