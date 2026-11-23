@@ -446,7 +446,7 @@ img{max-width:100%; display:block;}
 
       <div style="margin-top:16px">
         <button class="btn btn-ghost" type="button" id="googleLoginBtn" onclick="Auth.googleLogin()"><i class="fa-brands fa-google" aria-hidden="true"></i> المتابعة باستخدام Google</button>
-        <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-top:8px">حتى لو سجلت بجوجل، حسابك بيبدأ كعميل. لو مهتم بالتسويق، هتلاقي التفاصيل في «حسابي»، والتعيين بعد مراجعة الأدمن الرئيسي.</p>
+        <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-top:8px">حتى لو سجلت بجوجل، حسابك بيبدأ كعميل. لو مهتم بالتسويق، هتلاقي التفاصيل في «حسابي»، والتعيين بعد مراجعة إدارة الموقع.</p>
       </div>
       <div class="auth-switch">
         على بابك — اطلب اللي محتاجه، وإحنا نوصلّه لحد بابك
@@ -693,7 +693,7 @@ function sortProducts(list, sortKey){
 }
 window.setBrowseSort = (v)=>{ S.browseSort=v; S.browsePageSize=12; renderMain(); };
 window.loadMoreProducts = ()=>{ S.browsePageSize += 12; renderMain(); };
-/* ---- صلاحيات الأدمن: أدمن رئيسي (SUPER) يقدر يوصل لكل حاجة، أدمن مساعد (STAFF) محروم من الإعدادات الحساسة وتحريك الفلوس ---- */
+/* ---- صلاحيات الأدمن: إدارة الموقع (SUPER) يقدر يوصل لكل حاجة، أدمن مساعد (STAFF) محروم من الإعدادات الحساسة وتحريك الفلوس ---- */
 function isSuperAdmin(){ return S.role==='admin' && S.profile.adminRole!=='STAFF'; }
 /* ---- سجل نشاط الأدمن: بيسجّل أي إجراء إداري حساس (تغيير حالة، حذف، تعديل إعدادات...) للرجوع له لاحقًا ---- */
 async function logAudit(action, details){
@@ -1291,7 +1291,7 @@ window.applyCatalogRepair = async ()=>{
   finally{ S.catalogRepairBusy=false; if(btn) btn.disabled=false; }
 };
 
-/* ================= فحص وتهيئة قاعدة البيانات (أدمن رئيسي) =================
+/* ================= فحص وتهيئة قاعدة البيانات (إدارة الموقع) =================
    الفحص للقراءة فقط. الإصلاحات "إضافية وآمنة": بتضيف الناقص بس، ومابتمسحش ولا بتغيّر قيمة موجودة. بنكتب كل إصلاح في سجل النشاط.
    الحاجات الخطرة (بيانات يتيمة/علاقات مكسورة) بتتعرض كتقرير بس عشان تقرر انت. */
 const DEFAULT_SETTINGS = JSON.parse(JSON.stringify(S.settings));
@@ -1348,14 +1348,14 @@ async function scanDatabase(){
   add('badMarketer','متاجر منسوبة لمسوّق لم يعد مسوّقًا', badMk.length, badMk.length?badMk.slice(0,4).map(m=>m.businessName).join('، ')+' — غيّر المسوّق من كارت المتجر':'لا يوجد', null);
   const merchUsersNoStore = users.filter(u=>u.role==='MERCHANT' && (!u.merchantId || !mIds.has(u.merchantId)));
   add('merchantNoStore','حسابات تجار بدون متجر صالح', merchUsersNoStore.length, merchUsersNoStore.length?merchUsersNoStore.slice(0,4).map(u=>(u.email||u._id)).join('، '):'لا يوجد', null);
-  add('admin','وجود أدمن رئيسي', users.some(u=>u.role==='ADMIN' && u.adminRole!=='STAFF')?0:1, users.some(u=>u.role==='ADMIN')?'موجود':'لا يوجد أدمن! عيّن واحدًا من Firebase Console (users ← role = ADMIN)', null);
+  add('admin','وجود حساب لإدارة الموقع', users.some(u=>u.role==='ADMIN' && u.adminRole!=='STAFF')?0:1, users.some(u=>u.role==='ADMIN')?'موجود':'لا يوجد أدمن! عيّن واحدًا من Firebase Console (users ← role = ADMIN)', null);
   if(denied.length){ const map={users:['users','orphanOwners','badMarketer','merchantNoStore','admin'],merchants:['merchants','orphanProducts','orphanOwners','badMarketer','merchantNoStore'],products:['orphanProducts','noCatProducts'],categories:['categories','dupCats','noCatProducts'],plans:['plans'],settings:['settings']};
     const skip=new Set(denied.flatMap(d=>map[d]||[])); for(let i=items.length-1;i>=0;i--){ if(skip.has(items[i].key)){ delete DB_FIXES[items[i].key]; items.splice(i,1); } }
     items.unshift({key:'denied',title:'⚠️ صلاحيات Firestore ناقصة',count:denied.length,detail:'القواعد (Rules) بتمنع الأدمن من قراءة: '+denied.join('، ')+' — اتخطّينا فحصها. عدّل القواعد (اسمح للأدمن بالقراءة/الكتابة) وأعد الفحص.',fixable:false,status:'warn'}); }
   S.dbScan = { at: Date.now(), items, totals:{users:users.length, merchants:merchants.length, products:products.length, categories:cats.length, plans:plans.length} };
 }
 function renderAdminDbSetup(){
-  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>متاحة للأدمن الرئيسي فقط.</p></div>`;
+  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>متاحة لإدارة الموقع فقط.</p></div>`;
   const sc = S.dbScan;
   const fixable = sc ? sc.items.filter(x=>x.status==='fix') : [];
   return `
@@ -1532,7 +1532,7 @@ async function activateSubscription(subId, sub){
   await logAudit('اعتماد اشتراك', `${m.businessName} — ${sub.planName} — ${sub.price}`);
 }
 window.approveSubscription = async (subId)=>{
-  if(!isSuperAdmin()){ UI.toast('اعتماد الاشتراكات للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('اعتماد الاشتراكات لإدارة الموقع فقط'); return; }
   const sub = (S.allSubs||[]).find(x=>x._id===subId); if(!sub || sub.status!=='PENDING') return;
   try{ await activateSubscription(subId, sub); UI.toast('تم اعتماد الاشتراك ✅'); }catch(e){ UI.toast('⚠️ '+(e.message||e)); }
 };
@@ -1554,7 +1554,7 @@ window.openGrantSub = (mid)=>{
     <button class="btn btn-primary" onclick="saveGrantSub('${mid}')">تفعيل</button>`);
 };
 window.saveGrantSub = async (mid)=>{
-  if(!isSuperAdmin()){ UI.toast('للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('لإدارة الموقع فقط'); return; }
   const p = (S.plans||[]).find(x=>x._id===document.getElementById('gsPlan').value); if(!p) return;
   const m = S.allMerchants.find(x=>x.id===mid);
   const id = 'sub_'+uid();
@@ -1617,7 +1617,7 @@ window.installMerchantPlans=async()=>{
   }catch(e){UI.toast('تعذرت إضافة الباقات: '+(e.message||e));}
 };
 async function activateNewSubscription(subId,input){
-  if(!isSuperAdmin()) throw new Error('للأدمن الرئيسي فقط');
+  if(!isSuperAdmin()) throw new Error('لإدارة الموقع فقط');
   if(useBackend()) throw new Error('اعتماد الباقات الجديدة يحتاج تحديث دالة السيرفر قبل استخدامه مع الباك إند. لا تغيّر إعداد الباك إند لتجاوز هذا التنبيه.');
   await runTransaction(db,async tx=>{
     const sr=doc(db,'subscriptions',subId),stored=await tx.get(sr);
@@ -2006,7 +2006,7 @@ window.openAssignMarketer = (mid)=>{
     <button class="btn btn-primary" onclick="saveAssignMarketer('${mid}')">حفظ</button>`);
 };
 window.saveAssignMarketer = async (mid)=>{
-  if(!isSuperAdmin()){ UI.toast('هذا الإجراء للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('هذا الإجراء لإدارة الموقع فقط'); return; }
   const v = document.getElementById('mkAssign').value;
   const u = S.allUsers.find(x=>x._id===v);
   await updateDoc(doc(db,'merchants',mid), v ? { marketerId:v, marketerName:((u.firstName||'')+' '+(u.lastName||'')).trim(), marketerSince: nowMs() } : { marketerId:null, marketerName:null, marketerSince:null });
@@ -2069,7 +2069,7 @@ function mkBalanceOf(u){
 }
 window.payWithdrawal = async (id)=>{
   if(!Program.creditsReady()){UI.toast('انتظر تحميل سجل الحوافز');return;}
-  if(!isSuperAdmin()){ UI.toast('للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('لإدارة الموقع فقط'); return; }
   const w = (S.allWithdrawals||[]).find(x=>x._id===id); if(!w || w.status!=='PENDING') return;
   const u = S.allUsers.find(x=>x._id===w.marketerId);
   const bal = u ? mkBalanceOf(u).balance : 0;
@@ -2109,7 +2109,7 @@ function renderAdminWithdrawals(){
 }
 
 function renderAdminMarketers(){
-  if(Program.enabled()&&(!isSuperAdmin()||!Program.creditsReady()))return '<div class="card">أرصدة الحوافز ومراجعتها للأدمن الرئيسي بعد اكتمال تحميل السجل.</div>';
+  if(Program.enabled()&&(!isSuperAdmin()||!Program.creditsReady()))return '<div class="card">أرصدة الحوافز ومراجعتها لإدارة الموقع بعد اكتمال تحميل السجل.</div>';
   const report=Program.enabled()&&isSuperAdmin()?Program.referrals():'';
   const mks = S.allUsers.filter(u=>u.role==='MARKETER');
   if(!mks.length) return report+(isSuperAdmin()?Program.admin():'')+emptyState('fa-bullhorn','لا يوجد مسوّقون بعد','من «الأعضاء» اختر عضوًا واضغط «تعيين كمسوّق»');
@@ -2137,7 +2137,7 @@ function renderAdminMarketers(){
     </div>`; }).join('')}</div>`;
 }
 window.openMarketerPayout = (mkId, balance)=>{
-  if(Program.enabled()&&(!isSuperAdmin()||!Program.creditsReady())){UI.toast('انتظر اكتمال السجل لدى الأدمن الرئيسي');return;}
+  if(Program.enabled()&&(!isSuperAdmin()||!Program.creditsReady())){UI.toast('انتظر اكتمال السجل لدى إدارة الموقع');return;}
   UI.openModal(`
     <div class="modal-head"><h3>تسجيل صرف للمسوّق</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="field"><label>المبلغ المصروف (جنيه)</label><input id="mkPayAmt" type="number" step="0.01" min="0" value="${balance>0?balance:''}"></div>
@@ -2146,7 +2146,7 @@ window.openMarketerPayout = (mkId, balance)=>{
 };
 window.saveMarketerPayout = async (mkId)=>{
   if(!Program.creditsReady()){UI.toast('انتظر تحميل سجل الحوافز');return;}
-  if(!isSuperAdmin()){ UI.toast('تسجيل الصرف للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('تسجيل الصرف لإدارة الموقع فقط'); return; }
   const amount = roundMoney(parseFloat(document.getElementById('mkPayAmt').value)||0);
   if(amount<=0){ UI.toast('أدخل مبلغًا صحيحًا'); return; }
   const id = 'mkpay_'+uid();
@@ -3951,7 +3951,7 @@ function renderAdminDashboard(){
     <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_settings')"><i class="fa-solid fa-gear"></i> إعدادات العمولة والمنصة</button>
     ${isSuperAdmin()?`<button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_dbsetup')"><i class="fa-solid fa-database"></i> فحص وتهيئة قاعدة البيانات</button>`:''}
     <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_audit')"><i class="fa-solid fa-clock-rotate-left"></i> سجل نشاط الإدارة</button>
-    ` : `<div class="hint-box" style="margin-top:10px"><i class="fa-solid fa-lock"></i> حسابك «أدمن مساعد» — الإعدادات الحساسة وسجل النشاط متاحين للأدمن الرئيسي فقط.</div>`}
+    ` : `<div class="hint-box" style="margin-top:10px"><i class="fa-solid fa-lock"></i> حسابك «أدمن مساعد» — الإعدادات الحساسة وسجل النشاط متاحين لإدارة الموقع فقط.</div>`}
     <button class="btn btn-ghost" style="margin-top:10px" onclick="syncCategories()"><i class="fa-solid fa-wand-magic-sparkles"></i> إضافة/تحديث الأقسام المقترحة (${CATEGORY_SEED.length} قسم)</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
   `;
@@ -4246,7 +4246,7 @@ window.returnMerchantToReview = async (id)=>{
 };
 window.setMerchantStatus = async (id,status)=>{ await updateDoc(doc(db,'merchants',id), {status}); await logAudit('تغيير حالة تاجر', `${id} → ${MERCHANT_STATUS[status].label}`); UI.toast('تم تحديث حالة التاجر إلى: '+MERCHANT_STATUS[status].label); };
 window.removeMerchant = async (id)=>{
-  if(!isSuperAdmin()){ UI.toast('حذف التجار متاح للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('حذف التجار متاح لإدارة الموقع فقط'); return; }
   if(confirm('حذف هذا التاجر نهائيًا من المنصة؟')){
     await deleteDoc(doc(db,'merchants',id));
     await logAudit('حذف تاجر', id);
@@ -4587,7 +4587,7 @@ window.openCouponForm = ()=>{
   `);
 };
 window.saveCoupon = async ()=>{
-  if(!isSuperAdmin()){ UI.toast('إنشاء الكوبونات متاح للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('إنشاء الكوبونات متاح لإدارة الموقع فقط'); return; }
   const code = document.getElementById('cpCode').value.trim().toUpperCase();
   const value = parseFloat(document.getElementById('cpValue').value);
   if(!code || !value || value<=0){ UI.toast('أدخل كود الكوبون وقيمة خصم صحيحة'); return; }
@@ -4608,13 +4608,13 @@ window.saveCoupon = async ()=>{
   UI.toast('تم إنشاء الكوبون بنجاح ✅');
 };
 window.setCouponActive = async (code, isActive)=>{
-  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
   await updateDoc(doc(db,'coupons',code), {isActive});
   await logAudit(isActive?'تفعيل كوبون':'إيقاف كوبون', code);
   UI.toast(isActive?'تم تفعيل الكوبون':'تم إيقاف الكوبون');
 };
 window.removeCouponAdmin = async (code)=>{
-  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
   if(confirm('حذف هذا الكوبون نهائيًا؟')){
     await deleteDoc(doc(db,'coupons',code));
     await logAudit('حذف كوبون', code);
@@ -4624,7 +4624,7 @@ window.removeCouponAdmin = async (code)=>{
 
 /* ================= سجل نشاط الإدارة ================= */
 function renderAdminAuditLog(){
-  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>سجل النشاط للأدمن الرئيسي بس.</p></div>`;
+  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>سجل النشاط لإدارة الموقع بس.</p></div>`;
   const logs = S.allAuditLogs||[];
   if(!logs.length) return emptyState('fa-clock-rotate-left','لا يوجد نشاط مسجّل بعد','هيظهر هنا أي إجراء إداري حساس زي تغيير الإعدادات أو حالة تاجر/مندوب');
   return `<div class="list-gap">${logs.map(l=>`
@@ -4735,7 +4735,7 @@ window.saveAgent = async ()=>{
 };
 window.setAgentStatus = async (id,status)=>{ await updateDoc(doc(db,'deliveryAgents',id), {status}); await logAudit('تغيير حالة مندوب', `${id} → ${status}`); UI.toast('تم تحديث حالة المندوب'); };
 window.removeAgent = async (id)=>{
-  if(!isSuperAdmin()){ UI.toast('حذف المناديب متاح للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('حذف المناديب متاح لإدارة الموقع فقط'); return; }
   if(confirm('حذف هذا المندوب نهائيًا من المنصة؟')){
     await deleteDoc(doc(db,'deliveryAgents',id));
     await logAudit('حذف مندوب', id);
@@ -4831,7 +4831,7 @@ function renderLegacyAdminSettlements(){
   `;
 }
 window.markSettlementPaid = async (merchantId, wk, gross, pct)=>{
-  if(!isSuperAdmin()){ UI.toast('تأكيد المدفوعات متاح للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('تأكيد المدفوعات متاح لإدارة الموقع فقط'); return; }
   const id = merchantId+'_'+wk;
   const commissionAmount = roundMoney(gross*pct/100);
   const netAmount = roundMoney(gross-commissionAmount);
@@ -4843,7 +4843,7 @@ window.markSettlementPaid = async (merchantId, wk, gross, pct)=>{
   UI.toast('تم تسجيل تسوية الأسبوع كمدفوعة ✅');
 };
 window.unmarkSettlementPaid = async (id)=>{
-  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
   await deleteDoc(doc(db,'settlements', id));
   await logAudit('التراجع عن تسوية مدفوعة', id);
   UI.toast('تم التراجع عن حالة الدفع');
@@ -4851,7 +4851,7 @@ window.unmarkSettlementPaid = async (id)=>{
 
 /* ================= إعدادات المنصة العامة ================= */
 function renderAdminSettings(){
-  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات دي للأدمن الرئيسي بس.</p></div>`;
+  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات دي لإدارة الموقع بس.</p></div>`;
   const s = S.settings;
   return `
     <div class="card" style="margin-bottom:16px">
@@ -4906,7 +4906,7 @@ window.saveLoyaltySettings = async ()=>{
   UI.toast('تم حفظ إعدادات نقاط الولاء ✅');
 };
 window.saveSupportPhone = async ()=>{
-  if(!isSuperAdmin()){ UI.toast('تعديل رقم الدعم للأدمن الرئيسي فقط'); return; }
+  if(!isSuperAdmin()){ UI.toast('تعديل رقم الدعم لإدارة الموقع فقط'); return; }
   const raw=document.getElementById('setSupport').value.trim();
   const clean=raw?MerchantPlans.supportPhone(raw):'';
   if(raw && !clean){ UI.toast('رقم غير صحيح. اكتب رقم واتساب كامل، مثال 01012345678'); return; }
@@ -4946,7 +4946,7 @@ function renderAdminUsers(){
   return head+`
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${seg===k?'active':''}" onclick="S.aUserFilter='${k}';S.aUserPageSize=20;renderMain()">${l}</button>`).join('')}</div>
     ${list.length? `<div class="list-gap">${visible.map(u=>{
-      const roleLabel = u.role==='ADMIN' ? (u.adminRole==='STAFF'?'أدمن مساعد':'أدمن رئيسي') : u.role==='MERCHANT'?'تاجر':u.role==='DELIVERY'?'مندوب توصيل':u.role==='MARKETER'?'مسوّق':'عميل';
+      const roleLabel = u.role==='ADMIN' ? (u.adminRole==='STAFF'?'أدمن مساعد':'إدارة الموقع') : u.role==='MERCHANT'?'تاجر':u.role==='DELIVERY'?'مندوب توصيل':u.role==='MARKETER'?'مسوّق':'عميل';
       return `<div class="card">
         <div class="row-between">
           <div><b style="font-size:13.5px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b>
@@ -4960,13 +4960,13 @@ function renderAdminUsers(){
           ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
           ${u.role==='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openMarketerRate('${u._id}')"><i class="fa-solid fa-percent"></i> نسبته ${mkRate(u)}%</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="removeMarketer('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء المسوّق</button>` : ''}
           ${u.role!=='ADMIN' && u.role!=='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToAdmin('${u._id}')"><i class="fa-solid fa-user-shield"></i> أدمن مساعد</button>` : ''}
-          ${u.role==='ADMIN' && u.adminRole==='STAFF' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToSuperAdmin('${u._id}')"><i class="fa-solid fa-crown"></i> ترقية لأدمن رئيسي</button>` : ''}
+          ${u.role==='ADMIN' && u.adminRole==='STAFF' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToSuperAdmin('${u._id}')"><i class="fa-solid fa-crown"></i> ترقية لإدارة الموقع</button>` : ''}
           ${u.role==='ADMIN' && u._id!==S.user.uid ? `<button class="btn btn-danger btn-sm" style="width:auto" onclick="demoteAdmin('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء صلاحية الإدارة</button>` : ''}
         </div>` : ''}
       </div>`;
     }).join('')}</div>` : emptyState('fa-users','لا يوجد أعضاء في هذا التصنيف','')}
     ${list.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:12px" onclick="S.aUserPageSize=(S.aUserPageSize||20)+20;renderMain()">عرض المزيد (${list.length-visible.length} عضو آخر)</button>` : ''}
-    ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> تغيير صلاحيات الأعضاء للأدمن الرئيسي بس.</div>` : ''}
+    ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> تغيير صلاحيات الأعضاء لإدارة الموقع بس.</div>` : ''}
   `;
 }
 window.openAssignMemberRole = (userId,role)=>{
@@ -5007,7 +5007,7 @@ window.saveMemberRole = async (userId,role)=>{
     try{await logAudit('إنشاء وتعيين '+assignmentType(role).label,userId+' / '+draft.recordId);}catch(e){UI.toast('تم الإنشاء، لكن تعذّر تسجيله في سجل التدقيق');}
   }catch(e){
     btn.disabled=false;
-    const messages={'marketer-unavailable':'كود المسوّق غير صالح أو غير فريد. راجعه قبل إنشاء المتجر.','invalid-contact':'أدخل الاسم ورقم هاتف وواتساب صحيحين.','missing-store-details':'أدخل نوع النشاط وعنوان المتجر.','missing-courier-details':'أدخل وسيلة التوصيل ومنطقة العمل.','customer-required':'العضو لم يعد عميلًا غير مربوط. أغلق النافذة وراجع حسابه.','record-already-exists':'السجل موجود بالفعل. أغلق النافذة وحدّث قائمة الأعضاء قبل المحاولة.','super-required':'الإنشاء والتعيين متاحان للأدمن الرئيسي فقط.'};
+    const messages={'marketer-unavailable':'كود المسوّق غير صالح أو غير فريد. راجعه قبل إنشاء المتجر.','invalid-contact':'أدخل الاسم ورقم هاتف وواتساب صحيحين.','missing-store-details':'أدخل نوع النشاط وعنوان المتجر.','missing-courier-details':'أدخل وسيلة التوصيل ومنطقة العمل.','customer-required':'العضو لم يعد عميلًا غير مربوط. أغلق النافذة وراجع حسابه.','record-already-exists':'السجل موجود بالفعل. أغلق النافذة وحدّث قائمة الأعضاء قبل المحاولة.','super-required':'الإنشاء والتعيين متاحان لإدارة الموقع فقط.'};
     error.textContent=(e?.message==='invalid-map-link'?'أدخل رابط Google Maps صحيح':messages[e?.message])||'تعذّر تأكيد الإنشاء. حدّث قائمة الأعضاء قبل المحاولة مجددًا. لا يتم حفظ ربط جزئي.';
   }
 };
@@ -5020,8 +5020,8 @@ window.promoteToAdmin = async (uid_)=>{
 window.promoteToSuperAdmin = async (uid_)=>{
   if(!isSuperAdmin()) return;
   await updateDoc(doc(db,'users',uid_), { adminRole:'SUPER' });
-  await logAudit('ترقية أدمن مساعد لأدمن رئيسي', uid_);
-  UI.toast('تمت الترقية لأدمن رئيسي');
+  await logAudit('ترقية أدمن مساعد لإدارة الموقع', uid_);
+  UI.toast('تمت الترقية لإدارة الموقع');
 };
 window.demoteAdmin = async (uid_)=>{
   if(!isSuperAdmin()) return;
