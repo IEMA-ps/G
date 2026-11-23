@@ -1,5 +1,5 @@
 // Review build. Enable only after the owner publishes and verifies the reviewed rules.
-export const MARKETER_PROGRAM = Object.freeze({enabled:false,version:1});
+export const MARKETER_PROGRAM = Object.freeze({enabled:true,version:1});
 const DAY=86400000;
 export const money=n=>Math.round((Number(n)||0)*100)/100;
 export function inviteToken(uid){return btoa(uid).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');}
