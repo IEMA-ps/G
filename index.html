@@ -515,7 +515,7 @@ installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
-import {typePicker,typeLabel,typeOptions,filterStoresByType,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
+import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=marketer-join-1';
@@ -2779,10 +2779,14 @@ window.openProduct = (pid)=>{
 
 /* ================= CUSTOMER: HOME ================= */
 function renderCustomerStores(){
-  const pref=S.profile?.preferredLocation,result=nearbyStores(S.merchants,pref,S.showAllStores===true);
-  const types=typeOptions(result.stores),selected=types.includes(S.storeTypeFilter)?S.storeTypeFilter:'',visible=filterStoresByType(result.stores,selected);
-  const titles={nearby:'متاجر في نفس منطقتك',all:'كل المتاجر المتاحة',unselected:'اختار منطقتك لعرض المتاجر',fallback:'لا توجد متاجر محددة في منطقتك بعد'};
-  return `<section class="card" style="margin-bottom:16px"><h3 style="font-size:17px;margin:0 0 8px">${titles[result.mode]}</h3><p class="location-note">${pref?.governorate&&pref?.area?esc(pref.governorate+' / '+pref.area):'لسه ما اخترتش المحافظة والمنطقة.'}</p><p class="location-note">${result.mode==='nearby'?'المطابقة حسب المحافظة والمنطقة المسجلة، مش مسافة فعلية أو ضمان توصيل.':result.mode==='fallback'?'بنعرض كل المتاجر المتاحة بدل ما نخفيها. المتاجر اللي لسه عنوانها بالشكل القديم هتظهر هنا لحد ما تتحدد منطقتها.':'المتاجر اللي منطقتها مش محددة هتلاقيها مع كل المتاجر. اختيارك للمنطقة مش تأكيد إن التوصيل متاح فيها.'}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openCustomerLocation()">${pref?'تغيير منطقتي':'اختيار منطقتي'}</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="S.showAllStores=${S.showAllStores?'false':'true'};renderMain()">${S.showAllStores?'متاجر منطقتي':'عرض كل المتاجر'}</button></div><div class="field" style="margin-top:12px"><label for="storeTypeFilter">تصفية حسب نوع المتجر</label><select id="storeTypeFilter" onchange="S.storeTypeFilter=this.value;renderMain()"><option value="">كل الأنواع</option>${types.map(t=>`<option value="${esc(t)}" ${selected===t?'selected':''}>${esc(t)}</option>`).join('')}</select></div>${visible.length?`<div class="list-gap" style="margin-top:12px">${visible.map(merchantCard).join('')}</div>`:'<p class="location-note">لسه مفيش متاجر متاحة دلوقتي.</p>'}</section>`;
+  // No wrapper card: matching stores show directly. Signup collects the area; older accounts without one get a picker prompt.
+  const pref=S.profile?.preferredLocation,result=nearbyStores(S.merchants,pref,false);
+  const areaPrompt=!pref?`<div class="card" style="margin-bottom:16px"><b style="font-size:14px">اختار منطقتك</b><p class="location-note" style="margin:6px 0 10px">عشان نشوفلك متاجر منطقتك الأول. اختيارك ده مش عنوان توصيل، والمطابقة حسب المحافظة والمنطقة المسجلة مش مسافة فعلية.</p><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openCustomerLocation()">اختار منطقتي</button></div>`:'';
+  return `
+    ${areaPrompt}
+    <div class="section-head"><h3>المتاجر</h3></div>
+    ${result.stores.length?`<div class="list-gap" style="margin-bottom:16px">${result.stores.map(merchantCard).join('')}</div>`:'<p class="location-note" style="margin-bottom:16px">لسه مفيش متاجر متاحة دلوقتي.</p>'}
+  `;
 }
 window.openCustomerLocation=()=>{
  UI.openModal(`<div class="modal-head"><h3>منطقتك لعرض المتاجر</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div><p class="location-note">مش عنوان توصيل. تفاصيل العنوان تتضاف من «عناويني».</p>${locationPicker('customerLoc',{required:true})}<button class="btn btn-primary" onclick="saveCustomerLocation()">حفظ منطقتي</button>`);
