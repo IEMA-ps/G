@@ -7,6 +7,7 @@ export function installProgram({state,db,auth,api,ui,esc,superAdmin,logAudit,ren
  const guard=fn=>async(...args)=>{try{return await fn(...args);}catch(e){ui.toast(e.message||'تعذر إتمام العملية');}};
  const data=()=>state().program||{};
  const joinRef=uid=>doc(db,'marketerJoinRequests',uid);
+ let toggleBusy=false;
  let stops=[];const stop=()=>{stops.splice(0).forEach(fn=>fn());};
  const creditsReady=()=>!active()||data().creditsReady===true;
  function subscribe(){
@@ -24,6 +25,19 @@ export function installProgram({state,db,auth,api,ui,esc,superAdmin,logAudit,ren
  const banner=()=>active()?'':'<p class="hint-box">معاينة برنامج التسويق. غير مفعل، ولا يوجد صرف أو تعيين جديد قبل نشر القواعد واعتماد التشغيل.</p>';
  globalThis.Program={
   enabled:active,subscribe,stop,currentPeriod,creditsReady,
+  settings:()=>{if(!MARKETER_PROGRAM.enabled||!superAdmin())return '';const on=state().settings?.marketerProgramEnabled===true;return `<section class="card" style="margin-bottom:16px"><h3>برنامج المسوقين الشخصي</h3><p>الحالة الحالية: <b>${on?'مفتوح':'مقفول'}</b></p><p style="line-height:1.8">الفتح بعد نشر القواعد المراجعة فقط. يبدأ هدف كل مسوق من تعيينه، ولا يبدأ مهلة أو يصرف فلوس تلقائيًا. الزرار لا يغير عرض ٣٠٠ جنيه أو الباك إند.</p><p style="line-height:1.8;color:var(--danger,#a22)">تحذير: القفل بعد إضافة حوافز قد يخفي أثرها من الرصيد المعروض وحساب المتاح للسحب. لا يمسح السجلات، ولا يغني عن مراجعة مالية تحفظ الحقوق قبل الرجوع لنسخة قديمة.</p><button class="btn ${on?'btn-ghost':'btn-primary'}" ${toggleBusy?'disabled':''} onclick="Program.setEnabled(${!on})">${toggleBusy?'جاري الحفظ...':on?'قفل برنامج المسوقين':'فتح برنامج المسوقين'}</button></section>`;},
+  setEnabled:guard(async next=>{
+   if(!MARKETER_PROGRAM.enabled||!superAdmin())throw Error('للأدمن الرئيسي فقط');
+   if(typeof next!=='boolean')throw Error('قيمة غير صالحة');if(toggleBusy)return;
+   const previous=state().settings?.marketerProgramEnabled===true;if(next===previous)return;
+   const warning='القفل بعد إضافة حوافز قد يخفي أثرها من الرصيد المعروض والمتاح للسحب. السجلات لا تُمسح، ويلزم مراجعة مالية تحفظ الحقوق قبل الرجوع لنسخة قديمة.';
+   if(!confirm((next?'تأكيد فتح برنامج المسوقين؟ لازم تكون نشرت القواعد المراجعة وتأكدت منها أولًا. لا يبدأ مهلة أو يصرف حافز تلقائيًا.':'تأكيد قفل برنامج المسوقين؟')+'\n'+warning+'\nالزرار لا يغير عرض ٣٠٠ جنيه أو الباك إند.'))return;
+   toggleBusy=true;render();
+   try{await runTransaction(db,async tx=>{const ref=doc(db,'settings','app'),live=await tx.get(ref);if(!live.exists())throw Error('مستند الإعدادات غير متاح، راجعه أولًا');if((live.data().marketerProgramEnabled===true)!==previous)throw Error('الحالة اتغيرت من جلسة تانية. حدّث الصفحة وراجع الحالة قبل المحاولة');tx.update(ref,{marketerProgramEnabled:next});});
+    state().settings.marketerProgramEnabled=next;subscribe();render();ui.toast(next?'تم فتح برنامج المسوقين':'تم قفل برنامج المسوقين');
+    try{await logAudit('تغيير تشغيل برنامج المسوقين',next?'ON':'OFF');}catch{ui.toast('تم تغيير الحالة، لكن تعذر تسجيل سجل النشاط. راجع السجل ولا تعيد التغيير لمجرد ذلك');}
+   }finally{toggleBusy=false;render();}
+  }),
   referrals:()=>{if(!active()||!superAdmin())return '';if(!data().attributionsReady||!data().joinsReady||!state().allUsersReady||!state().allMerchantsReady)return '<section class="card">جاري تحميل تقرير الأكواد، لا نعرض الناقص كصفر.</section>';return referralReportHTML(referralReport(state().allUsers,state().allMerchants,data().joins,data().attributions),esc);},
   recordSignup:guard(async raw=>{if(!MARKETER_PROGRAM.enabled||!raw)return;const settings=await getDoc(doc(db,'settings','app'));if(!settings.exists()||settings.data().marketerProgramEnabled!==true)return;const code=String(raw).trim().toUpperCase();const q=await getDocs(query(collection(db,'users'),where('referralCode','==',code)));if(q.docs.length!==1)throw Error('كود التسجيل غير صالح أو غير فريد');const uid=auth.currentUser?.uid,owner=q.docs[0];if(!uid||uid===owner.id)return;await setDoc(doc(db,'signupAttributions',uid),{id:uid,referrerId:owner.id,code,createdAt:serverTimestamp()});}),
   candidate:()=>!active()||state().role!=='customer'?'':candidateCard(state().user.uid,data().joins,esc,active()&&data().ready),
