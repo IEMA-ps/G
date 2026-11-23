@@ -400,6 +400,7 @@ img{max-width:100%; display:block;}
 </style>
 <link rel="stylesheet" href="/brand.css?v=modals1">
 <script src="/brand.js" defer></script>
+<link rel="stylesheet" href="/admin-panel.css?v=admin-1">
 </head>
 <body>
 
@@ -485,6 +486,7 @@ img{max-width:100%; display:block;}
 <script src="/qrcode.js"></script>
 <script type="module">
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-1';
+import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-1';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
 import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
@@ -1213,10 +1215,13 @@ function subscribeDeliveryAgent(){
 }
 
 function subscribeAdmin(){
+  S.allUsersReady=false;S.allUsersError='';
+  S.adminAttributionStatus=isSuperAdmin()?'loading':'legacy';S.adminAttributions=[];
+  if(isSuperAdmin()) S.unsubs.push(onSnapshot(collection(db,'signupAttributions'),snap=>{S.adminAttributions=snap.docs.map(d=>({...d.data(),id:d.id}));S.adminAttributionStatus='ready';render();},()=>{S.adminAttributions=[];S.adminAttributionStatus='error';render();}));
   S.unsubs.push(onSnapshot(collection(db,'merchants'), snap=>{ S.allMerchantsReady=true;S.allMerchants = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'orders'), snap=>{ S.allOrders = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'subOrders'), snap=>{ S.allSubOrders = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
-  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsersReady=true;S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
+  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsersReady=true;S.allUsersError='';S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); },()=>{S.allUsersReady=false;S.allUsersError='تعذر تحميل الأعضاء. راجع صلاحية حساب الإدارة ثم أعد تحميل الصفحة.';render();}));
   S.unsubs.push(onSnapshot(collection(db,'settlements'), snap=>{ S.allSettlements = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'deliveryAgents'), snap=>{ S.allDeliveryAgents = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.price-b.price); render(); }));
@@ -2241,6 +2246,7 @@ function renderShell(){
       <span>${label}</span></button>`;
   }).join('') + adminExtra.map(x=>x==='sep' ? '<div class="nav-sep nav-extra"></div>' : `<button class="nav-btn nav-extra ${S.tab===x[0]?'active':''}" onclick="go('${x[0]}')"><span style="position:relative"><i class="fa-solid ${x[1]}"></i></span><span>${x[2]}</span></button>`).join('');
 
+  if(S.role==='admin') bn.innerHTML=adminNavigation(S.tab,isSuperAdmin(),{a_new_orders:S.allOrders.filter(o=>o.status==='PENDING_ADMIN').length,a_merchants:S.allMerchants.filter(m=>m.status==='PENDING').length});
   _shellBusy = true;
   renderMain();
   _shellBusy = false;
@@ -2332,7 +2338,7 @@ function renderMain(){
     mk_dashboard: renderMarketerDashboard, mk_merchants: renderMarketerMerchants, mk_earnings: renderMarketerEarnings, mk_tools: ()=>MarketerTools.render()
   };
   const fn = routes[S.tab] || renderHome;
-  el.innerHTML = fn();
+  el.innerHTML = (S.role==='admin'?adminPageHeading(S.tab,isSuperAdmin()):'')+fn();
   el.dataset.renderKey = renderKey;
   // Preserve each filter strip on selection and live refresh, then reveal only if needed.
   el.querySelectorAll('.seg').forEach((seg,index)=>{
@@ -4912,21 +4918,33 @@ window.saveAppSettings = async ()=>{
   UI.toast('تم حفظ الإعدادات بنجاح ✅');
 };
 
+window.openAdminMenu=()=>{if(S.role==='admin')UI.openModal(adminMenu(isSuperAdmin()));};
+window.searchAdminMembers=value=>{
+ S.aUserSearch=value;S.aUserPageSize=20;renderMain();
+ const input=document.getElementById('adminMemberSearch');if(input){input.focus();input.setSelectionRange(value.length,value.length);}
+};
 function renderAdminUsers(){
+  const search=S.aUserSearch||'',q=search.trim().toLocaleLowerCase();
+  const head=memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء كل مسوق</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
+  if(S.allUsersError)return head+`<section class="card" role="alert">${esc(S.allUsersError)}</section>`;
+  if(S.aUserView==='codes')return head+acquisitionHTML({users:S.allUsers,usersReady:S.allUsersReady===true,attributions:isSuperAdmin()?S.adminAttributions||[]:[],status:S.adminAttributionStatus||'loading',search},esc);
+  if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
+
   const seg = S.aUserFilter || 'ALL';
   const tabs = [['ALL','الكل'],['CUSTOMER','عملاء'],['MERCHANT','تجار'],['DELIVERY','مناديب'],['MARKETER','مسوّقون'],['ADMIN','إدارة']];
-  const list = seg==='ALL' ? S.allUsers : S.allUsers.filter(u=>(u.role||'').toUpperCase()===seg);
+  const list = S.allUsers.filter(u=>(seg==='ALL'||(u.role||'').toUpperCase()===seg)&&(!q||[u.firstName,u.lastName,[u.firstName,u.lastName].filter(Boolean).join(' '),u.email,u.phone,u.referralCode].some(v=>String(v||'').toLocaleLowerCase().includes(q))));
   const canManageAdmins = isSuperAdmin();
   const pageSize = S.aUserPageSize || 20;
   const visible = list.slice(0, pageSize);
-  return `
+  return head+`
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${seg===k?'active':''}" onclick="S.aUserFilter='${k}';S.aUserPageSize=20;renderMain()">${l}</button>`).join('')}</div>
     ${list.length? `<div class="list-gap">${visible.map(u=>{
       const roleLabel = u.role==='ADMIN' ? (u.adminRole==='STAFF'?'أدمن مساعد':'أدمن رئيسي') : u.role==='MERCHANT'?'تاجر':u.role==='DELIVERY'?'مندوب توصيل':u.role==='MARKETER'?'مسوّق':'عميل';
       return `<div class="card">
         <div class="row-between">
           <div><b style="font-size:13.5px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b>
-            <div style="font-size:12px;color:var(--ink-soft)">${esc(u.email||'')} ${u.phone?' · '+esc(u.phone):''}</div>
+            <div class="admin-member-contact">${esc(u.email||'')} ${u.phone?' · '+esc(u.phone):''}</div>
+            <div class="admin-code" dir="ltr">${esc(u.referralCode||'')}</div>
           </div>
           <span class="badge-chip">${roleLabel}</span>
         </div>
