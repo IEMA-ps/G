@@ -1,0 +1,80 @@
+// إشعارات الطلبات على تليجرام عبر Cloudflare Worker خاص بـ«على بابك».
+// موديول خفيف: دوال نقية + نداءات شبكة بسيطة. مفيش أي وصول لـ Firebase Firestore من هنا.
+// ملاحظة أمنية: APP_SECRET ظاهر في سورس الصفحة زي باقي كود الواجهة، فهو بس بيقلل العبث العشوائي
+// في endpoint الإشعارات (تأثيره إشعار مزعج، مش بيانات). ربط الحساب نفسه محمي بتوكن Firebase ID الحقيقي.
+
+// TODO قبل النشر: يتحدد رابط الـ Worker الحقيقي بعد أول deploy (wrangler deploy).
+export const WORKER_URL = 'https://ala-babk-tg-notify.PUT-SUBDOMAIN.workers.dev';
+// TODO قبل النشر: نفس القيمة اللي هتتحط في الـ Worker كسر APP_SECRET.
+export const APP_SECRET = 'PUT-APP-SECRET-HERE';
+
+export const ADMIN_KEY = 'role:ADMIN';
+export const merchantKey = merchantId => 'm:' + merchantId;
+export const agentKey = agentId => 'a:' + agentId;
+
+const MAX_TITLE = 200, MAX_MESSAGE = 3000;
+
+async function post(path, body, {token, fetchImpl} = {}) {
+  const doFetch = fetchImpl || globalThis.fetch;
+  const headers = {'content-type': 'application/json', 'x-app-secret': APP_SECRET};
+  if (token) headers['authorization'] = 'Bearer ' + token;
+  const res = await doFetch(WORKER_URL + path, {method: 'POST', headers, body: JSON.stringify(body || {})});
+  if (!res.ok) throw new Error('telegram worker http ' + res.status);
+  return res.json();
+}
+
+async function get(path, {token, fetchImpl} = {}) {
+  const doFetch = fetchImpl || globalThis.fetch;
+  const headers = {};
+  if (token) headers['authorization'] = 'Bearer ' + token;
+  const res = await doFetch(WORKER_URL + path, {headers});
+  if (!res.ok) throw new Error('telegram worker http ' + res.status);
+  return res.json();
+}
+
+// إرسال إشعار تليجرام (fire-and-forget): أي فشل بيتسجل في الكونسول بس، من غير ما يأثر على مسار الطلب.
+export function send(keys, title, message, fetchImpl) {
+  const cleanKeys = (keys || []).filter(k => typeof k === 'string' && k.length > 0).slice(0, 10);
+  if (!cleanKeys.length) return Promise.resolve(false);
+  const body = {
+    keys: cleanKeys,
+    title: String(title || '').slice(0, MAX_TITLE),
+    message: String(message || '').slice(0, MAX_MESSAGE)
+  };
+  return post('/notify', body, {fetchImpl})
+    .then(r => !!(r && r.sent > 0))
+    .catch(e => { console.warn('telegram notify failed', e); return false; });
+}
+
+// بدء ربط تليجرام: يرجع رابط t.me فيه كود ربط مؤقت (15 دقيقة). يتطلب توكن Firebase ID للمستخدم الحالي.
+export function linkStart({token, merchantId, deliveryAgentId, admin}, fetchImpl) {
+  return post('/link/start', {
+    merchantId: merchantId || null,
+    deliveryAgentId: deliveryAgentId || null,
+    admin: admin === true
+  }, {token, fetchImpl});
+}
+
+export function linkStatus(token, fetchImpl) {
+  return get('/link/status', {token, fetchImpl});
+}
+
+export function linkStop(token, fetchImpl) {
+  return post('/link/stop', {}, {token, fetchImpl});
+}
+
+// محتوى مودال الربط لكل حالة — دالة نقية عشان تتختبر وتتعاين في صفحة المعاينة.
+export function linkModalHTML(state) {
+  if (state === 'loading')
+    return '<p style="text-align:center;color:var(--ink-soft);font-size:13px;padding:18px 0"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل…</p>';
+  if (state === 'unavailable')
+    return '<p class="hint-box" style="padding:12px;margin:0">خدمة إشعارات تليجرام لسه بتتجهز. جرّب تاني بعد شوية.</p>';
+  if (state === 'linked')
+    return `<p class="hint-box" style="padding:12px;margin:0 0 14px">حسابك متصل ✅ — إشعارات الطلبات الجديدة بتوصلك على تليجرام فورًا.</p>
+      <button class="btn btn-danger" onclick="unlinkTelegram()"><i class="fa-solid fa-link-slash"></i> إلغاء الربط</button>`;
+  if (state === 'pending')
+    return `<p style="font-size:13px;line-height:1.9;margin:0 0 14px">فتحنالك البوت على تليجرام في نافذة جديدة. اضغط <b>Start / ابدأ</b> جوه الشات عشان يتم الربط، وبعدين ارجع هنا واضغط الزرار اللي تحت.</p>
+      <button class="btn btn-primary" onclick="checkTelegramLink()"><i class="fa-solid fa-rotate"></i> خلّصت الربط — تأكد</button>`;
+  return `<p style="font-size:13px;line-height:1.9;margin:0 0 14px">اربط حسابك ببوت «على بابك» على تليجرام، وهيوصلك إشعار فوري بكل طلب جديد يخصك، في شات البوت.</p>
+    <button class="btn btn-primary" onclick="startTelegramLink()"><i class="fa-brands fa-telegram"></i> ربط تليجرام</button>`;
+}
