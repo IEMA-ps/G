@@ -13,6 +13,7 @@
 <body>
 <header><a class="brand-link" href="/"><img src="/brand-lockup.svg" alt="على بابك"></a><span class="muted">دليل محلات منطقتك</span></header>
 <main>
+<button id="back" class="btn" style="width:auto;margin-bottom:14px">رجوع للصفحة السابقة</button>
 <div id="message" class="hero" role="status">جاري تحميل صفحة المتجر...</div>
 <article id="store" class="hidden">
 <section class="hero"><div class="hero-top"><div id="logoFallback" class="logo" aria-hidden="true">⌂</div><img id="logo" class="logo hidden" alt=""><div><span class="eyebrow">محل قريب منك</span><h1 id="name"></h1><div id="activity" class="muted"></div></div></div><div class="about"><span id="kind" class="badge"></span><p id="description"></p><p id="hours" class="muted"></p></div></section>
@@ -30,6 +31,10 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/fireba
 import { getFirestore,doc,getDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 import { phoneHref,mapHref } from '/merchant-plans.js?v=map-link-1';
 import {storeIdFromLocation,publicStoreUrl} from '/store-sharing.js?v=share-1';
+import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
+seedHistory('/',location.href);
+document.getElementById('back').onclick=()=>previousOr('/');
+window.addEventListener('popstate',()=>{if(!/^\/store(?:\/|$|\.html)/.test(location.pathname))location.replace(location.href);});
 const $=id=>document.getElementById(id);
 const id=storeIdFromLocation(location);let shareUrl=location.href;
 const config={apiKey:'AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE',authDomain:'ala-babk.firebaseapp.com',projectId:'ala-babk',appId:'1:728631367880:web:0d7b7e6be6131914e72dfd'};
