@@ -50,6 +50,13 @@ export async function createMemberRecord({db,doc,runTransaction,actorId,userId,r
     if(record.exists()) throw Error('record-already-exists');
     const patch=assignmentPatch(actor.exists()?actor.data():null,user.exists()?user.data():null,{id:recordId},role,recordId);
     const data=newMemberRecord(role,input,user.data(),userId,recordId,now,settings?.exists() && settings.data().merchantPlansV2===true);
+    if(role==='MERCHANT' && input.marketerCode){
+      if(!input.marketerId) throw Error('marketer-unavailable');
+      const mk=await tx.get(doc(db,'users',input.marketerId));
+      const marketer=mk.exists()?mk.data():null;
+      if(!marketer || marketer.role!=='MARKETER' || marketer.referralCode!==input.marketerCode) throw Error('marketer-unavailable');
+      data.marketerId=input.marketerId;data.marketerName=((marketer.firstName||'')+' '+(marketer.lastName||'')).trim();data.marketerSince=now;
+    }
     tx.set(recordRef,data);tx.update(userRef,patch);
   });
 }
@@ -67,6 +74,7 @@ export function memberRecordForm(user,role,esc){
   ${field('memberRecordWhatsapp','واتساب (اختياري، يستخدم الهاتف إذا تُرك فارغًا)',user.phone||'','type="tel" maxlength="30"')}
   ${merchant?field('memberRecordActivity','نوع النشاط','','required maxlength="120"'):field('memberRecordVehicle','وسيلة التوصيل','','required maxlength="50"')}
   ${field('memberRecordAddress',merchant?'عنوان المتجر':'منطقة العمل','','required maxlength="200"')}
+  ${merchant?field('memberRecordMarketer','كود المسوّق للمراجعة (اختياري)','','maxlength="64" autocomplete="off"'):''}
   ${merchant?field('memberRecordDescription','وصف المتجر (اختياري)','','maxlength="400"'):''}
   <div class="hint-box" style="font-size:12px;line-height:1.8;margin-bottom:12px">السجل الجديد قيد المراجعة، وليس نشطًا. لا اشتراك أو تحصيل تلقائي. سيدخل العضو بنفس حسابه كـ${type.label}.</div>
   <p id="memberRecordError" role="alert" style="color:var(--danger);font-size:13px"></p>
@@ -75,14 +83,14 @@ export function memberRecordForm(user,role,esc){
 
 // Parse only the app's known request labels. The pasted text is never executable.
 export function parseMemberRequest(text,role){
-  const labels={'الاسم':'person','الهاتف':'phone','اسم المتجر':'business','النشاط':'activity','العنوان':'address','وسيلة التوصيل':'vehicle','منطقة العمل':'address','ملاحظات':'notes','معرّف الحساب':'accountId','بريد الحساب':'accountEmail'};
+  const labels={'كود المسوّق للمراجعة':'marketerCode','الاسم':'person','الهاتف':'phone','اسم المتجر':'business','النشاط':'activity','العنوان':'address','وسيلة التوصيل':'vehicle','منطقة العمل':'address','ملاحظات':'notes','معرّف الحساب':'accountId','بريد الحساب':'accountEmail'};
   const parsed={};
   for(const line of String(text||'').slice(0,12000).split(/\r?\n/)){
     const match=line.match(/^\s*([^:：]+)\s*[:：]\s*(.*?)\s*$/);if(!match) continue;
     const key=labels[match[1].trim()];if(key && match[2])parsed[key]=match[2].replace(/[\u0000-\u001f]/g,' ').slice(0,key==='notes'?400:200);
   }
   const fields={};
-  if(role==='MERCHANT'){if(parsed.business)fields.name=parsed.business;if(parsed.person)fields.manager=parsed.person;if(parsed.activity)fields.activity=parsed.activity;}
+  if(role==='MERCHANT'){if(parsed.business)fields.name=parsed.business;if(parsed.person)fields.manager=parsed.person;if(parsed.activity)fields.activity=parsed.activity;if(parsed.marketerCode)fields.marketerCode=parsed.marketerCode.toUpperCase();}
   if(role==='DELIVERY'){if(parsed.person)fields.name=parsed.person;if(parsed.vehicle)fields.vehicle=parsed.vehicle;}
   if(parsed.phone){fields.phone=parsed.phone;fields.whatsapp=parsed.phone;}
   if(parsed.address)fields.address=parsed.address;
