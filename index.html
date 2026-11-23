@@ -506,6 +506,7 @@ import { assignmentType, createMemberRecord, memberRecordForm, parseMemberReques
 import { locationPicker, installLocations } from '/egypt-locations.js?v=eg-2';
 installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
+import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,typeOptions,filterStoresByType,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
@@ -1560,7 +1561,8 @@ function merchantCanEditProducts(){
   if(!MerchantPlans.canOrder(S.myMerchant,S.settings.subsEnforced)){UI.toast('إضافة المنتجات متاحة لمتجر نشط بباقة طلبات سارية');return false;}
   return true;
 }
-function publicStoreUrl(id){const u=new URL('/store.html',location.origin);u.searchParams.set('id',id);return u.href;}
+function publicStoreUrl(id){const m=[S.myMerchant,...(S.allMerchants||[]),...(S.merchants||[])].find(m=>m&&(m.id||m._id)===id);return namedStoreUrl(m||{id,businessName:'store'});}
+window.openStoreShare=id=>{const m=[S.myMerchant,...(S.allMerchants||[]),...(S.merchants||[])].find(m=>m&&(m.id||m._id)===id);if(m)StoreShare.open(m,esc,UI);};
 function publicMerchantData(m){
   const out={};
   for(const k of ['id','businessName','description','address','phone','whatsappNumber','latitude','longitude','googleMapsUrl','logoUrl','activityType','openTime','closeTime','status','subEndsAt','subPlanType']) if(m[k]!==undefined) out[k]=m[k];
@@ -3714,7 +3716,7 @@ function renderMerchantProfile(){
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-briefcase"></i> النشاط</span><b style="font-size:13px">${esc(typeLabel(m))}</b></div>
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-location-dot"></i> العنوان</span><b style="font-size:13px">${esc(m.address)}</b></div>
     </div>
-    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">الأرقام والعنوان واللوكيشن في الصفحة التعريفية متاحة للزوار بدون تسجيل دخول بعد اعتماد الاشتراك وإعداد صلاحيات القراءة.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}" target="_blank" rel="noopener">معاينة الصفحة</a></div>`:''}
+    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">الأرقام والعنوان واللوكيشن في الصفحة التعريفية متاحة للزوار بدون تسجيل دخول بعد اعتماد الاشتراك وإعداد صلاحيات القراءة.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}" target="_blank" rel="noopener">معاينة الصفحة</a><button class="btn btn-primary" onclick="openStoreShare('${m.id}')">رابط المتجر وQR · تحميل وطباعة</button></div>`:''}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openChangePassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
@@ -4079,6 +4081,7 @@ function renderAdminMerchants(){
           ${m.status==='REJECTED'?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="returnMerchantToReview('${m.id}')">إعادة للمراجعة</button>`:''}
           ${m.status!=='ACTIVE'?`<button class="btn btn-primary btn-sm" style="width:auto;flex:1" onclick="setMerchantStatus('${m.id}','ACTIVE')">تفعيل</button>`:''}
           ${m.status!=='SUSPENDED'?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="setMerchantStatus('${m.id}','SUSPENDED')">تعليق</button>`:''}
+          <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openStoreShare('${m.id}')">رابط المتجر وQR</button>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openGrantSub('${m.id}')"><i class="fa-solid fa-gem"></i> اشتراك</button>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMerchantAccount('${m.id}')"><i class="fa-solid fa-key"></i> يوزر وباسورد</button>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openLinkMerchantUser('${m.id}')"><i class="fa-solid fa-link"></i> ربط حساب</button>
