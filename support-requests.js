@@ -31,9 +31,9 @@ export function requestForm(kind, profile, available, esc,locationHTML='',typeHT
   <div class="field"><label for="rqArea">${merchant?'عنوان المتجر التفصيلي':'تفاصيل منطقة العمل'}</label><input id="rqArea" name="area" required maxlength="200"></div>
   ${merchant?`<div class="field"><label for="rqMarketer">كود المسوّق (اختياري)</label><input id="rqMarketer" name="marketerCode" maxlength="64" value="${esc(profile.marketerCode||'')}"></div>`:''}
   <div class="field"><label for="rqNotes">ملاحظات (اختياري)</label><textarea id="rqNotes" name="notes" maxlength="400"></textarea></div>
-  <p style="font-size:12px;line-height:1.8;margin-bottom:12px">الرسالة تشمل معرّف حسابك وبريده لمساعدة الدعم في المتابعة. لا تضف كلمة مرور أو بيانات دفع.</p>
+  <p style="font-size:12px;line-height:1.8;margin-bottom:12px">الرسالة فيها رقم حسابك وبريدك عشان الدعم يقدر يتابع طلبك. ما تكتبش كلمة مرور أو بيانات دفع.</p>
   <p id="requestError" role="alert" style="color:var(--danger)"></p>
   <button class="btn btn-primary" type="submit" ${available?'':'disabled'}>مراجعة الطلب قبل واتساب</button>
-  <div id="requestPreview" class="hidden" style="margin-top:16px" aria-live="polite"><h4>الرسالة الجاهزة</h4><pre id="requestText" style="white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:13px;line-height:1.8;margin:12px 0"></pre><a id="requestWhatsApp" class="btn btn-primary" target="_blank" rel="noopener noreferrer">فتح واتساب لإرسال الطلب</a><p style="font-size:12px;margin-top:8px">فتح واتساب لا يعني إرسال الطلب. اضغط إرسال هناك.</p></div>
+  <div id="requestPreview" class="hidden" style="margin-top:16px" aria-live="polite"><h4>الرسالة الجاهزة</h4><pre id="requestText" style="white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:13px;line-height:1.8;margin:12px 0"></pre><a id="requestWhatsApp" class="btn btn-primary" target="_blank" rel="noopener noreferrer">فتح واتساب لإرسال الطلب</a><p style="font-size:12px;margin-top:8px">واتساب هيفتح بالرسالة جاهزة، بس الطلب مش هيتبعت غير لما تضغط «إرسال» هناك.</p></div>
   </form>`;
 }
