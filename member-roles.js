@@ -62,7 +62,7 @@ export async function createMemberRecord({db,doc,runTransaction,actorId,userId,r
   });
 }
 
-export function memberRecordForm(user,role,esc,locationHTML='',mapHTML=''){
+export function memberRecordForm(user,role,esc,locationHTML='',mapHTML='',typeHTML=''){
   const merchant=role==='MERCHANT',type=assignmentType(role),person=((user.firstName||'')+' '+(user.lastName||'')).trim();
   const field=(id,label,value='',attrs='')=>`<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${esc(value)}" ${attrs}></div>`;
   return `<div class="modal-head"><h3>إنشاء ${merchant?'متجر':'سجل مندوب'} وتعيين العضو</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div>
@@ -73,7 +73,7 @@ export function memberRecordForm(user,role,esc,locationHTML='',mapHTML=''){
   ${merchant?field('memberRecordManager','اسم المسؤول',person,'maxlength="120"'):''}
   ${field('memberRecordPhone','رقم الهاتف',user.phone||'','required type="tel" maxlength="30"')}
   ${field('memberRecordWhatsapp','واتساب (اختياري، يستخدم الهاتف إذا تُرك فارغًا)',user.phone||'','type="tel" maxlength="30"')}
-  ${merchant?field('memberRecordActivity','نوع النشاط','','required maxlength="120"'):field('memberRecordVehicle','وسيلة التوصيل','','required maxlength="50"')}
+  ${merchant?(typeHTML||field('memberRecordActivity','نوع النشاط','','required maxlength="120"')):field('memberRecordVehicle','وسيلة التوصيل','','required maxlength="50"')}
   ${locationHTML}
   ${mapHTML}
   ${field('memberRecordAddress',merchant?'عنوان المتجر':'منطقة العمل','','required maxlength="200"')}
