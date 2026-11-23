@@ -394,6 +394,7 @@ img{max-width:100%; display:block;}
 .merchant-welcome{text-align:right;padding:18px}.merchant-welcome h3{font-size:19px;margin:12px 0 8px;overflow-wrap:anywhere}.welcome-note{font-size:12px;color:var(--ink-soft);line-height:1.85}.welcome-plans{display:grid;gap:10px}.welcome-plan{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface);min-width:0}.welcome-plan> b{font-size:15px;color:var(--teal)}.welcome-plan p{font-size:12px;line-height:1.8;margin:6px 0}.welcome-prices{display:flex;flex-wrap:wrap;gap:6px}.welcome-prices span{display:flex;gap:7px;align-items:center;background:var(--paper);border-radius:8px;padding:7px;font-size:11.5px}.welcome-prices b{color:var(--teal);white-space:nowrap}.welcome-plan .welcome-fee{color:var(--ink-soft);font-size:11px;margin-bottom:0}.sub-payment-guide{font-size:12px;line-height:1.85}.sub-payment-guide ol{padding-inline-start:22px;margin:8px 0 12px}.sub-payment-guide li{padding-inline-start:2px;margin-bottom:6px}.sub-payment-destination{font-size:13px;line-height:1.85;white-space:pre-line;overflow-wrap:anywhere;background:var(--teal-tint);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px;margin:7px 0;font-weight:700;unicode-bidi:plaintext}
 .growth-card{margin-bottom:14px;min-width:0}.growth-card h3{margin:10px 0;font-size:18px}.growth-card p{font-size:12px;line-height:1.9;color:var(--ink-soft)}.growth-card label{font-size:12px}.growth-card input{display:block;width:100%;min-width:0;border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px;font-size:11px;text-align:left}.growth-code{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;font-size:12px}.growth-code b{overflow-wrap:anywhere;word-break:break-all;color:var(--teal);font-size:15px;min-width:0}.growth-actions{display:flex;gap:8px}.growth-actions .btn{flex:1;min-width:0}.growth-counts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.growth-counts>div{background:var(--teal-tint);border-radius:14px;padding:14px 8px;text-align:center}.growth-counts b{display:block;font-size:28px;color:var(--teal)}.growth-counts span{display:block;font-size:11px}.growth-card .growth-note{font-size:11px}
 .founding-offer{border:1px solid var(--gold);margin:14px 0;background:linear-gradient(145deg,var(--gold-tint),var(--surface) 65%)}.founding-offer h3{margin:12px 0 8px!important}.founding-offer p{font-size:12px;line-height:1.9}.founding-preview{background:var(--ink);color:var(--paper);font-size:11px;padding:8px;border-radius:10px;margin-bottom:12px}.founding-help{color:var(--ink-soft)}
+.password-hint{font-size:12px;line-height:1.85;color:var(--ink-soft);margin:8px 0}.password-checks{list-style:none;padding:0;margin:8px 0 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11.5px;line-height:1.8}.password-checks li{border-radius:8px;padding:5px 7px;background:var(--paper)}.password-checks .met{color:var(--success)}.password-checks .missing{color:var(--ink-soft)}.password-error{color:var(--danger);font-size:12px;line-height:1.8}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>
 <link rel="stylesheet" href="/brand.css?v=modals1">
 <script src="/brand.js" defer></script>
@@ -433,7 +434,7 @@ img{max-width:100%; display:block;}
         <div class="field"><label>الاسم الأخير</label><input type="text" id="regLast"></div>
         <div class="field"><label>رقم الهاتف</label><input type="tel" id="regPhone" required placeholder="01xxxxxxxxx"></div>
         <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" required></div>
-        <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" required minlength="6" placeholder="6 أحرف على الأقل"></div>
+        <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" required minlength="8" autocomplete="new-password" aria-describedby="regPasswordHint regPasswordChecks" oninput="updatePasswordChecklist(this,'regPasswordChecks')" placeholder="8 أحرف على الأقل"><p id="regPasswordHint" class="password-hint">8 أحرف على الأقل، حرف إنجليزي كبير وصغير ورقم. الرموز مسموحة ومش إلزامية.</p><div id="regPasswordChecks"></div></div>
         <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="لو صاحبك دعاك، اكتب كوده هنا" style="text-transform:uppercase"></div>
 
         <button class="btn btn-primary" type="submit" id="registerBtn"><i class="fa-solid fa-user-plus"></i> إنشاء الحساب</button>
@@ -498,6 +499,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
 import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from './member-roles.js?v=marketer-attribution-1';
+import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from './password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from './support-requests.js';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from './auth-policy.js?v=account-diagnostics-1';
 
@@ -834,6 +836,7 @@ const Auth = {
       const email = document.getElementById('regEmail').value.trim();
       if(INTERNAL_EMAIL.test(email)){ Auth.showError('استخدم بريد حقيقي تقدر تفتح عليه رابط التأكيد، مش بريد داخلي.'); return; }
       const password = document.getElementById('regPassword').value;
+      const policyError=passwordError(password);if(policyError){Auth.showError(policyError);return;}
       const first = document.getElementById('regFirst').value.trim();
       const last = document.getElementById('regLast').value.trim();
       const phone = document.getElementById('regPhone').value.trim();
@@ -890,7 +893,7 @@ const Auth = {
     const c = err.code || '';
     if(c.includes('email-already-in-use')) return 'البريد الإلكتروني مستخدم بالفعل';
     if(c.includes('invalid-email')) return 'صيغة البريد الإلكتروني غير صحيحة';
-    if(c.includes('weak-password')) return 'كلمة المرور ضعيفة، استخدم 6 أحرف على الأقل';
+    if(c.includes('weak-password') || c.includes('password-does-not-meet-requirements')) return 'كلمة المرور لا تطابق شروط الأمان. '+PASSWORD_HINT;
     if(c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found')) return 'البريد الإلكتروني أو كلمة المرور غير صحيحة';
     if(c.includes('too-many-requests')) return 'محاولات كثيرة، حاول بعد قليل';
     return 'حدث خطأ، حاول مرة أخرى';
@@ -4197,7 +4200,7 @@ const validUsername = (u)=>/^[a-z0-9._-]{3,30}$/.test(u);
 async function createMerchantAccount(merchantId, username, password){
   username = (username||'').trim().toLowerCase();
   if(!validUsername(username)) throw new Error('اسم المستخدم لازم يكون 3-30 حرف إنجليزي صغير أو أرقام أو . _ -');
-  if((password||'').length<6) throw new Error('كلمة المرور 6 أحرف على الأقل');
+  const policyError=passwordError(password);if(policyError)throw new Error(policyError);
   const m = S.allMerchants.find(x=>x.id===merchantId);
   if(!m) throw new Error('المتجر غير موجود');
   const email = username+'@'+USERNAME_DOMAIN;
@@ -4226,21 +4229,22 @@ async function createMerchantAccount(merchantId, username, password){
 }
 window.openMerchantAccount = (mid)=>{
   const m = S.allMerchants.find(x=>x.id===mid); if(!m) return;
-  const gen = Math.random().toString(36).slice(2,6)+Math.floor(1000+Math.random()*9000);
+  const gen = generateAccountPassword();
   UI.openModal(`
     <div class="modal-head"><h3>حساب دخول «${esc(m.businessName)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     ${m.ownerId?`<div class="hint-box" style="margin-bottom:12px"><i class="fa-solid fa-triangle-exclamation"></i> المتجر له حساب حالي${m.ownerUsername?` (<b dir="ltr">${esc(m.ownerUsername)}</b>)`:''}. إنشاء حساب جديد هيشيل صلاحية التاجر من القديم.</div>`:''}
     <div class="field"><label>اسم المستخدم (إنجليزي)</label><input id="maUser" dir="ltr" autocapitalize="none" placeholder="مثال: alnoor.market" style="text-align:right"></div>
-    <div class="field"><label>كلمة المرور</label><div style="display:flex;gap:8px"><input id="maPass" dir="ltr" value="${gen}" style="flex:1;text-align:right"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('maPass').value=Math.random().toString(36).slice(2,6)+Math.floor(1000+Math.random()*9000)"><i class="fa-solid fa-rotate"></i></button></div></div>
+    <p class="password-hint">${PASSWORD_HINT}</p><div class="field"><label>كلمة المرور</label><div style="display:flex;gap:8px"><input id="maPass" dir="ltr" value="${gen}" style="flex:1;text-align:right"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('maPass').value=generateAccountPassword()"><i class="fa-solid fa-rotate"></i></button></div></div>
     <p style="font-size:12px;color:var(--ink-soft);line-height:1.7">كلمة المرور بتظهر مرة واحدة بس بعد الإنشاء — انسخها وابعتها للتاجر. التاجر يقدر يغيّرها من «متجري».</p>
     <button class="btn btn-primary" id="maBtn" onclick="saveMerchantAccount('${mid}')">إنشاء الحساب</button>
     ${m.ownerId && useBackend() ? `<button class="btn btn-ghost" style="margin-top:10px" onclick="resetMerchantPassword('${m.ownerId}')"><i class="fa-solid fa-key"></i> تغيير كلمة مرور الحساب الحالي</button>`:''}`);
 };
 window.resetMerchantPassword = async (userId)=>{
   if(!isSuperAdmin()) return;
-  const pw = prompt('كلمة المرور الجديدة (6 أحرف على الأقل):', Math.random().toString(36).slice(2,6)+Math.floor(1000+Math.random()*9000));
+  const pw = prompt('كلمة المرور الجديدة: '+PASSWORD_HINT, generateAccountPassword());
   if(!pw) return;
-  try{ await callFn('setUserPassword',{userId, newPassword:pw.trim()}); window._lastCred='كلمة المرور الجديدة: '+pw.trim(); UI.toast('تم التغيير ✅ — اتنسخت للحافظة'); copyText(window._lastCred); }
+  const policyError=passwordError(pw);if(policyError){UI.toast(policyError);return;}
+  try{ await callFn('setUserPassword',{userId, newPassword:pw}); window._lastCred='كلمة المرور الجديدة: '+pw; UI.toast('تم التغيير ✅ — اتنسخت للحافظة'); copyText(window._lastCred); }
   catch(e){ UI.toast('⚠️ '+e.message); }
 };
 window.saveMerchantAccount = async (mid)=>{
@@ -4257,22 +4261,29 @@ window.saveMerchantAccount = async (mid)=>{
   }catch(err){ btn.disabled = false; UI.toast('⚠️ '+(err&&err.message?err.message:err)); }
 };
 window.copyText = window.copyText || (async (t)=>{ try{ await navigator.clipboard.writeText(t); UI.toast('تم النسخ ✅'); }catch(e){ UI.toast(t); } });
+window.generateAccountPassword=generateAccountPassword;
+window.updatePasswordChecklist=(input,target)=>{
+  const el=document.getElementById(target);if(el)el.innerHTML=passwordChecklist(input.value);
+};
 window.openChangePassword = ()=>{
   UI.openModal(`
     <div class="modal-head"><h3>تغيير كلمة المرور</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <div class="field"><label>كلمة المرور الحالية</label><input id="cpOld" type="password"></div>
-    <div class="field"><label>كلمة المرور الجديدة (6 أحرف على الأقل)</label><input id="cpNew" type="password"></div>
+    <div class="field"><label>كلمة المرور الحالية</label><input id="cpOld" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="cpNew">كلمة المرور الجديدة</label><input id="cpNew" type="password" minlength="8" autocomplete="new-password" aria-describedby="cpHint cpChecks cpError" oninput="updatePasswordChecklist(this,'cpChecks')"><p id="cpHint" class="password-hint">${PASSWORD_HINT}</p><div id="cpChecks">${passwordChecklist('')}</div><p id="cpError" class="password-error" role="alert"></p></div>
     <button class="btn btn-primary" onclick="saveChangePassword()">حفظ</button>`);
 };
 window.saveChangePassword = async ()=>{
   const oldP = document.getElementById('cpOld').value, newP = document.getElementById('cpNew').value;
-  if(newP.length<6){ UI.toast('كلمة المرور الجديدة 6 أحرف على الأقل'); return; }
+  const policyError=passwordError(newP),error=document.getElementById('cpError');
+  if(error)error.textContent=policyError;
+  if(policyError){document.getElementById('cpNew').focus();return;}
   try{
     const u = auth.currentUser;
     await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, oldP));
     await updatePassword(u, newP);
     UI.closeModal(); UI.toast('تم تغيير كلمة المرور ✅');
   }catch(err){
+    if((err.code||'').includes('weak-password')||(err.code||'').includes('password-does-not-meet-requirements')){if(error)error.textContent='كلمة المرور لا تطابق شروط الأمان. '+PASSWORD_HINT;return;}
     UI.toast((err.code||'').includes('invalid-credential')||(err.code||'').includes('wrong-password') ? 'كلمة المرور الحالية غير صحيحة' : '⚠️ تعذر التغيير: '+(err.message||err));
   }
 };
