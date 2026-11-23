@@ -1,0 +1,8 @@
+# Only application routes. Assets, store.html and Firebase paths are not rewritten here.
+/customer/* /index.html 200
+/merchant/* /index.html 200
+/delivery/* /index.html 200
+/marketer/* /index.html 200
+/admin/* /index.html 200
+/login /index.html 200
+/register /index.html 200
