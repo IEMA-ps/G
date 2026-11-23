@@ -1,5 +1,7 @@
-import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
-import {doc,setDoc,updateDoc,getDoc} from 'firebase/firestore';
+import {createRequire} from 'node:module';
+const require=createRequire(new URL('./tests/auth-emulator/package.json',import.meta.url));
+const {initializeTestEnvironment,assertSucceeds,assertFails}=require('@firebase/rules-unit-testing');
+const {doc,setDoc,updateDoc,getDoc}=require('firebase/firestore');
 import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 for(const proposed of [false,true]){
