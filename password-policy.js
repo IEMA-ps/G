@@ -20,5 +20,5 @@ export function generateAccountPassword(){
     for(const n of bytes){if(n<limit)result+=alphabet[n%alphabet.length];if(result.length===12)break;}
     if(!passwordError(result))return result;
   }
-  throw Error('تعذّر اقتراح كلمة مرور. اكتبها يدويًا بالشروط الموضّحة.');
+  throw Error('مش قادرين نقترح كلمة مرور دلوقتي. اكتب واحدة بنفسك بالشروط اللي قدامك.');
 }
