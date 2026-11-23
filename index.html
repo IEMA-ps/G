@@ -3284,7 +3284,7 @@ function renderProfile(){
     </div>
     ${S.profile.referralCode?`<div class="card" style="margin-top:12px;text-align:center">
       <p style="font-size:13px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-user-group" style="color:var(--teal)"></i> ادعُ صديقك وخدوا نقاط مع بعض</p>
-      <div style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px">${esc(S.profile.referralCode)}</div>
+      <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(S.profile.referralCode)}</div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" style="width:auto" onclick="shareReferral()"><i class="fa-brands fa-whatsapp"></i> شارك كودك</button>
         <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>

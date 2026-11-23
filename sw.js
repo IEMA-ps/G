@@ -1,5 +1,5 @@
 // Cache only public local app files. Never cache Firebase data, auth requests or external resources.
-const CACHE='alababak-v11-account-diagnostics';
+const CACHE='alababak-referral-wrap-v1';
 const SHELL=['/support-requests.js','/auth-policy.js','/store.html','/merchant-plans.js','/','/index.html','/manifest.webmanifest','/icon-192.png','/icon-512.png','/maskable-512.png','/apple-touch-icon.png','/icon.svg','/qrcode.js','/marketer-tools.js','/marketing-config.js','/pwa-install.js','/brand.css','/brand.js','/logo.svg','/logo-reverse.svg'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('alababak-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
