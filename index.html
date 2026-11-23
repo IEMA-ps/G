@@ -400,7 +400,7 @@ img{max-width:100%; display:block;}
 </style>
 <link rel="stylesheet" href="/brand.css?v=modals1">
 <script src="/brand.js" defer></script>
-<link rel="stylesheet" href="/admin-panel.css?v=admin-1">
+<link rel="stylesheet" href="/admin-panel.css?v=admin-2">
 </head>
 <body>
 
@@ -439,7 +439,7 @@ img{max-width:100%; display:block;}
         <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" required></div>
         <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" required minlength="8" autocomplete="new-password" aria-describedby="regPasswordHint regPasswordChecks" oninput="updatePasswordChecklist(this,'regPasswordChecks')" placeholder="8 أحرف على الأقل"><p id="regPasswordHint" class="password-hint">8 أحرف على الأقل، حرف إنجليزي كبير وصغير ورقم. الرموز مسموحة ومش إلزامية.</p><div id="regPasswordChecks"></div></div>
         <p class="location-note">اختار منطقتك لعرض المتاجر المسجلة في نفس المنطقة، مش حسب مسافة فعلية. عنوان التوصيل بالتفصيل تضيفه بعد الدخول.</p><div id="regLocation"></div>
-        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="لو صاحبك دعاك، اكتب كوده هنا" style="text-transform:uppercase"></div>
+        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase"></div>
 
         <button class="btn btn-primary" type="submit" id="registerBtn"><i class="fa-solid fa-user-plus"></i> إنشاء الحساب</button>
       </form>
@@ -486,7 +486,7 @@ img{max-width:100%; display:block;}
 <script src="/qrcode.js"></script>
 <script type="module">
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-1';
-import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-1';
+import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-2';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
 import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
@@ -804,12 +804,16 @@ const Auth = {
   async googleLogin(){
     if(Auth.googleBusy || Auth.registering || Auth.loginBusy) return;
     Auth.googleBusy = true;
+    // Capture this attempt only. New Google profiles consume it; existing accounts never reattribute.
+    Auth.googleReferralCode=(document.getElementById('regReferral')?.value||'').trim().toUpperCase();
     const button = document.getElementById('googleLoginBtn'); button.disabled = true;
     try{
       // A direct user click opens the popup. No extra Google API scopes or token storage.
-      await signInWithPopup(auth, new GoogleAuthProvider());
+      const result=await signInWithPopup(auth, new GoogleAuthProvider());
+      // Own the bootstrap so the captured code outlives the popup promise.
+      if(result?.user){try{await bootAuthUser(result.user);}catch(e){showAccountLoadFailure(e);}}
     }catch(e){ Auth.showError(googleError(e.code)); }
-    finally{ Auth.googleBusy = false; button.disabled = false; }
+    finally{ Auth.googleReferralCode=''; Auth.googleBusy = false; button.disabled = false; }
   },
   switchTab(t){
     document.getElementById('tabLogin').classList.toggle('active', t==='login');
@@ -972,6 +976,7 @@ function showSignedOut(){
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
 async function bootAuthUser(user) {
+  const googleSignupCode=Auth.googleReferralCode||new URLSearchParams(location.search).get('marketer')||'';
   S.showAllStores=false;
   const epoch = ++authEpoch;
   clearSubs();
@@ -991,7 +996,7 @@ async function bootAuthUser(user) {
       const ref = doc(db,'users',user.uid); const existing = await tx.get(ref);
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
-    await window.Program?.recordSignup(new URLSearchParams(location.search).get('marketer')||'');
+    await window.Program?.recordSignup(googleSignupCode);
   }
   bootStage='profile-read-back';
   const finalSnap = psnap.exists() ? psnap : await getDoc(doc(db,'users',user.uid));
@@ -1040,7 +1045,7 @@ function showAccountLoadFailure(e){
   Auth.showError(problem.message);
 }
 onAuthStateChanged(auth, async user=>{
-  if(Auth.registering) return;
+  if(Auth.registering || Auth.googleBusy) return;
   try{ await bootAuthUser(user); }
   catch(e){ showAccountLoadFailure(e);
   }
@@ -4925,7 +4930,7 @@ window.searchAdminMembers=value=>{
 };
 function renderAdminUsers(){
   const search=S.aUserSearch||'',q=search.trim().toLocaleLowerCase();
-  const head=memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء كل مسوق</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
+  const head=memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
   if(S.allUsersError)return head+`<section class="card" role="alert">${esc(S.allUsersError)}</section>`;
   if(S.aUserView==='codes')return head+acquisitionHTML({users:S.allUsers,usersReady:S.allUsersReady===true,attributions:isSuperAdmin()?S.adminAttributions||[]:[],status:S.adminAttributionStatus||'loading',search},esc);
   if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
