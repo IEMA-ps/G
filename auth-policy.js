@@ -19,7 +19,7 @@ export function googleError(code) {
     'auth/popup-closed-by-user':'تم إغلاق نافذة Google. تقدر تحاول تاني أو تدخل ببريدك وكلمة المرور.',
     'auth/cancelled-popup-request':'فيه محاولة دخول مفتوحة بالفعل. كمّلها الأول.',
     'auth/popup-blocked':'المتصفح منع نافذة Google. اسمح بالنوافذ المنبثقة للموقع وحاول تاني.',
-    'auth/account-exists-with-different-credential':'البريد مرتبط بطريقة دخول تانية. ادخل بالطريقة الأصلية. لا تعمل حسابًا جديدًا؛ تواصل مع الإدارة لو محتاج ربط Google.',
+    'auth/account-exists-with-different-credential':'البريد مرتبط بطريقة دخول تانية. ادخل بالطريقة الأصلية. ماتعملش حساب جديد؛ كلّم الإدارة لو محتاج تربط Google.',
     'auth/operation-not-allowed':'دخول Google غير متاح حاليًا. ادخل ببريدك وكلمة المرور أو تواصل مع الإدارة.',
     'auth/unauthorized-domain':'دخول Google غير مفعّل لعنوان الموقع ده. تواصل مع الإدارة.',
     'auth/network-request-failed':'تعذّر الاتصال. راجع الإنترنت وحاول تاني.'
@@ -33,6 +33,6 @@ export function accountLoadError(error) {
   const labels={'profile-read':'قراءة الحساب','profile-create':'إنشاء بيانات الحساب','profile-read-back':'تأكيد حفظ الحساب','profile-prepare':'تجهيز الحساب','app-open':'فتح التطبيق',unknown:'تحميل الحساب'};
   const known=['permission-denied','unavailable','deadline-exceeded','unauthenticated','failed-precondition','resource-exhausted','profile-needs-admin-repair'];
   const safeCode=known.includes(code)?code:'unexpected';
-  const reason=code==='permission-denied'?'تم رفض الوصول لبيانات الحساب. تواصل مع الدعم، لا تحتاج لإنشاء حساب جديد.':code==='unauthenticated'?'جلسة الدخول تحتاج تحديثًا. اخرج ثم ادخل تاني.':['unavailable','deadline-exceeded'].includes(code)?'تعذّر الاتصال بخدمة البيانات. راجع الاتصال وأعد المحاولة.':code==='profile-needs-admin-repair'?'بيانات التسجيل لم تكتمل. تواصل مع الإدارة، ولا تعمل حسابًا جديدًا.':'تم الدخول لكن تعذّر إكمال فتح الحساب. أعد المحاولة، ولو تكرر الخطأ ابعت رمز التشخيص للدعم.';
+  const reason=code==='permission-denied'?'مش قادرين نوصل لبيانات حسابك بالصلاحيات الحالية. كلّم الدعم، وماتعملش حساب جديد.':code==='unauthenticated'?'جلسة دخولك محتاجة تتحدث. اخرج من الحساب وادخل تاني.':['unavailable','deadline-exceeded'].includes(code)?'مش قادرين نتصل بخدمة البيانات. راجع الإنترنت وجرب تاني.':code==='profile-needs-admin-repair'?'بيانات تسجيلك لسه مش كاملة. كلّم الإدارة، وماتعملش حساب جديد.':'دخلت بحسابك، بس مش قادرين نكمل فتحه. جرب تاني، ولو المشكلة اتكررت ابعت كود التشخيص للدعم.';
   return {code:safeCode,stage,message:reason+' ('+labels[stage]+' / '+safeCode+')'};
 }

@@ -125,14 +125,14 @@ export function mapPreview(raw){
 }
 export function mapPreviewHTML(raw,esc){
   const p=mapPreview(raw);
-  if(p.state==='invalid')return '<p role="alert" style="color:var(--danger);font-size:12px">أدخل رابط Google Maps صحيح يبدأ بـ https://</p>';
-  if(p.state==='empty')return '<p style="font-size:12px;color:var(--ink-soft)">الصق رابط لوكيشن المتجر لعرض معاينة الخريطة هنا.</p>';
+  if(p.state==='invalid')return '<p role="alert" style="color:var(--danger);font-size:12px">حط رابط Google Maps صحيح، ويكون بدايته https://</p>';
+  if(p.state==='empty')return '<p style="font-size:12px;color:var(--ink-soft)">الصق رابط لوكيشن متجرك، وهتشوف معاينة الخريطة هنا.</p>';
   const note=p.embed?'راجع العلامة على الخريطة قبل الحفظ. لو الخريطة مش ظاهرة، افتح الرابط في Google Maps.':'الرابط هيتحفظ عند الضغط على حفظ. لا نقدر نحدد نقطة مؤكدة للمعاينة من الرابط ده، ومش هنعرض مكان تخميني. افتحه في Google Maps وانسخ الرابط الكامل الذي يحتوي على إحداثيات، أو رابط تضمين الخريطة.';
   return (p.embed?'<iframe title="خريطة موقع المتجر من Google" src="'+esc(p.embed)+'" width="100%" height="240" style="display:block;border:0;border-radius:16px;min-width:200px" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>':'')+'<p style="font-size:12px;line-height:1.9;color:var(--ink-soft)">'+note+'</p><a href="'+esc(p.href)+'" target="_blank" rel="noopener noreferrer" style="font-size:12px">افتح اللوكيشن في Google Maps</a>';
 }
 export function mapField(id,m,esc){
   const value=mapInputValue(m);
-  return '<div class="field"><label for="'+id+'">رابط اللوكيشن من Google Maps (اختياري)</label><input id="'+id+'" type="url" dir="ltr" maxlength="4096" value="'+esc(value)+'" placeholder="https://maps.app.goo.gl/..." oninput="clearTimeout(this._mapTimer);this._mapTimer=setTimeout(()=>updateStoreMapPreview(\''+id+'\'),600)"><p style="font-size:11px;line-height:1.8;color:var(--ink-soft)">من Google Maps اضغط مشاركة، ثم نسخ الرابط. المعاينة تتصل بـ Google لعرض موقع المتجر.</p><div id="'+id+'Preview" aria-live="polite">'+mapPreviewHTML(value,esc)+'</div></div>';
+  return '<div class="field"><label for="'+id+'">رابط اللوكيشن من Google Maps (اختياري)</label><input id="'+id+'" type="url" dir="ltr" maxlength="4096" value="'+esc(value)+'" placeholder="https://maps.app.goo.gl/..." oninput="clearTimeout(this._mapTimer);this._mapTimer=setTimeout(()=>updateStoreMapPreview(\''+id+'\'),600)"><p style="font-size:11px;line-height:1.8;color:var(--ink-soft)">افتح Google Maps، واضغط «مشاركة» وبعدها «نسخ الرابط». المعاينة بتتصل بجوجل عشان تعرض مكان متجرك.</p><div id="'+id+'Preview" aria-live="polite">'+mapPreviewHTML(value,esc)+'</div></div>';
 }
 export function mapHref(m){
   const saved=mapInputValue(m);if(saved)return saved;

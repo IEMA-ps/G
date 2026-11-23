@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';import{readFileSync}from'node:fs';
+const {marketerBenefits}=await import('data:text/javascript;base64,'+Buffer.from(readFileSync('marketer-benefits.js')).toString('base64'));
+const off=marketerBenefits();assert.match(off,/مش متاح دلوقتي/);assert.doesNotMatch(off,/٥ طلبات|×1.5|رابط الترشيح/);assert.doesNotMatch(off,/Program\.(copyInvite|confirmJoin|setEnabled)/);
+const on=marketerBenefits({enabled:true});for(const text of ['٥ طلبات','يأكد بريده','الأدمن الرئيسي','١٦٨ ساعة','٥ تجار مختلفين','×1.5','١٠٠٪','فرق الحافز','نهاية المهلة','مش مرتب ثابت','مش بيتجمع مع زيادة الفضي أو الذهبي','الحسابات القديمة'])assert.ok(on.includes(text),text);assert.doesNotMatch(on,/٣٠٠|300/);
+const {pathForTab,routeFromLocation}=await import('data:text/javascript;base64,'+Buffer.from(readFileSync('app-routes.js')).toString('base64'));assert.equal(pathForTab('marketerBenefits','customer'),'/customer/work-as-marketer');for(const role of ['admin','marketer','merchant','delivery'])assert.equal(pathForTab('marketerBenefits',role),null);assert.equal(routeFromLocation({pathname:'/customer/work-as-marketer'},'customer'),'marketerBenefits');
+const html=readFileSync('index.html','utf8');assert.match(html,/marketerBenefits:\(\)=>S.role==='customer'\?marketerBenefits\(\{enabled:Program.enabled\(\)\}\):''/);assert.match(html,/go\('marketerBenefits'\)/);assert.match(readFileSync('sw.js','utf8'),/'\/marketer-benefits.js'/);
+const source=readFileSync('marketer-benefits.js','utf8');assert.doesNotMatch(source,/fetch\(|setDoc\(|updateDoc\(|runTransaction\(|getDoc\(/);
+console.log('PASS customer benefits: actual conditions and no income promise, neutral OFF, customer-only route, profile entry, no reads/writes, SW module included');

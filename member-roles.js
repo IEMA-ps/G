@@ -68,7 +68,7 @@ export function memberRecordForm(user,role,esc,locationHTML='',mapHTML='',typeHT
   return `<div class="modal-head"><h3>إنشاء ${merchant?'متجر':'سجل مندوب'} وتعيين العضو</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div>
   <p style="font-size:13px;line-height:1.8;margin-bottom:12px">حساب العضو: <b>${esc(person||user.email||'')}</b>. انقل بيانات طلب واتساب هنا، فالطلب لا يُحفظ داخل التطبيق.</p>
   <div class="field"><label for="memberRequestPaste">الصق رسالة طلب واتساب (اختياري)</label><textarea id="memberRequestPaste" maxlength="12000" rows="4" oninput="fillMemberRecordFromRequest('${role}')" placeholder="طلب تسجيل متجر أو طلب الانضمام كمندوب..."></textarea></div>
-  <p id="memberPasteNotice" role="status" style="font-size:12px;line-height:1.8;margin-bottom:12px">تُملأ الحقول المعروفة فقط. راجعها وعدّلها قبل الإنشاء. لا يتم إرسال الرسالة أو حفظها.</p>
+  <p id="memberPasteNotice" role="status" style="font-size:12px;line-height:1.8;margin-bottom:12px">بنملا الحقول اللي قدرنا نتعرف عليها بس. راجعها وعدلها قبل ما تنشئ الحساب. الرسالة مش بتتبعت أو تتحفظ.</p>
   ${field('memberRecordName',merchant?'اسم المتجر كما في طلب واتساب':'اسم المندوب',merchant?'':person,'required maxlength="120"')}
   ${merchant?field('memberRecordManager','اسم المسؤول',person,'maxlength="120"'):''}
   ${field('memberRecordPhone','رقم الهاتف',user.phone||'','required type="tel" maxlength="30"')}

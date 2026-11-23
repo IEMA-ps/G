@@ -422,7 +422,7 @@ img{max-width:100%; display:block;}
         <button class="auth-tab" id="tabRegister" onclick="Auth.switchTab('register');history.replaceState(null,'','/register'+location.search)">حساب جديد</button>
       </div>
       <div id="authError" class="auth-error hidden"></div>
-      <div id="accountRecovery" class="hidden" style="margin-bottom:14px"><p style="font-size:13px;line-height:1.8">حساب Google دخل بالفعل. تقدر تعيد تحميل بياناته بدون إنشاء حساب جديد.</p><button class="btn btn-primary" id="accountRetryBtn" type="button" onclick="Auth.retryAccount()">إعادة تحميل الحساب</button><button class="btn btn-ghost" style="margin-top:8px" type="button" onclick="Auth.confirmLogout()">خروج من الحساب الحالي</button></div>
+      <div id="accountRecovery" class="hidden" style="margin-bottom:14px"><p style="font-size:13px;line-height:1.8">أنت داخل بحساب Google بالفعل. جرّب تحميل بياناتك تاني، من غير ما تعمل حساب جديد.</p><button class="btn btn-primary" id="accountRetryBtn" type="button" onclick="Auth.retryAccount()">إعادة تحميل الحساب</button><button class="btn btn-ghost" style="margin-top:8px" type="button" onclick="Auth.confirmLogout()">خروج من الحساب الحالي</button></div>
 
       <form id="loginForm" onsubmit="Auth.login(event)">
         <div class="field"><label>البريد الإلكتروني أو اسم المستخدم</label><input type="text" id="loginEmail" required placeholder="example@mail.com أو اسم المستخدم" autocapitalize="none" autocomplete="username" dir="ltr" style="text-align:right"></div>
@@ -432,7 +432,7 @@ img{max-width:100%; display:block;}
       </form>
 
       <form id="registerForm" class="hidden" onsubmit="Auth.register(event)">
-        <p class="hint-box" style="margin-bottom:14px">التسجيل الجديد للعملاء فقط. بعد الدخول تقدر تطلب تسجيل متجر أو الانضمام كمندوب من «حسابي».</p>
+        <p class="hint-box" style="margin-bottom:14px">حسابك الجديد هيكون حساب عميل. لو عندك متجر أو عايز تشتغل مندوب، قدّم طلب من «حسابي» بعد الدخول.</p>
         <div class="field"><label>الاسم الأول</label><input type="text" id="regFirst" required></div>
         <div class="field"><label>الاسم الأخير</label><input type="text" id="regLast"></div>
         <div class="field"><label>رقم الهاتف</label><input type="tel" id="regPhone" required placeholder="01xxxxxxxxx"></div>
@@ -446,7 +446,7 @@ img{max-width:100%; display:block;}
 
       <div style="margin-top:16px">
         <button class="btn btn-ghost" type="button" id="googleLoginBtn" onclick="Auth.googleLogin()"><i class="fa-brands fa-google" aria-hidden="true"></i> المتابعة باستخدام Google</button>
-        <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-top:8px">الحساب الجديد بجوجل بيبدأ كعميل. عايز تنضم كمسوّق؟ سجّل كعميل، والإدارة تراجع طلبك وتحوّلك لمسوق بعد الموافقة.</p>
+        <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-top:8px">حتى لو سجلت بجوجل، حسابك بيبدأ كعميل. لو مهتم بالتسويق، هتلاقي التفاصيل في «حسابي»، والتعيين بعد مراجعة الأدمن الرئيسي.</p>
       </div>
       <div class="auth-switch">
         على بابك — اطلب اللي محتاجه، وإحنا نوصلّه لحد بابك
@@ -485,6 +485,7 @@ img{max-width:100%; display:block;}
 
 <script src="/qrcode.js"></script>
 <script type="module">
+import {marketerBenefits} from '/marketer-benefits.js?v=human-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-1';
 import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-2';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
@@ -1272,7 +1273,7 @@ window.previewCatalogRepair = async ()=>{
     S.catalogRepair = ops;
     UI.openModal(`<div class="modal-head"><h3>مراجعة إصلاح الكتالوج</h3><button class="modal-close" onclick="UI.closeModal()">×</button></div>
       <p style="line-height:1.8">${lines.map(esc).join('<br>')}</p>
-      <p class="hint-box">لن يتغير سعر أو مخزون أي منتج. المنتجات الحقيقية لا يتم إخفاؤها. الأقسام القديمة يتم أرشفتها بدل حذفها لحماية المراجع القديمة.</p>
+      <p class="hint-box">أسعار المنتجات ومخزونها مش هيتغيروا، والمنتجات الحقيقية هتفضل ظاهرة. الأقسام القديمة هتتأرشف بدل ما تتمسح، عشان الروابط القديمة تفضل سليمة.</p>
       ${ops.length?'<button class="btn btn-primary" id="catalogRepairConfirm" onclick="applyCatalogRepair()">تطبيق التغييرات المذكورة</button>':'<p>مفيش تغييرات مطلوبة.</p>'}`);
   }catch(e){ UI.toast('تعذّر فحص الكتالوج، تأكد من الصلاحيات'); }
 };
@@ -1361,7 +1362,7 @@ function renderAdminDbSetup(){
     <button class="btn btn-ghost" style="margin-bottom:14px" onclick="previewCatalogRepair()">مراجعة دمج الأقسام وتنظيف المنتجات التجريبية</button>
     <div class="card" style="margin-bottom:14px">
       <h3 style="margin:0 0 8px;font-size:15px"><i class="fa-solid fa-database"></i> فحص وتهيئة قاعدة البيانات</h3>
-      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">بيفحص بياناتك ويضيف أي حاجة ناقصة (إعدادات، أقسام، باقات، حقول جديدة) بدون ما يمسح أو يغيّر أي بيانات موجودة. استخدمه بعد أي تحديث للتطبيق. الفحص بيقرأ جداول المستخدمين والمتاجر والمنتجات.</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">الفحص بيقرأ بيانات المستخدمين والمتاجر والمنتجات، ويكمل الإعدادات والأقسام والباقات والحقول الناقصة. مش بيمسح البيانات الموجودة أو يغيرها. استخدمه بعد تحديث التطبيق لو محتاج تكمل التجهيز.</p>
       <button class="btn btn-primary" id="dbScanBtn" onclick="runDbScan()"><i class="fa-solid fa-magnifying-glass"></i> ${sc?'إعادة الفحص':'ابدأ الفحص'}</button>
     </div>
     ${sc?`
@@ -1414,7 +1415,7 @@ function merchantWelcomePlans(){
   return `<div class="welcome-plans">${['PROFILE','ORDERING'].map(kind=>{
     const options=newPlans.filter(p=>p.kind===kind).sort((a,b)=>a.months-b.months);
     if(!options.length) return '';
-    return `<div class="welcome-plan"><b>${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</b><p>${kind==='PROFILE'?'صفحة لمتجرك، عنوان ولوكيشن وأرقام تواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها للمندوب.'}</p><div class="welcome-prices">${options.map(p=>`<span>${p.months===12?'سنة':esc(p.months)+' شهور'} <b>${fmtMoney(p.price)}</b></span>`).join('')}</div>${kind==='ORDERING'?'<p class="welcome-fee">+ 2% على التاجر من قيمة المنتجات بعد خصم التاجر، في الطلبات المسلّمة فقط، من غير رسوم التوصيل. دفع الطلبات كاش فقط حاليًا.</p>':'<p class="welcome-fee">اشتراك ثابت، والتواصل مع المتجر مباشرة.</p>'}</div>`;
+    return `<div class="welcome-plan"><b>${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</b><p>${kind==='PROFILE'?'صفحة تعرف الناس بمتجرك، فيها العنوان واللوكيشن وأرقام التواصل. الباقة دي من غير منتجات أو طلبات داخل التطبيق.':'كل اللي في الصفحة التعريفية، وكمان تعرض منتجاتك وتستقبل الطلبات وتجهزها للمندوب.'}</p><div class="welcome-prices">${options.map(p=>`<span>${p.months===12?'سنة':esc(p.months)+' شهور'} <b>${fmtMoney(p.price)}</b></span>`).join('')}</div>${kind==='ORDERING'?'<p class="welcome-fee">+ 2% على التاجر من قيمة المنتجات بعد خصم التاجر، في الطلبات المسلّمة فقط، من غير رسوم التوصيل. دفع الطلبات كاش فقط حاليًا.</p>':'<p class="welcome-fee">بتدفع اشتراك ثابت، والعملاء بيتواصلوا مع متجرك مباشرة.</p>'}</div>`;
   }).join('')}</div>`;
 }
 function merchantPaywall(){
@@ -1423,7 +1424,7 @@ function merchantPaywall(){
   return `<section class="card merchant-welcome"><span class="badge-chip"><i class="fa-solid fa-store"></i> أهلاً بيك على بابك</span><h3>منوّرنا يا ${esc(m.businessName||'صاحب المتجر')}</h3><p class="welcome-note">اختار الباقة المناسبة لشغلك. اشتراكك ${m.subEndsAt?'منتهي':'لسه مش مفعّل'}، ومتجرك مش ظاهر للعملاء حاليًا.</p>
     ${m.status!=='ACTIVE'?'<div class="hint-box" style="margin-bottom:12px">طلب انضمام متجرك لسه محتاج موافقة الإدارة. استنى الموافقة قبل تحويل قيمة الاشتراك. الظهور للعملاء محتاج موافقة المتجر واشتراك ساري.</div>':''}
     ${merchantWelcomePlans()}
-    <button class="btn btn-primary" style="margin-top:14px" onclick="go('m_subscription')">اختيار باقة</button><p class="welcome-note" style="margin-bottom:0">هتلاقي طريقة الدفع والخطوات قبل إرسال طلب الاشتراك. التفعيل بعد مراجعة الإدارة وتأكيد الدفع.</p></section>`;
+    <button class="btn btn-primary" style="margin-top:14px" onclick="go('m_subscription')">اختيار باقة</button><p class="welcome-note" style="margin-bottom:0">هتلاقي طريقة الدفع والخطوات قبل إرسال طلب الاشتراك. اشتراكك بيتفعل بعد ما الإدارة تراجع الطلب وتتأكد من الدفع.</p></section>`;
 }
 /* ===== 3 خطوات للتاجر الجديد ===== */
 function onboardingCard(){
@@ -1464,7 +1465,7 @@ function renderMerchantSubscription(){
       ${m.subEndsAt?`<div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px">${active?'ينتهي':'انتهى'} في ${fmtDay(m.subEndsAt)}</div>`:''}
       ${!S.settings.subsEnforced && !MerchantPlans.isNewMerchant(m)?'<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px">الاشتراك اختياري للمتاجر القديمة حاليًا.</div>':''}
     </div>
-    ${S.settings.merchantPlansV2?`<div class="hint-box" style="margin-bottom:14px">باقة تعريفية: لوكيشن وأرقام تواصل فقط. باقة الطلبات: منتجات وطلبات وتجهيز للاستلام من المندوب، وعمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، بدون رسوم التوصيل. الدفع كاش فقط. تغيير نوع باقة سارية يتم بعد انتهاء مدتها.</div>`:''}
+    ${S.settings.merchantPlansV2?`<div class="hint-box" style="margin-bottom:14px">الباقة التعريفية بتعرض مكان متجرك وأرقامك بس. باقة الطلبات بتضيف المنتجات واستقبال الطلبات وتجهيزها للمندوب. فيها عمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، من غير رسوم التوصيل، والدفع كاش بس. لو باقتك لسه سارية، تغيير نوعها بيكون بعد نهاية المدة.</div>`:''}
     ${pending?`<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-clock"></i> طلب «${esc(pending.planName)}» قيد المراجعة${pending.reference?` (مرجع: ${esc(pending.reference)})`:''}.</div>`:''}
     <div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة دفع الاشتراك</b><div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></div>
     ${renderFoundingOffer({settings:S.settings,plans,merchant:m},esc,fmtMoney)}
@@ -1488,7 +1489,7 @@ window.openSubscribe = (planId)=>{
   UI.openModal(`
     <div class="modal-head"><h3>${upg?'طلب ترقية إلى':'الاشتراك في'} «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: 6 شهور بـ ${fmtMoney(offer.price)}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
-    ${upg?`<div class="hint-box" style="margin-bottom:12px">طلب ترقية من الباقة التعريفية لباقة الطلبات. تبدأ باقة الطلبات من تاريخ اعتماد الإدارة بعد تأكيد استلام المبلغ، وباقي مدة التعريفية الحالية لا يُخصم من السعر. الطلب يظهر للإدارة للمراجعة.</div>`:''}
+    ${upg?`<div class="hint-box" style="margin-bottom:12px">أنت بتطلب تنقل من الباقة التعريفية لباقة الطلبات. الباقة الجديدة هتبدأ يوم ما الإدارة تعتمد الطلب بعد تأكيد الدفع. باقي مدة باقتك التعريفية مش بيتخصم من سعر الترقية. الطلب هيروح للإدارة تراجعه.</div>`:''}
     <div class="sub-payment-guide"><b>إزاي تدفع وتفعّل الاشتراك؟</b>
       <ol><li>راجع الباقة والمبلغ والمدة اللي فوق.</li><li>حوّل المبلغ الموضّح بالطريقة دي:<div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></li><li>اكتب رقم عملية التحويل في الخانة تحت، واضغط «إرسال طلب الاشتراك».</li><li>استنى مراجعة الإدارة وتأكيد استلام المبلغ. إرسال الطلب مش تفعيل تلقائي.</li></ol>
       ${S.myMerchant?.status!=='ACTIVE'?'<div class="hint-box">متجرك لسه محتاج موافقة الإدارة على الانضمام. استنى الموافقة قبل التحويل.</div>':''}
@@ -1540,7 +1541,7 @@ window.rejectSubscription = async (subId)=>{
   const sub = (S.allSubs||[]).find(x=>x._id===subId); if(!sub || sub.status!=='PENDING') return;
   if(useBackend()){ try{ await callFn('rejectSubscription',{subId}); UI.toast('تم رفض الطلب'); }catch(e){ UI.toast('⚠️ '+e.message); } return; }
   await updateDoc(doc(db,'subscriptions',subId), { status:'REJECTED', rejectedAt:nowMs() });
-  try{ await pushNotification('MERCHANT', sub.merchantId, 'تم رفض طلب الاشتراك', 'تواصل مع الإدارة لمعرفة السبب.'); }catch(e){}
+  try{ await pushNotification('MERCHANT', sub.merchantId, 'تم رفض طلب الاشتراك', 'كلّم الإدارة عشان تعرف السبب.'); }catch(e){}
   UI.toast('تم رفض الطلب');
 };
 window.openGrantSub = (mid)=>{
@@ -1578,7 +1579,7 @@ function renderNewPlanCatalog(plans,pending){
   const locked=kind=>MerchantPlans.hasTerm(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!==kind && !canUp(kind);
   return `<div class="plan-pair">${['PROFILE','ORDERING'].map(kind=>{
     const options=plans.filter(p=>p.kind===kind).sort((a,b)=>a.months-b.months);
-    return `<div class="card plan-card ${kind==='ORDERING'?'ordering-plan':''}"><span class="badge-chip">${kind==='PROFILE'?'عشان العملاء يعرفوك':'عشان تستقبل طلبات'}</span><h3 style="margin:12px 0 4px">${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</h3><p class="plan-intro">${kind==='PROFILE'?'صفحتك وعنوانك واللوكيشن وأرقام التواصل. بدون منتجات أو طلبات داخل التطبيق.':'كل مزايا التعريفية + عرض منتجاتك واستقبال الطلبات وتجهيزها ليستلمها المندوب.'}</p>${kind==='ORDERING'?'<div class="plan-fee">+ 2% على التاجر من المنتجات في الطلبات المسلّمة، بدون التوصيل. كاش فقط.</div>':'<div class="plan-fee">اشتراك ثابت. التواصل مع المتجر مباشرة.</div>'}<div>${options.map(p=>`<div class="plan-option"><span>${p.months===12?'سنة':p.months+' شهور'}</span>${(()=>{const o=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings);return o?`<b><s style="opacity:.55;font-weight:400">${fmtMoney(o.listPrice)}</s> ${fmtMoney(o.price)}<small class="badge-chip" style="margin-inline-start:6px">عرض كود المسوّق</small></b>`:`<b>${fmtMoney(p.price)}</b>`;})()}<button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px" ${pending||locked(kind)?'disabled':''} onclick="openSubscribe('${p._id||p.id}')">${locked(kind)?'بعد الانتهاء':canUp(kind)?'طلب ترقية':'اختيار'}</button></div>`).join('')}</div></div>`;
+    return `<div class="card plan-card ${kind==='ORDERING'?'ordering-plan':''}"><span class="badge-chip">${kind==='PROFILE'?'عشان العملاء يعرفوك':'عشان تستقبل طلبات'}</span><h3 style="margin:12px 0 4px">${kind==='PROFILE'?'الصفحة التعريفية':'باقة الطلبات'}</h3><p class="plan-intro">${kind==='PROFILE'?'صفحة لمتجرك فيها عنوانك واللوكيشن وأرقامك. من غير عرض منتجات أو استقبال طلبات داخل التطبيق.':'كل مزايا الصفحة التعريفية، وكمان تعرض منتجاتك وتستقبل الطلبات وتجهزها لاستلام المندوب.'}</p>${kind==='ORDERING'?'<div class="plan-fee">+ 2% على التاجر من المنتجات في الطلبات المسلّمة، بدون التوصيل. كاش فقط.</div>':'<div class="plan-fee">اشتراك ثابت. التواصل مع المتجر مباشرة.</div>'}<div>${options.map(p=>`<div class="plan-option"><span>${p.months===12?'سنة':p.months+' شهور'}</span>${(()=>{const o=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings);return o?`<b><s style="opacity:.55;font-weight:400">${fmtMoney(o.listPrice)}</s> ${fmtMoney(o.price)}<small class="badge-chip" style="margin-inline-start:6px">عرض كود المسوّق</small></b>`:`<b>${fmtMoney(p.price)}</b>`;})()}<button class="btn btn-ghost btn-sm" style="width:auto;padding:7px 12px" ${pending||locked(kind)?'disabled':''} onclick="openSubscribe('${p._id||p.id}')">${locked(kind)?'بعد الانتهاء':canUp(kind)?'طلب ترقية':'اختيار'}</button></div>`).join('')}</div></div>`;
   }).join('')}</div>`;
 }
 
@@ -1599,7 +1600,7 @@ function merchantContactCard(m){
 }
 window.previewMerchantPlans=()=>{
   if(!isSuperAdmin()) return;
-  UI.openModal(`<div class="modal-head"><h3>مراجعة الباقات الجديدة</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="hint-box" style="margin-bottom:14px">الإضافة لا تغيّر أي اشتراك سابق أو عمولة قديمة. النقل من اشتراك ساري للنظام الجديد ينتظر انتهاء المدة. راجع صلاحيات Firestore قبل تفعيل النظام.</div>${MerchantPlans.PLAN_TEMPLATES.map(p=>`<div class="card" style="margin-bottom:8px"><div class="row-between"><b>${esc(p.name)}</b><b>${fmtMoney(p.price)}</b></div><p style="font-size:12.5px;margin:6px 0">${p.months} شهر · ${p.kind==='PROFILE'?'صفحة ولوكيشن وأرقام تواصل فقط':'منتجات وطلبات + 2% على التاجر من الطلبات المسلّمة'}</p></div>`).join('')}<button class="btn btn-primary" style="margin-top:12px" onclick="installMerchantPlans()">إضافة الباقات واعتماد عرضها بدل القديمة</button><p style="font-size:12px;line-height:1.7">لن تُحذف الباقات القديمة. نسب المسوّقين القديمة تبقى كما هي، والجديدة ترث النسبة الافتراضية الحالية مع حوافز المستوى.</p>`);
+  UI.openModal(`<div class="modal-head"><h3>مراجعة الباقات الجديدة</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div class="hint-box" style="margin-bottom:14px">إضافة الباقات مش بتغير أي اشتراك سابق أو عمولة قديمة. لو فيه اشتراك ساري، النقل للنظام الجديد بيستنى نهاية مدته. راجع صلاحيات Firestore قبل ما تفعّل النظام.</div>${MerchantPlans.PLAN_TEMPLATES.map(p=>`<div class="card" style="margin-bottom:8px"><div class="row-between"><b>${esc(p.name)}</b><b>${fmtMoney(p.price)}</b></div><p style="font-size:12.5px;margin:6px 0">${p.months} شهر · ${p.kind==='PROFILE'?'صفحة ولوكيشن وأرقام تواصل فقط':'منتجات وطلبات + 2% على التاجر من الطلبات المسلّمة'}</p></div>`).join('')}<button class="btn btn-primary" style="margin-top:12px" onclick="installMerchantPlans()">إضافة الباقات واعتماد عرضها بدل القديمة</button><p style="font-size:12px;line-height:1.7">الباقات القديمة مش هتتمسح، ونسب المسوقين المحفوظة فيها مش هتتغير. الباقات الجديدة بتبدأ بالنسبة الافتراضية الحالية مع حوافز المستوى.</p>`);
 };
 window.installMerchantPlans=async()=>{
   if(!isSuperAdmin()) return;
@@ -1648,7 +1649,7 @@ function renderMonthlyCommissionStatements(orders){
   const rows=MerchantPlans.statements(orders),isAdmin=S.role==='admin';
   const names=isAdmin?(S.allMerchants||[]):[S.myMerchant].filter(Boolean);
   const unknown=(orders||[]).filter(o=>o.commissionModel===MerchantPlans.MODEL&&o.status==='DELIVERED'&&!o.deliveredAt).length;
-  return `<div class="section-head"><h3>كشف العمولة الشهري</h3><span class="badge-chip">2% على التاجر</span></div><div class="hint-box" style="margin-bottom:14px">كشف للمراجعة والتحصيل اليدوي، وليس إيصال دفع. الشهر حسب تاريخ التسليم بتوقيت القاهرة، للطلبات الجديدة بنظام الطلبات فقط. لا يشمل التوصيل أو الاشتراكات، ولا يضاف على العميل. خصم سعر المنتج محسوب، وكوبونات ونقاط المنصة لا تقلل مستحق التاجر. الطلبات القديمة لها تسوياتها السابقة.</div>${unknown?`<div class="hint-box" style="color:var(--danger);margin-bottom:12px">${unknown} طلب مكتمل بدون تاريخ تسليم، غير محسوب لحين مراجعته.</div>`:''}${rows.length?rows.map(r=>`<div class="card" style="margin-bottom:14px"><div class="row-between"><b>${esc(names.find(m=>m.id===r.merchantId)?.businessName||r.merchantId)}</b><span class="badge-chip" dir="ltr">${esc(r.month)}</span></div><p style="font-size:12px;color:var(--ink-soft)">طلبات مسلّمة: ${r.count}</p><div class="summary-row"><span>قيمة المنتجات</span><span>${fmtMoney(r.base)}</span></div><div class="summary-row total"><span>عمولة مستحقة للموقع</span><b>${fmtMoney(r.fee)}</b></div><details style="font-size:12px;line-height:1.9;margin-top:10px"><summary>تفاصيل الطلبات</summary>${r.orders.map(o=>`<div class="row-between"><span>${esc(o.id)} · ${fmtDay(MerchantPlans.millisOf(o.deliveredAt))}</span><span>${fmtMoney(o.commissionAmount)}</span></div>`).join('')}</details><p style="font-size:11.5px;color:var(--ink-soft);margin-bottom:0">الكاش مع التاجر أو المندوب حسب التشغيل. الكشف لا يعني أن المنصة دفعت للتاجر أو حصّلت العمولة.</p></div>`).join(''):emptyState('fa-file-invoice','لا توجد عمولات شهرية بعد','تظهر هنا الطلبات الجديدة بعد تسليمها فعليًا')}`;
+  return `<div class="section-head"><h3>كشف العمولة الشهري</h3><span class="badge-chip">2% على التاجر</span></div><div class="hint-box" style="margin-bottom:14px">الكشف ده للمراجعة وتحصيل العمولة يدويًا، مش إيصال دفع. الطلب بيتحسب في شهر تسليمه بتوقيت القاهرة، وده للطلبات الجديدة بنظام الطلبات بس. الحساب من غير التوصيل والاشتراكات، ومش بيتضاف على العميل. خصم التاجر على المنتج محسوب، لكن كوبونات ونقاط المنصة مش بتقلل مستحقاته. الطلبات القديمة بتفضل على تسوياتها السابقة.</div>${unknown?`<div class="hint-box" style="color:var(--danger);margin-bottom:12px">${unknown} طلب مكتمل من غير تاريخ تسليم. مش داخل الحساب لحد ما يتراجع.</div>`:''}${rows.length?rows.map(r=>`<div class="card" style="margin-bottom:14px"><div class="row-between"><b>${esc(names.find(m=>m.id===r.merchantId)?.businessName||r.merchantId)}</b><span class="badge-chip" dir="ltr">${esc(r.month)}</span></div><p style="font-size:12px;color:var(--ink-soft)">طلبات مسلّمة: ${r.count}</p><div class="summary-row"><span>قيمة المنتجات</span><span>${fmtMoney(r.base)}</span></div><div class="summary-row total"><span>عمولة مستحقة للموقع</span><b>${fmtMoney(r.fee)}</b></div><details style="font-size:12px;line-height:1.9;margin-top:10px"><summary>تفاصيل الطلبات</summary>${r.orders.map(o=>`<div class="row-between"><span>${esc(o.id)} · ${fmtDay(MerchantPlans.millisOf(o.deliveredAt))}</span><span>${fmtMoney(o.commissionAmount)}</span></div>`).join('')}</details><p style="font-size:11.5px;color:var(--ink-soft);margin-bottom:0">فلوس الطلب الكاش بتكون مع التاجر أو المندوب حسب طريقة الشغل. الكشف ده للحسابات، مش إثبات إن المنصة دفعت للتاجر أو حصّلت العمولة.</p></div>`).join(''):emptyState('fa-file-invoice','لا توجد عمولات شهرية بعد','تظهر هنا الطلبات الجديدة بعد تسليمها فعليًا')}`;
 }
 
 /* ---- إدارة الباقات والإعدادات (أدمن) ---- */
@@ -1658,13 +1659,13 @@ function renderAdminSubscriptions(){
   const sa = isSuperAdmin(); const st = S.settings;
   const activeMerchants = S.allMerchants.filter(subOk);
   return `
-    ${sa?`<div class="card" style="margin-bottom:14px"><h3>عرض300 · معاينة نظرية</h3><p style="font-size:12px;line-height:1.9">مربع منفصل للعرض مع كود مسوّق اختياري. لا عداد أو مؤشر أو مناطق أو حجز مقاعد. الخانة للمعاينة فقط، ولا تغيّر السعر أو تربط مسوّقًا أو ترسل طلبًا. مفتاح300 لم يتغير.</p><button class="btn btn-ghost" onclick="previewFoundingOffer()">معاينة مربع عرض300 فقط</button></div>`:''}
+    ${sa?`<div class="card" style="margin-bottom:14px"><h3>عرض300 · معاينة نظرية</h3><p style="font-size:12px;line-height:1.9">دي معاينة لعرض منفصل، وخانة كود المسوق اختيارية. مفيش عداد أو مناطق أو حجز أماكن. كتابة الكود هنا مش بتغير سعر، ولا بتربط مسوق بمتجر، ولا بتبعت طلب. إعداد عرض ٣٠٠ جنيه مش بيتغير.</p><button class="btn btn-ghost" onclick="previewFoundingOffer()">معاينة مربع عرض300 فقط</button></div>`:''}
     ${pend.length?`<div class="section-head"><h3>طلبات تنتظر الاعتماد (${pend.length})</h3></div><div class="list-gap" style="margin-bottom:16px">${pend.map(x=>{
       const m = S.allMerchants.find(y=>y.id===x.merchantId)||{};
       return `<div class="card" style="border-color:var(--gold)"><div class="row-between"><b style="font-size:13.5px">${esc(x.merchantName||m.businessName||'')}</b><b>${fmtMoney(x.price)}</b></div>
         <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${x.upgrade?'<b style="color:var(--teal)">طلب ترقية</b> · ':''}${esc(x.planName)} · ${x.months} شهر${x.reference?` · مرجع: ${esc(x.reference)}`:''}${m.marketerId?` · مسوّق: ${esc(m.marketerName||'')}`:''}</div>
         ${sa?`<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveSubscription('${x._id}')">اعتماد</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="rejectSubscription('${x._id}')">رفض</button></div>`:''}</div>`; }).join('')}</div>`:''}
-    ${sa?`<div class="card" style="margin-bottom:16px;border-color:var(--teal)"><b>النظام الجديد: تعريفية وطلبات</b><p style="font-size:13px;line-height:1.8">تعريفية: 200 / 400 / 600 جنيه. طلبات: 400 / 800 / 1200 جنيه + 2% على التاجر. المدد: 3 / 6 / 12 شهر. لا يغيّر الاشتراكات أو العمولات السابقة.</p><button class="btn btn-ghost" onclick="previewMerchantPlans()">مراجعة الباقات الست قبل الإضافة</button></div>`:''}
+    ${sa?`<div class="card" style="margin-bottom:16px;border-color:var(--teal)"><b>النظام الجديد: تعريفية وطلبات</b><p style="font-size:13px;line-height:1.8">تعريفية: 200 / 400 / 600 جنيه. طلبات: 400 / 800 / 1200 جنيه + 2% على التاجر. المدد: 3 / 6 / 12 شهر. الاشتراكات والعمولات القديمة مش هتتغير.</p><button class="btn btn-ghost" onclick="previewMerchantPlans()">مراجعة الباقات الست قبل الإضافة</button></div>`:''}
     <div class="section-head"><h3>الباقات</h3></div>
     ${sa?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="openPlanForm()"><i class="fa-solid fa-plus"></i> إضافة باقة</button>`:''}
     ${!plans.length && sa ? `<button class="btn btn-ghost" style="margin-bottom:12px" onclick="seedDefaultPlans()"><i class="fa-solid fa-wand-magic-sparkles"></i> إنشاء 3 باقات جاهزة (أساسية / متوسطة / مميزة)</button>` : ''}
@@ -1712,9 +1713,9 @@ window.openPlanForm = (id)=>{
     UI.openModal(`
       <div class="modal-head"><h3>تعديل «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
       <div class="card" style="margin-bottom:12px"><div class="row-between"><span>السعر</span><b>${fmtMoney(p.price)}</b></div><div class="row-between"><span>المدة</span><b>${p.months} شهر</b></div><div class="row-between"><span>النوع</span><b>${p.kind==='PROFILE'?'تعريفية فقط':'طلبات + عمولة '+p.orderCommissionPercent+'% على التاجر'}</b></div></div>
-      <p style="font-size:12px;color:var(--ink-soft);line-height:1.7;margin-bottom:10px">السعر والمدة والعمولة ثابتة لحماية الاشتراكات المعتمدة. يمكن تغيير نسبة المسوّق فقط.</p>
+      <p style="font-size:12px;color:var(--ink-soft);line-height:1.7;margin-bottom:10px">عشان الاشتراكات المعتمدة تفضل زي ما اتفقتوا عليها، السعر والمدة والعمولة مش بيتغيروا. تقدر تعدّل نسبة المسوق بس.</p>
       <div class="field"><label>نسبة المسوّق (%)</label><input id="plPct" type="number" min="0" max="100" step="0.1" value="${p.marketerPercent!=null?p.marketerPercent:''}" placeholder="افتراضي ${defPct}"></div>
-      <p style="font-size:11.5px;color:var(--ink-soft);line-height:1.7">اتركها فارغة للعودة للنسبة الافتراضية (${defPct}%). تُطبّق على طلبات الاشتراك الجديدة؛ الاشتراكات المعتمدة تحتفظ بنسبتها المحفوظة وقت الاعتماد.</p>
+      <p style="font-size:11.5px;color:var(--ink-soft);line-height:1.7">سيبها فاضية لو عايز ترجع للنسبة الافتراضية (${defPct}%). النسبة دي لطلبات الاشتراك الجديدة بس. الاشتراك اللي اتعمد قبل كده بيفضل بنسبته وقت الاعتماد.</p>
       <button class="btn btn-primary" onclick="savePlan('${id}')">حفظ</button>`);
     return;
   }
@@ -1879,7 +1880,7 @@ function renderMarketerDashboard(){
   return `
     ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
-    <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك من الاشتراكات التي تعتمدها الإدارة لمحلاتك حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
+    <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك بتتحسب من اشتراكات محلاتك اللي الإدارة اعتمدتها، حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
     ${(()=>{ const tr = mkTier(ms.filter(m=>m.status==='ACTIVE').length); const tiers = mkTiers(); return `<div class="card" style="margin-bottom:14px">
       <div class="row-between"><b style="font-size:14px">مستواك: ${esc(tr.cur.name)}</b><span class="badge-chip">${tr.cur.bonus>0?'+'+tr.cur.bonus+'% على كل باقة':mkBaseRateLabel()}</span></div>
       <div role="progressbar" aria-label="التقدم للمستوى التالي" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${mkTierProgress(tr)}" style="height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 6px"><div style="width:${mkTierProgress(tr)}%;height:100%;background:var(--teal)"></div></div>
@@ -2333,7 +2334,7 @@ function renderMain(){
   const routes = {
     home: renderHome, browse: renderBrowse, merchantPage: renderMerchantPage,
     cart: renderCart, checkout: renderCheckout, orders: renderOrders, orderDetail: renderOrderDetail, orderDone: renderOrderDone,
-    profile: renderProfile, addresses: renderAddresses, notifications: renderNotifications, wishlist: renderWishlist, recurringOrders: renderRecurringOrders, groupBuys: renderGroupBuys,
+    profile: renderProfile, marketerBenefits:()=>S.role==='customer'?marketerBenefits({enabled:Program.enabled()}):'', addresses: renderAddresses, notifications: renderNotifications, wishlist: renderWishlist, recurringOrders: renderRecurringOrders, groupBuys: renderGroupBuys,
     m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports, m_statement:()=>renderMonthlyCommissionStatements(S.mySubOrders||[]),
     d_dashboard: renderDeliveryDashboard, d_history: renderDeliveryHistory, d_profile: renderDeliveryProfile,
     a_dashboard: renderAdminDashboard, a_new_orders: renderAdminNewOrders, a_merchants: renderAdminMerchants, a_categories: renderAdminCategories,
@@ -2589,7 +2590,7 @@ window.createGroupBuy = async (pid)=>{
     const shareText = encodeURIComponent(`عايز أجمع تجميعة "${p.title}" مع جيراني في ${addr?addr.area:''} بخصم ${p.groupDiscountPercent}%! افتح تطبيق على بابك وانضم للتجميعة قبل ما الوقت يخلص 🤝`);
     UI.openModal(`
       <div class="modal-head"><h3>بدأت التجميعة 🎉</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-      <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7">التجميعة هتظهر تلقائيًا لأي عميل عنده عنوان في نفس منطقتك. كمان تقدر تبعتلهم دعوة مباشرة على واتساب:</p>
+      <p style="font-size:13.5px;color:var(--ink-soft);line-height:1.7">أي عميل مسجل عنوان في نفس منطقتك هيشوف التجميعة. وتقدر كمان تبعت دعوة للناس على واتساب:</p>
       <a class="btn btn-primary" href="https://wa.me/?text=${shareText}" target="_blank" style="text-decoration:none;display:block;text-align:center;margin-top:8px"><i class="fa-brands fa-whatsapp"></i> شارك على واتساب</a>
       <button class="btn btn-ghost" style="margin-top:8px" onclick="UI.closeModal();go('groupBuys')">عرض تجميعاتي</button>
     `);
@@ -2781,7 +2782,7 @@ function renderCustomerStores(){
   const pref=S.profile?.preferredLocation,result=nearbyStores(S.merchants,pref,S.showAllStores===true);
   const types=typeOptions(result.stores),selected=types.includes(S.storeTypeFilter)?S.storeTypeFilter:'',visible=filterStoresByType(result.stores,selected);
   const titles={nearby:'متاجر في نفس منطقتك',all:'كل المتاجر المتاحة',unselected:'اختار منطقتك لعرض المتاجر',fallback:'لا توجد متاجر محددة في منطقتك بعد'};
-  return `<section class="card" style="margin-bottom:16px"><h3 style="font-size:17px;margin:0 0 8px">${titles[result.mode]}</h3><p class="location-note">${pref?.governorate&&pref?.area?esc(pref.governorate+' / '+pref.area):'لم تختار محافظة ومنطقة بعد.'}</p><p class="location-note">${result.mode==='nearby'?'المطابقة حسب المحافظة والمنطقة المسجلة، مش مسافة فعلية أو ضمان توصيل.':result.mode==='fallback'?'بنعرض كل المتاجر المتاحة بدل ما نخفيها. المتاجر ذات العناوين القديمة ستظهر هنا لحد ما تُحدد منطقتها.':'المتاجر بدون منطقة محددة تظهر ضمن كل المتاجر. اختيار المنطقة لا يعني توفر التوصيل.'}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openCustomerLocation()">${pref?'تغيير منطقتي':'اختيار منطقتي'}</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="S.showAllStores=${S.showAllStores?'false':'true'};renderMain()">${S.showAllStores?'متاجر منطقتي':'عرض كل المتاجر'}</button></div><div class="field" style="margin-top:12px"><label for="storeTypeFilter">تصفية حسب نوع المتجر</label><select id="storeTypeFilter" onchange="S.storeTypeFilter=this.value;renderMain()"><option value="">كل الأنواع</option>${types.map(t=>`<option value="${esc(t)}" ${selected===t?'selected':''}>${esc(t)}</option>`).join('')}</select></div>${visible.length?`<div class="list-gap" style="margin-top:12px">${visible.map(merchantCard).join('')}</div>`:'<p class="location-note">لا توجد متاجر متاحة حاليًا.</p>'}</section>`;
+  return `<section class="card" style="margin-bottom:16px"><h3 style="font-size:17px;margin:0 0 8px">${titles[result.mode]}</h3><p class="location-note">${pref?.governorate&&pref?.area?esc(pref.governorate+' / '+pref.area):'لسه ما اخترتش المحافظة والمنطقة.'}</p><p class="location-note">${result.mode==='nearby'?'المطابقة حسب المحافظة والمنطقة المسجلة، مش مسافة فعلية أو ضمان توصيل.':result.mode==='fallback'?'بنعرض كل المتاجر المتاحة بدل ما نخفيها. المتاجر اللي لسه عنوانها بالشكل القديم هتظهر هنا لحد ما تتحدد منطقتها.':'المتاجر اللي منطقتها مش محددة هتلاقيها مع كل المتاجر. اختيارك للمنطقة مش تأكيد إن التوصيل متاح فيها.'}</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openCustomerLocation()">${pref?'تغيير منطقتي':'اختيار منطقتي'}</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="S.showAllStores=${S.showAllStores?'false':'true'};renderMain()">${S.showAllStores?'متاجر منطقتي':'عرض كل المتاجر'}</button></div><div class="field" style="margin-top:12px"><label for="storeTypeFilter">تصفية حسب نوع المتجر</label><select id="storeTypeFilter" onchange="S.storeTypeFilter=this.value;renderMain()"><option value="">كل الأنواع</option>${types.map(t=>`<option value="${esc(t)}" ${selected===t?'selected':''}>${esc(t)}</option>`).join('')}</select></div>${visible.length?`<div class="list-gap" style="margin-top:12px">${visible.map(merchantCard).join('')}</div>`:'<p class="location-note">لسه مفيش متاجر متاحة دلوقتي.</p>'}</section>`;
 }
 window.openCustomerLocation=()=>{
  UI.openModal(`<div class="modal-head"><h3>منطقتك لعرض المتاجر</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div><p class="location-note">مش عنوان توصيل. تفاصيل العنوان تتضاف من «عناويني».</p>${locationPicker('customerLoc',{required:true})}<button class="btn btn-primary" onclick="saveCustomerLocation()">حفظ منطقتي</button>`);
@@ -2902,7 +2903,7 @@ function renderMerchantPage(){
       <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, 'مرحبًا، أريد الاستفسار عن منتجاتكم في '+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
     </div>
     ${merchantContactCard(m)}
-    ${!canOrder?`<div class="hint-box">صفحة تعريفية فقط. تواصل مع المتجر مباشرة للاستفسار، الطلب من خلال التطبيق غير متاح في هذه الباقة.</div>`:''}
+    ${!canOrder?`<div class="hint-box">دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.</div>`:''}
     ${canOrder?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
     ${canOrder?(prods.length? `<div class="product-grid">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
     ${canOrder && S.storePages?.[m.id]?.more?`<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreStoreProducts('${m.id}')" ${S.storePages[m.id].busy?'disabled':''}>${S.storePages[m.id].busy?'جاري التحميل...':'عرض باقي منتجات المتجر'}</button>`:''}
@@ -3382,6 +3383,7 @@ function renderProfile(){
   const points = S.profile.loyaltyPoints || 0;
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
   return `
+    <div class="card" style="margin-bottom:16px"><h3>مهتم تشتغل مسوق معانا؟</h3><p style="line-height:1.9;margin:10px 0">اعرف دور المسوق وإزاي تترشح، وشروط العمولة والحافز قبل ما تبدأ.</p><button class="btn btn-ghost" onclick="go('marketerBenefits')">اعرف تفاصيل الشغل كمسوق</button></div>
     ${Program.joinButton()}${Program.candidate()}
     <div class="card" style="text-align:center;padding:24px">
       <div style="width:64px;height:64px;border-radius:50%;background:var(--teal-tint);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 10px"><i class="fa-solid fa-user"></i></div>
@@ -3446,12 +3448,12 @@ function emptyState(icon,title,sub){
 function renderMerchantDashboard(){
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const m = S.myMerchant;
-  if(S.merchantNoLink) return `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><h4>حسابك غير مربوط بأي متجر</h4><p>حساب صلاحيتك «تاجر» لكنه غير مرتبط بمتجر فعلي بعد. تواصل مع الإدارة عشان تربط حسابك بالمتجر الصحيح (حقل merchantId في بيانات المستخدم).</p></div>`;
+  if(S.merchantNoLink) return `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><h4>حسابك غير مربوط بأي متجر</h4><p>حسابك اتحدد كتاجر، بس لسه مش مربوط بمتجر. كلّم الإدارة عشان تربطه بمتجرك الصحيح.</p></div>`;
   if(!m) return emptyState('fa-hourglass-half','جاري تحميل بيانات متجرك','');
-  if(m.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>هيتم تفعيل متجرك بعد موافقة فريق الإدارة، هتوصلك رسالة فور التفعيل.</p></div>`;
-  if(m.status==='REJECTED') return `<div class="empty-state"><i class="fa-solid fa-circle-xmark"></i><h4>طلب انضمام المتجر مرفوض</h4><p>${esc(m.rejectionReason||'تواصل مع الإدارة لمعرفة السبب وإعادة المراجعة.')}</p></div>`;
-  if(m.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>متجرك معلّق حاليًا</h4><p>تواصل مع الإدارة لمعرفة السبب.</p></div>`;
-  if(MerchantPlans.modeOf(m)==='PROFILE') return `<div class="card"><h3>صفحتك التعريفية</h3><p style="line-height:1.8">العملاء يشوفوا عنوانك واللوكيشن وأرقام التواصل. المنتجات والطلبات متاحة في باقة الطلبات.</p>${merchantContactCard(m)}<button class="btn btn-primary" onclick="go('m_profile')">تعديل بيانات الصفحة</button><button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')">اشتراكي والباقات</button></div>`;
+  if(m.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>الإدارة بتراجع بيانات متجرك. لما توافق وتفعّله هيوصلك إشعار.</p></div>`;
+  if(m.status==='REJECTED') return `<div class="empty-state"><i class="fa-solid fa-circle-xmark"></i><h4>طلب انضمام المتجر مرفوض</h4><p>${esc(m.rejectionReason||'كلّم الإدارة عشان تعرف السبب وتطلب مراجعة تانية.')}</p></div>`;
+  if(m.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>متجرك معلّق حاليًا</h4><p>كلّم الإدارة عشان تعرف السبب.</p></div>`;
+  if(MerchantPlans.modeOf(m)==='PROFILE') return `<div class="card"><h3>صفحتك التعريفية</h3><p style="line-height:1.8">العملاء يقدروا يشوفوا عنوانك واللوكيشن وأرقامك. لو عايز تعرض منتجات وتستقبل طلبات، اختار باقة الطلبات.</p>${merchantContactCard(m)}<button class="btn btn-primary" onclick="go('m_profile')">تعديل بيانات الصفحة</button><button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')">اشتراكي والباقات</button></div>`;
   const subs = S.mySubOrders||[];
   const pending = subs.filter(s=>s.status==='SENT_TO_MERCHANT').length;
   const _sb = subBanner();
@@ -3761,7 +3763,7 @@ function renderMerchantProfile(){
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-briefcase"></i> النشاط</span><b style="font-size:13px">${esc(typeLabel(m))}</b></div>
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-location-dot"></i> العنوان</span><b style="font-size:13px">${esc(m.address)}</b></div>
     </div>
-    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">الأرقام والعنوان واللوكيشن في الصفحة التعريفية متاحة للزوار بدون تسجيل دخول بعد اعتماد الاشتراك وإعداد صلاحيات القراءة.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}">معاينة الصفحة</a><button class="btn btn-primary" onclick="openStoreShare('${m.id}')">رابط المتجر وQR · تحميل وطباعة</button></div>`:''}
+    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">بعد اعتماد الاشتراك وتجهيز صلاحيات العرض، الزوار يقدروا يشوفوا أرقامك وعنوانك واللوكيشن من غير تسجيل دخول.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}">معاينة الصفحة</a><button class="btn btn-primary" onclick="openStoreShare('${m.id}')">رابط المتجر وQR · تحميل وطباعة</button></div>`:''}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openChangePassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
@@ -3776,7 +3778,7 @@ window.openMerchantEdit = ()=>{
     <div class="field"><label>اسم المتجر</label><input id="meName" value="${esc(m.businessName)}"></div>
     <div class="field"><label>نوع المتجر</label><div id="meActivityReadOnly" class="hint-box">${esc(typeLabel(m))}</div><p style="font-size:11px;color:var(--ink-soft)">النوع بيتحدد عند التسجيل، ومش متاح تغييره بعد كده.</p></div>
     <div class="field"><label>وصف المتجر</label><textarea id="meDesc">${esc(m.description||'')}</textarea></div>
-    <div class="hint-box">الهاتف وواتساب والعنوان واللوكيشن بيانات ظاهرة للعملاء. لا تضع أي بيانات خاصة هنا.</div>
+    <div class="hint-box">رقم الموبايل وواتساب والعنوان واللوكيشن هيظهروا للعملاء. ما تكتبش هنا أي بيانات عايز تحتفظ بيها لنفسك.</div>
     <div class="field"><label>رقم التواصل</label><input id="mePhone" type="tel" value="${esc(m.phone||'')}"></div>
     <div class="field"><label>رقم واتساب</label><input id="meWa" value="${esc(m.whatsappNumber)}"></div>
     ${locationPicker('meLoc')}<div class="field"><label>العنوان الحالي / التفاصيل</label><input id="meAddr" value="${esc(m.address)}"></div>
@@ -3814,11 +3816,11 @@ window.saveMerchantEdit = async ()=>{
 
 /* ================= DELIVERY AGENT VIEWS ================= */
 function renderDeliveryDashboard(){
-  if(S.agentNoLink) return `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><h4>حسابك غير مربوط بأي مندوب</h4><p>حساب صلاحيتك «مندوب توصيل» لكنه غير مرتبط بملف مندوب فعلي بعد. تواصل مع الإدارة عشان تربط حسابك بالملف الصحيح.</p></div>`;
+  if(S.agentNoLink) return `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><h4>حسابك غير مربوط بأي مندوب</h4><p>حسابك اتحدد كمندوب توصيل، بس لسه مش مربوط بملفك. كلّم الإدارة عشان تكمل الربط.</p></div>`;
   const a = S.myAgent;
   if(!a) return emptyState('fa-hourglass-half','جاري تحميل بياناتك','');
-  if(a.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>هيتم تفعيل حسابك كمندوب توصيل بعد موافقة فريق الإدارة، هتوصلك رسالة فور التفعيل.</p></div>`;
-  if(a.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>حسابك معلّق حاليًا</h4><p>تواصل مع الإدارة لمعرفة السبب.</p></div>`;
+  if(a.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>الإدارة بتراجع طلبك كمندوب. لما توافق وتفعّل حسابك هيوصلك إشعار.</p></div>`;
+  if(a.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>حسابك معلّق حاليًا</h4><p>كلّم الإدارة عشان تعرف السبب.</p></div>`;
   const all = S.myAgentSubOrders||[];
   const active = all.filter(s=>s.status==='OUT_FOR_DELIVERY');
   const delivered = all.filter(s=>s.status==='DELIVERED');
@@ -3902,7 +3904,7 @@ function renderAdminRecurringOrders(){
     <p class="hint-box" style="padding:12px;margin-bottom:14px">دي تذكيرات أسبوعية للعميل، مش طلبات مؤكدة. الطلب بيتسجل بعد تأكيد العميل فقط، ومفيش إرسال تلقائي للتاجر.</p>
     <button class="btn btn-ghost" style="margin-bottom:14px" onclick="loadAdminRecurringOrders()" ${S.adminRecurringLoading?'disabled':''}><i class="fa-solid fa-rotate"></i> ${S.adminRecurringLoading?'جاري التحميل…':'تحديث القائمة'}</button>
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${filter===k?'active':''}" onclick="S.aRecurringFilter='${k}';renderMain()">${l}</button>`).join('')}</div>
-    <p style="font-size:12px;color:var(--ink-soft)">عرض حتى ١٠٠ تذكير، الأحدث أولًا. الشاشة للعرض فقط.</p>
+    <p style="font-size:12px;color:var(--ink-soft)">هنا آخر ١٠٠ تذكير بحد أقصى، الأحدث في الأول. الصفحة دي للمتابعة بس، مش لتأكيد الطلبات.</p>
     ${S.adminRecurringLoading?emptyState('fa-hourglass-half','جاري تحميل التذكيرات',''):S.adminRecurringError?`<p class="hint-box" role="alert" style="padding:12px">${esc(S.adminRecurringError)}</p>`:list.length?`<div class="list-gap">${list.map(r=>`<div class="card" style="overflow-wrap:anywhere">
       <div style="display:flex;gap:12px;align-items:flex-start"><b style="flex:1;min-width:0;font-size:14px">${esc(r.productTitle||'منتج غير مسمّى')}</b><span class="status-pill ${r.status==='ACTIVE'?'status-active':'status-suspended'}" style="flex-shrink:0"><i class="fa-solid ${r.status==='ACTIVE'?'fa-circle-check':'fa-pause'}"></i> ${r.status==='ACTIVE'?'مفعّل':r.status==='PAUSED'?'موقّف':esc(r.status||'غير محدد')}</span></div>
       <p style="font-size:13px;margin:10px 0 4px">العميل: ${esc(r.customerName||r.customerId||'غير محدد')}</p>
@@ -4211,7 +4213,7 @@ window.openRejectMerchant = (id)=>{
   const m = S.allMerchants.find(x=>x.id===id);
   if(!m || m.status!=='PENDING') return;
   UI.openModal(`<div class="modal-head"><h3>رفض طلب انضمام متجر</h3><button class="modal-close" aria-label="إغلاق" onclick="UI.closeModal()">×</button></div>
-    <p style="line-height:1.8">${esc(m.businessName)}. لن يظهر المتجر للعملاء. يمكن إعادة الطلب للمراجعة لاحقًا.</p>
+    <p style="line-height:1.8">${esc(m.businessName)}. المتجر مش هيظهر للعملاء. تقدر ترجّع الطلب للمراجعة بعدين.</p>
     <div class="field"><label for="merchantRejectReason">سبب الرفض</label><textarea id="merchantRejectReason" maxlength="500" required></textarea></div>
     <button class="btn btn-danger" id="merchantRejectConfirm" onclick="confirmRejectMerchant('${id}')">تأكيد الرفض</button>`);
 };
@@ -4356,7 +4358,7 @@ window.openLinkMerchantUser = (merchantId)=>{
   if(!candidates.length){ UI.toast('لا يوجد مستخدمين مسجّلين لربطهم بعد'); return; }
   UI.openModal(`
     <div class="modal-head"><h3>ربط حساب دخول بـ«${esc(m?m.businessName:'')}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px">اختر المستخدم اللي هيدخل بحسابه كصاحب المتجر ده. صلاحيته هتتحول لـ«تاجر» تلقائيًا.</p>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px">اختار حساب الشخص اللي هيدير المتجر. لما تكمل، دوره هيتغير لـ«تاجر».</p>
     <div class="field"><label>المستخدم</label>
       <select id="lmuUser">${candidates.map(u=>`<option value="${u._id}">${esc((u.firstName||'')+' '+(u.lastName||''))} — ${esc(u.email||u.phone||'')}${(u.role||'').toUpperCase()==='MERCHANT'?' (تاجر حاليًا)':''}</option>`).join('')}</select>
     </div>
@@ -4622,7 +4624,7 @@ window.removeCouponAdmin = async (code)=>{
 
 /* ================= سجل نشاط الإدارة ================= */
 function renderAdminAuditLog(){
-  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>سجل النشاط متاح للأدمن الرئيسي فقط.</p></div>`;
+  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>سجل النشاط للأدمن الرئيسي بس.</p></div>`;
   const logs = S.allAuditLogs||[];
   if(!logs.length) return emptyState('fa-clock-rotate-left','لا يوجد نشاط مسجّل بعد','هيظهر هنا أي إجراء إداري حساس زي تغيير الإعدادات أو حالة تاجر/مندوب');
   return `<div class="list-gap">${logs.map(l=>`
@@ -4696,7 +4698,7 @@ function renderAdminAgents(){
       <div class="card">
         <div class="row-between"><b style="font-size:14px">${esc(a.name)}</b><span class="status-pill ${statusClass(a.status)}"><i class="fa-solid ${a.status==='ACTIVE'?'fa-circle-check':a.status==='PENDING'?'fa-clock':'fa-ban'}"></i> ${statusLabel(a.status)}</span></div>
         <p style="font-size:12px;color:var(--ink-soft);margin:6px 0">${esc(a.phone)}${a.vehicleType?' · '+esc(a.vehicleType):''} · <i class="fa-solid fa-star" style="color:var(--gold)"></i> ${a.rating||'—'} (${a.ratingCount||0})</p>
-        ${a.status==='PENDING' ? `<p style="font-size:12px;color:var(--ink-soft);margin:0 0 6px"><i class="fa-solid fa-circle-info"></i> طلب تسجيل ذاتي من التطبيق، بانتظار الموافقة</p>` : ''}
+        ${a.status==='PENDING' ? `<p style="font-size:12px;color:var(--ink-soft);margin:0 0 6px"><i class="fa-solid fa-circle-info"></i> العضو بعت طلبه من التطبيق، ومستني مراجعة الإدارة</p>` : ''}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
           ${a.status!=='ACTIVE'?`<button class="btn btn-primary btn-sm" style="width:auto;flex:1" onclick="setAgentStatus('${a.id}','ACTIVE')">تفعيل</button>`:''}
           ${a.status!=='SUSPENDED'?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="setAgentStatus('${a.id}','SUSPENDED')">${a.status==='PENDING'?'رفض':'تعليق'}</button>`:''}
@@ -4746,7 +4748,7 @@ window.openLinkAgentUser = (agentId)=>{
   if(!candidates.length){ UI.toast('لا يوجد مستخدمين مسجّلين لربطهم بعد'); return; }
   UI.openModal(`
     <div class="modal-head"><h3>ربط حساب دخول بمندوب «${esc(a?a.name:'')}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px">اختر المستخدم اللي هيدخل بحسابه كمندوب توصيل. صلاحيته هتتحول لـ«مندوب توصيل» تلقائيًا.</p>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px">اختار حساب الشخص اللي هيشتغل مندوب. لما تكمل، دوره هيتغير لـ«مندوب توصيل».</p>
     <div class="field"><label>المستخدم</label>
       <select id="lauUser">${candidates.map(u=>`<option value="${u._id}">${esc((u.firstName||'')+' '+(u.lastName||''))} — ${esc(u.email||u.phone||'')}${(u.role||'').toUpperCase()==='DELIVERY'?' (مندوب حاليًا)':''}</option>`).join('')}</select>
     </div>
@@ -4849,7 +4851,7 @@ window.unmarkSettlementPaid = async (id)=>{
 
 /* ================= إعدادات المنصة العامة ================= */
 function renderAdminSettings(){
-  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات الحساسة متاحة للأدمن الرئيسي فقط.</p></div>`;
+  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات دي للأدمن الرئيسي بس.</p></div>`;
   const s = S.settings;
   return `
     <div class="card" style="margin-bottom:16px">
@@ -4964,7 +4966,7 @@ function renderAdminUsers(){
       </div>`;
     }).join('')}</div>` : emptyState('fa-users','لا يوجد أعضاء في هذا التصنيف','')}
     ${list.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:12px" onclick="S.aUserPageSize=(S.aUserPageSize||20)+20;renderMain()">عرض المزيد (${list.length-visible.length} عضو آخر)</button>` : ''}
-    ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> إدارة صلاحيات الأعضاء متاحة للأدمن الرئيسي فقط.</div>` : ''}
+    ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> تغيير صلاحيات الأعضاء للأدمن الرئيسي بس.</div>` : ''}
   `;
 }
 window.openAssignMemberRole = (userId,role)=>{

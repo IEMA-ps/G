@@ -19,13 +19,13 @@
 <section class="hero"><div class="hero-top"><div id="logoFallback" class="logo" aria-hidden="true">⌂</div><img id="logo" class="logo hidden" alt=""><div><span class="eyebrow">محل قريب منك</span><h1 id="name"></h1><div id="activity" class="muted"></div></div></div><div class="about"><span id="kind" class="badge"></span><p id="description"></p><p id="hours" class="muted"></p></div></section>
 <div class="grid">
 <section class="card"><h2>العنوان واللوكيشن</h2><p id="address"></p><a id="map" class="btn primary hidden" target="_blank" rel="noopener noreferrer">افتح اللوكيشن على الخريطة</a><p class="muted">راجع العنوان مع المتجر قبل الزيارة.</p></section>
-<section class="card"><h2>تواصل مع المتجر</h2><a id="phone" class="btn hidden"></a><a id="whatsapp" class="btn primary hidden" target="_blank" rel="noopener noreferrer">تواصل على واتساب</a><p id="noContact" class="muted hidden">أرقام التواصل غير مضافة حاليًا.</p></section>
+<section class="card"><h2>تواصل مع المتجر</h2><a id="phone" class="btn hidden"></a><a id="whatsapp" class="btn primary hidden" target="_blank" rel="noopener noreferrer">تواصل على واتساب</a><p id="noContact" class="muted hidden">المتجر لسه ما أضافش أرقام للتواصل.</p></section>
 </div>
-<div id="profileNote" class="note">دي صفحة تعريفية فقط. للاستفسارات تواصل مع المتجر مباشرة. الطلب والدفع والتوصيل من خلال التطبيق غير متاحين في هذه الباقة.</div>
+<div id="profileNote" class="note">دي صفحة تعرفك بالمتجر. لو عندك سؤال، كلّمه مباشرة. الباقة دي مش بتوفر طلب أو دفع أو توصيل من التطبيق.</div>
 <a id="order" class="btn primary hidden">اعرض المنتجات واطلب من التطبيق</a>
 <button id="copy" class="btn">انسخ رابط الصفحة</button><p id="copyMessage" class="muted" role="status"></p>
 </article>
-</main><footer>على بابك · بيانات الصفحة مقدمة من المتجر. لا نعرض بيانات حسابه الخاصة.</footer>
+</main><footer>على بابك · المتجر هو اللي أضاف بيانات الصفحة. بيانات حسابه الخاصة مش ظاهرة هنا.</footer>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import { getFirestore,doc,getDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
@@ -39,7 +39,7 @@ const $=id=>document.getElementById(id);
 const id=storeIdFromLocation(location);let shareUrl=location.href;
 const config={apiKey:'AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE',authDomain:'ala-babk.firebaseapp.com',projectId:'ala-babk',appId:'1:728631367880:web:0d7b7e6be6131914e72dfd'};
 const safeLogo=url=>{try{const u=new URL(url);return u.protocol==='https:'?u.href:'';}catch{return '';}};
-function unavailable(){ $('message').textContent='صفحة المتجر غير متاحة حاليًا. يمكن أن يكون الاشتراك منتهيًا أو البيانات لم تُنشر بعد.'; }
+function unavailable(){ $('message').textContent='صفحة المتجر مش متاحة دلوقتي. ممكن اشتراكه يكون انتهى، أو بيانات الصفحة لسه ما اتنشرتش.'; }
 async function load(){
  if(!/^[A-Za-z0-9_-]{1,100}$/.test(id||'')){unavailable();return;}
  try{
@@ -57,7 +57,7 @@ async function load(){
   $('noContact').classList.toggle('hidden',!!(phone||wa));
   if(map){$('map').href=map;$('map').classList.remove('hidden');}
   const logo=safeLogo(m.logoUrl);if(logo){$('logo').src=logo;$('logo').alt=m.businessName||'';$('logo').classList.remove('hidden');$('logoFallback').classList.add('hidden');$('logo').onerror=()=>{$('logo').classList.add('hidden');$('logoFallback').classList.remove('hidden');};}
-  if(m.subPlanType==='ORDERING'){const u=new URL('/',location.origin);u.searchParams.set('store',id);$('order').href=u.href;$('order').classList.remove('hidden');$('profileNote').textContent='اطلب المنتجات من التطبيق. الدفع كاش عند الاستلام، والتاجر يجهّز طلبك ليستلمه المندوب.';}
+  if(m.subPlanType==='ORDERING'){const u=new URL('/',location.origin);u.searchParams.set('store',id);$('order').href=u.href;$('order').classList.remove('hidden');$('profileNote').textContent='تقدر تطلب المنتجات من التطبيق وتدفع كاش عند الاستلام. التاجر بيجهز طلبك عشان المندوب يستلمه.';}
   $('message').classList.add('hidden');$('store').classList.remove('hidden');
  }catch{unavailable();}
 }
