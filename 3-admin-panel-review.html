@@ -1,0 +1,545 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>معاينة الإدارة ببيانات تجريبية</title><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"><style>
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'IBM Plex Sans Arabic',sans-serif;
+  background:var(--paper);
+  color:var(--ink);
+  min-height:100vh;
+  overscroll-behavior-y:none;
+}
+button,input,select,textarea{font-family:inherit; font-size:inherit; color:inherit;}
+button{cursor:pointer;}
+a{color:inherit; text-decoration:none;}
+img{max-width:100%; display:block;}
+::selection{background:var(--gold-tint);}
+
+/* ---------- layout shell ---------- */
+#appRoot{max-width:480px; margin:0 auto; min-height:100vh; background:var(--paper); position:relative; display:flex; flex-direction:column;}
+.hidden{display:none !important;}
+
+/* ---------- loading ---------- */
+#loadingScreen{position:fixed; inset:0; background:var(--teal-deep); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; z-index:999;}
+#loadingScreen .brand{font-size:30px; font-weight:800; color:#fff; letter-spacing:.5px;}
+#loadingScreen .brand i{color:var(--gold); margin-inline-start:8px;}
+.spinner{width:30px; height:30px; border:3px solid rgba(255,255,255,.25); border-top-color:var(--gold); border-radius:50%; animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ---------- auth screen ---------- */
+#authScreen{min-height:100vh; display:flex; flex-direction:column; background:var(--teal-deep); color:#fff;}
+.auth-hero{padding:56px 26px 30px; text-align:center;}
+.auth-hero .logo{font-size:34px; font-weight:800;}
+.auth-hero .logo i{color:var(--gold);}
+.auth-hero p{color:var(--on-teal-soft); margin-top:8px; font-size:14.5px;}
+.auth-card{background:var(--paper); color:var(--ink); border-radius:26px 26px 0 0; padding:28px 22px 40px; flex:1; box-shadow:var(--shadow);}
+.auth-tabs{display:flex; background:var(--teal-tint); border-radius:999px; padding:4px; margin-bottom:22px;}
+.auth-tab{flex:1; text-align:center; padding:10px 0; border:none; background:transparent; border-radius:999px; font-weight:700; font-size:14px; color:var(--ink-soft); transition:.2s;}
+.auth-tab.active{background:var(--teal); color:#fff;}
+.field{margin-bottom:14px;}
+.field label{display:block; font-size:13px; font-weight:600; color:var(--ink-soft); margin-bottom:6px;}
+.field input,.field select,.field textarea{
+  width:100%; padding:13px 14px; border:1.5px solid var(--line); border-radius:var(--radius-m);
+  background:var(--surface); outline:none; transition:.15s;
+}
+.field input:hover:not(:focus):not(:disabled),.field select:hover:not(:focus):not(:disabled),.field textarea:hover:not(:focus):not(:disabled){border-color:var(--line-strong);}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--teal); box-shadow:var(--focus-ring);}
+.field input::placeholder,.field textarea::placeholder{color:var(--ink-faint);}
+.field input:disabled,.field select:disabled,.field textarea:disabled{background:var(--paper); color:var(--ink-faint); cursor:not-allowed;}
+.field textarea{resize:vertical; min-height:70px;}
+.role-picker{display:flex; gap:10px; margin-bottom:16px;}
+.role-opt{flex:1; border:1.5px solid var(--line); border-radius:var(--radius-m); padding:14px 8px; text-align:center; background:var(--surface);}
+.role-opt.active{border-color:var(--teal); background:var(--teal-tint);}
+.role-opt i{font-size:20px; color:var(--teal); display:block; margin-bottom:6px;}
+.role-opt span{font-size:12.5px; font-weight:700;}
+.btn{
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  width:100%; padding:14px; border:none; border-radius:var(--radius-m);
+  font-weight:700; font-size:15px; transition:background-color .15s,color .15s,transform .1s,box-shadow .15s;
+}
+.btn-primary{background:var(--teal); color:#fff;}
+.btn-primary:hover{background:var(--teal-hover);}
+.btn-primary:active{background:var(--teal-deep);}
+.btn-gold{background:var(--gold); color:var(--on-gold);}
+.btn-gold:hover{background:var(--gold-hover);}
+.btn-gold:active{background:var(--gold);}
+.btn-outline{background:transparent; border:1.5px solid var(--teal); color:var(--teal);}
+.btn-outline:hover{background:var(--teal-tint);}
+.btn-outline:active{background:var(--teal-tint-deep);}
+.btn-ghost{background:var(--teal-tint); color:var(--teal);}
+.btn-ghost:hover{background:var(--teal-tint-deep);}
+.btn-ghost:active{background:var(--teal-tint);}
+.btn-danger{background:var(--danger-tint); color:var(--danger);}
+.btn-danger:hover{background:var(--danger-tint-deep);}
+.btn-danger:active{background:var(--danger-tint);}
+.btn-sm{padding:9px 12px; font-size:13px; border-radius:var(--radius-s);}
+.btn:hover{transform:translateY(-1px); box-shadow:var(--shadow-sm);}
+.btn:active{transform:translateY(0) scale(.98); box-shadow:none;}
+.btn:focus-visible{outline:3px solid var(--ink); outline-offset:2px;}
+.btn:disabled{opacity:.55; cursor:not-allowed; transform:none; box-shadow:none;}
+.auth-switch{text-align:center; margin-top:18px; font-size:13.5px; color:var(--ink-soft);}
+.auth-switch b{color:var(--teal); font-weight:700;}
+.auth-error{background:var(--danger-tint); color:var(--danger); padding:10px 12px; border-radius:var(--radius-s); font-size:13px; margin-bottom:14px;}
+.hint-box{background:var(--gold-tint); border:1px dashed var(--gold); border-radius:var(--radius-m); padding:12px 14px; font-size:12.5px; color:var(--gold-ink); margin-top:16px; line-height:1.7;}
+.star-picker{display:flex; gap:6px; font-size:24px;}
+.star-picker i{color:var(--line); cursor:pointer; transition:.1s;}
+.star-picker i:active{transform:scale(1.15);}
+
+/* ---------- app shell ---------- */
+#appShell{display:flex; flex-direction:column; min-height:100vh;}
+#topbar{
+  position:sticky; top:0; z-index:20; background:var(--teal); color:#fff;
+  padding:14px 16px; display:flex; align-items:center; gap:10px;
+}
+#topbar .tb-title{font-weight:800; font-size:17px; flex:1;}
+#topbar .tb-title small{display:block; font-size:11px; font-weight:500; color:var(--on-teal-soft);}
+.icon-btn{width:38px; height:38px; border-radius:50%; border:none; background:rgba(255,255,255,.14); transition:background-color .15s; color:#fff; display:flex; align-items:center; justify-content:center; position:relative; font-size:15px;}
+.icon-btn .dot{position:absolute; top:5px; left:7px; width:9px; height:9px; background:var(--gold); border-radius:50%; border:2px solid var(--teal);}
+#searchBar{padding:12px 16px 4px; background:var(--teal);}
+#searchBar .box{background:#fff; border-radius:999px; display:flex; align-items:center; gap:8px; padding:10px 14px;}
+#searchBar input{border:none; outline:none; flex:1; background:transparent;}
+#searchBar i{color:var(--ink-soft);}
+
+#mainContent{flex:1; padding:16px 16px 90px;}
+#bottomNav{
+  position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px;
+  background:#fff; border-top:1px solid var(--line); display:flex; z-index:20;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+}
+.nav-btn{flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 0; border:none; background:transparent; color:var(--ink-soft); font-size:10.5px; font-weight:700;}
+.nav-btn i{font-size:18px;}
+.nav-btn.active{color:var(--teal);}
+.nav-btn .badge{position:absolute; margin-top:-14px; margin-right:-4px; background:var(--danger); color:#fff; font-size:9px; min-width:15px; height:15px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 3px;}
+
+/* ---------- section title ---------- */
+.section-head{display:flex; align-items:center; justify-content:space-between; margin:22px 0 12px;}
+.section-head h3{font-size:16px; font-weight:800; margin:0;}
+.section-head .more{font-size:12.5px; color:var(--teal); font-weight:700;}
+.section-head:first-child{margin-top:0;}
+
+/* ---------- banners ---------- */
+.banner-strip{display:flex; gap:10px; overflow-x:auto; padding-bottom:4px; scrollbar-width:none;}
+.banner-strip::-webkit-scrollbar{display:none;}
+.banner{min-width:270px; border-radius:var(--radius-l); background:linear-gradient(135deg,var(--teal),#1F6356); color:#fff; padding:20px; position:relative; overflow:hidden;}
+.banner h4{margin:0 0 4px; font-size:16px; font-weight:800;}
+.banner p{margin:0; font-size:12.5px; color:#D6E5E0;}
+.banner i{position:absolute; font-size:60px; opacity:.15; left:-6px; bottom:-10px;}
+
+/* ---------- categories ---------- */
+.cat-scroll{display:flex; gap:10px; overflow-x:auto; scrollbar-width:none; padding:2px 4px 4px;}
+.cat-chip{flex-shrink:0;} .cat-chip span:not(.em){white-space:nowrap;}
+.cat-scroll::-webkit-scrollbar{display:none;}
+.cat-chip{min-width:74px; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px 8px;}
+.cat-chip .em{font-size:22px;}
+.cat-chip span{font-size:11px; font-weight:700; text-align:center; line-height:1.3;}
+.cat-chip.active{background:var(--teal-tint); border-color:var(--teal);}
+
+/* ---------- cards ---------- */
+.card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:14px;}
+.list-gap{display:flex; flex-direction:column; gap:12px;}
+
+.merchant-card{display:flex; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px; align-items:center;}
+.merchant-card .logo{width:56px; height:56px; border-radius:var(--radius-s); background:var(--teal-tint); display:flex; align-items:center; justify-content:center; font-size:22px; color:var(--teal); flex-shrink:0; overflow:hidden;}
+.merchant-card .logo img{width:100%; height:100%; object-fit:cover;}
+.merchant-card .info{flex:1; min-width:0;}
+.merchant-card .info h4{margin:0 0 3px; font-size:14.5px; font-weight:800;}
+.merchant-card .info .meta{font-size:12px; color:var(--ink-soft); display:flex; gap:8px; align-items:center;}
+.status-pill{font-size:10.5px; font-weight:800; padding:3px 9px; border-radius:999px;}
+.status-pending{background:var(--gold-tint); color:var(--warning);}
+.status-active{background:var(--success-tint); color:var(--success);}
+.status-suspended{background:var(--danger-tint); color:var(--danger);}
+
+.product-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.product-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); overflow:hidden; position:relative;}
+.product-card .thumb{aspect-ratio:1.15; background:var(--teal-tint) center/cover no-repeat; position:relative;}
+.product-card .disc{position:absolute; top:8px; right:8px; background:var(--danger); color:#fff; font-size:10.5px; font-weight:800; padding:3px 7px; border-radius:6px;}
+.product-card .body{padding:10px;}
+.product-card h5{margin:0 0 4px; font-size:13px; font-weight:700; line-height:1.35; min-height:35px;}
+.product-card .price-row{display:flex; align-items:baseline; gap:6px; margin-bottom:8px;}
+.product-card .price{font-weight:800; color:var(--teal); font-size:14.5px;}
+.product-card .old-price{font-size:11.5px; color:var(--ink-soft); text-decoration:line-through;}
+.product-card .add-btn{width:100%; background:var(--teal); color:#fff; border:none; border-radius:var(--radius-s); padding:8px; font-weight:700; font-size:12.5px;}
+.product-card .stockout{background:var(--line); color:var(--ink-soft);}
+.qty-stepper{display:flex; align-items:center; justify-content:space-between; background:var(--teal); border-radius:var(--radius-s); overflow:hidden;}
+.qty-stepper button{background:transparent; border:none; color:#fff; width:30px; height:32px; font-weight:800; transition:background-color .15s;}
+.qty-stepper button:hover{background:rgba(255,255,255,.18);}
+.qty-stepper span{color:#fff; font-weight:800; font-size:13px;}
+
+/* ---------- empty state ---------- */
+.empty-state{text-align:center; padding:50px 20px; color:var(--ink-soft);}
+.empty-state i{font-size:38px; color:var(--line); margin-bottom:12px; display:block;}
+.empty-state h4{color:var(--ink); font-size:15px; margin:0 0 6px;}
+.empty-state p{font-size:13px; margin:0;}
+
+/* ---------- cart ---------- */
+.cart-line{display:flex; gap:10px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line);}
+.cart-line:last-child{border-bottom:none;}
+.cart-line .thumb{width:54px; height:54px; border-radius:var(--radius-s); background:var(--teal-tint) center/cover no-repeat; flex-shrink:0;}
+.cart-line .info{flex:1; min-width:0;}
+.cart-line .info h5{margin:0 0 3px; font-size:13.5px; font-weight:700;}
+.cart-line .info .m{font-size:11px; color:var(--ink-soft);}
+.summary-row{display:flex; justify-content:space-between; font-size:13.5px; padding:6px 0; color:var(--ink-soft);}
+.summary-row.total{color:var(--ink); font-weight:800; font-size:16px; border-top:1px dashed var(--line); margin-top:6px; padding-top:12px;}
+
+/* ---------- order ---------- */
+.order-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:14px;}
+.order-card .top-row{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;}
+.order-card .oid{font-weight:800; font-size:13.5px; max-width:100%; overflow-wrap:anywhere; direction:ltr; unicode-bidi:isolate;}
+.order-card .date{font-size:11.5px; color:var(--ink-soft);}
+.timeline{display:flex; align-items:center; margin:14px 0 4px;}
+.timeline .step{flex:1; display:flex; flex-direction:column; align-items:center; position:relative;}
+.timeline .step .dot{width:20px; height:20px; border-radius:50%; background:var(--line); color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; z-index:1;}
+.timeline .step.done .dot{background:var(--teal);}
+.timeline .step .lbl{font-size:9.5px; color:var(--ink-soft); margin-top:5px; text-align:center;}
+.timeline .step:not(:last-child)::after{content:''; position:absolute; top:9px; right:calc(50% + 12px); left:calc(-50% + 12px); height:2px; background:var(--line);}
+.timeline .step.done:not(:last-child)::after{background:var(--teal);}
+
+/* ---------- misc ---------- */
+.badge-chip{display:inline-flex; align-items:center; gap:5px; background:var(--teal-tint); color:var(--teal); font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px;}
+.divider{height:1px; background:var(--line); margin:16px 0;}
+.stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+.stat-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:14px;}
+.stat-card .num{font-size:22px; font-weight:800; color:var(--teal);}
+.stat-card .lbl{font-size:11.5px; color:var(--ink-soft); margin-top:2px;}
+.seg{display:flex; background:var(--teal-tint); border-radius:999px; padding:3px; overflow-x:auto; scrollbar-width:none; gap:2px;}
+.seg::-webkit-scrollbar{display:none;}
+.seg button{white-space:nowrap; border:none; background:transparent; padding:8px 14px; border-radius:999px; font-size:12.5px; font-weight:700; color:var(--teal); transition:background-color .15s,color .15s;}
+.seg button:hover:not(.active){background:rgba(255,255,255,.55);}
+.seg button.active{background:var(--teal); color:#fff;}
+.row-between{display:flex; align-items:center; justify-content:space-between;}
+.fab{position:fixed; bottom:78px; left:50%; transform:translateX(-146px); background:var(--gold); color:var(--on-gold); width:52px; height:52px; border-radius:50%; border:none; box-shadow:var(--shadow); font-size:19px; z-index:19;}
+
+.support-btn{position:fixed; bottom:98px; left:max(12px, calc(50% - 228px)); z-index:18; display:flex; align-items:center; gap:6px; background:var(--whatsapp); color:#fff; border:none; border-radius:999px; padding:9px 14px; font-size:12.5px; font-weight:700; box-shadow:var(--shadow);}
+.support-btn.hidden{display:none;}
+
+/* ---------- ديسكتوب: لوحة الأدمن (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+.nav-extra{display:none;}
+@media (min-width:1024px){
+  body[data-role="admin"]{background:var(--paper);}
+  body[data-role="admin"] #appRoot{max-width:none; margin:0; box-shadow:none; background:var(--paper);}
+  body[data-role="admin"] #appShell{margin-right:250px;}
+  body[data-role="admin"] #topbar{padding:16px 36px;}
+  body[data-role="admin"] #topbar .tb-title{font-size:20px;}
+  body[data-role="admin"] #mainContent{width:100%; max-width:1240px; margin:0 auto; padding:28px 36px 48px;}
+  body[data-role="admin"] #bottomNav{top:0; bottom:0; right:0; left:auto; transform:none; width:250px; max-width:none; flex-direction:column; justify-content:flex-start; gap:2px; overflow-y:auto; border-top:none; border-left:1px solid var(--line); padding:20px 12px; border-radius:0; margin:0; box-shadow:none; height:auto;}
+  body[data-role="admin"] #bottomNav::before{content:'على بابك'; display:block; font-weight:800; font-size:20px; color:var(--teal); padding:4px 14px 18px;}
+  body[data-role="admin"] .nav-btn{flex:none; flex-direction:row; justify-content:flex-start; gap:12px; padding:11px 14px; border-radius:12px; font-size:14px; text-align:right;}
+  body[data-role="admin"] .nav-btn i{font-size:16px; width:20px; text-align:center;}
+  body[data-role="admin"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="admin"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="admin"] .nav-btn .badge{position:static; margin:0 6px 0 0;}
+  body[data-role="admin"] .nav-extra{display:flex;}
+  body[data-role="admin"] .nav-sep{display:block; height:1px; background:var(--line); margin:10px 8px;}
+  body[data-role="admin"] .a-shortcut{display:none;}
+  body[data-role="admin"][data-tab="a_settings"] #mainContent, body[data-role="admin"][data-tab="a_dbsetup"] #mainContent{max-width:860px;}
+  body[data-role="admin"] .stat-grid{grid-template-columns:repeat(4,1fr); gap:16px;}
+  body[data-role="admin"] .stat-card{padding:20px;}
+  body[data-role="admin"] .stat-card .num{font-size:28px;}
+  body[data-role="admin"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; align-items:start;}
+  body[data-role="admin"] #modalRoot{align-items:center;}
+  body[data-role="admin"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="admin"] #toast{bottom:32px;}
+}
+.nav-sep{display:none;}
+
+/* ---------- ديسكتوب: واجهة العميل (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+@media (min-width:1024px){
+  body[data-role="customer"]{background:var(--paper);}
+  body[data-role="customer"] #appRoot{max-width:1240px; box-shadow:none;}
+  body[data-role="customer"] #appShell{display:flex; flex-direction:column;}
+  body[data-role="customer"] #topbar{order:0; padding:16px 32px;}
+  body[data-role="customer"] #topbar .tb-title{font-size:20px;}
+  body[data-role="customer"] #bottomNav{order:1; position:sticky; top:68px; bottom:auto; left:auto; transform:none; width:100%; max-width:none; justify-content:center; gap:6px; border:none; border-bottom:1px solid var(--line); padding:8px 32px; border-radius:0; margin:0; box-shadow:none; z-index:19;}
+  body[data-role="customer"] .nav-btn{flex:none; flex-direction:row; gap:8px; padding:9px 18px; border-radius:999px; font-size:14px;}
+  body[data-role="customer"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="customer"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="customer"] .nav-btn .badge{position:static; margin:0 4px 0 0;}
+  body[data-role="customer"] #searchBar{order:2; padding:16px 32px 4px;}
+  body[data-role="customer"] #searchBar .box{max-width:640px; margin:0 auto;}
+  body[data-role="customer"] #mainContent{order:3; padding:24px 32px 56px;}
+  body[data-role="customer"] .product-grid{grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:18px;}
+  body[data-role="customer"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); gap:16px; align-items:start;}
+  body[data-role="customer"] .cat-scroll{flex-wrap:wrap; overflow:visible;}
+  body[data-role="customer"] .banner-strip .banner{flex:1; min-width:0; padding:28px;}
+  body[data-role="customer"][data-tab="cart"] #mainContent, body[data-role="customer"][data-tab="checkout"] #mainContent, body[data-role="customer"][data-tab="orderDetail"] #mainContent,
+  body[data-role="customer"][data-tab="orderDone"] #mainContent, body[data-role="customer"][data-tab="profile"] #mainContent, body[data-role="customer"][data-tab="addresses"] #mainContent,
+  body[data-role="customer"][data-tab="notifications"] #mainContent{max-width:780px; width:100%; margin:0 auto;}
+  body[data-role="customer"][data-tab="cart"] .list-gap, body[data-role="customer"][data-tab="checkout"] .list-gap, body[data-role="customer"][data-tab="profile"] .list-gap,
+  body[data-role="customer"][data-tab="orderDetail"] .list-gap, body[data-role="customer"][data-tab="addresses"] .list-gap, body[data-role="customer"][data-tab="notifications"] .list-gap{display:flex; flex-direction:column;}
+  body[data-role="customer"] #modalRoot{align-items:center;}
+  body[data-role="customer"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="customer"] #toast{bottom:32px;}
+}
+
+/* ---------- ديسكتوب: لوحة التاجر (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+@media (min-width:1024px){
+  body[data-role="merchant"]{background:var(--paper);}
+  body[data-role="merchant"] #appRoot{max-width:none; margin:0; box-shadow:none; background:var(--paper);}
+  body[data-role="merchant"] #appShell{margin-right:250px;}
+  body[data-role="merchant"] #topbar{padding:16px 36px;}
+  body[data-role="merchant"] #topbar .tb-title{font-size:20px;}
+  body[data-role="merchant"] #mainContent{width:100%; max-width:1240px; margin:0 auto; padding:28px 36px 48px;}
+  body[data-role="merchant"] #bottomNav{top:0; bottom:0; right:0; left:auto; transform:none; width:250px; max-width:none; flex-direction:column; justify-content:flex-start; gap:2px; overflow-y:auto; border-top:none; border-left:1px solid var(--line); padding:20px 12px; border-radius:0; margin:0; box-shadow:none; height:auto;}
+  body[data-role="merchant"] #bottomNav::before{content:'على بابك'; display:block; font-weight:800; font-size:20px; color:var(--teal); padding:4px 14px 18px;}
+  body[data-role="merchant"] .nav-btn{flex:none; flex-direction:row; justify-content:flex-start; gap:12px; padding:11px 14px; border-radius:12px; font-size:14px; text-align:right;}
+  body[data-role="merchant"] .nav-btn i{font-size:16px; width:20px; text-align:center;}
+  body[data-role="merchant"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="merchant"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="merchant"] .nav-btn .badge{position:static; margin:0 6px 0 0;}
+  body[data-role="merchant"] .stat-grid{grid-template-columns:repeat(4,1fr); gap:16px;}
+  body[data-role="merchant"] .stat-card{padding:20px;}
+  body[data-role="merchant"] .stat-card .num{font-size:28px;}
+  body[data-role="merchant"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; align-items:start;}
+  body[data-role="merchant"][data-tab="m_profile"] #mainContent, body[data-role="merchant"][data-tab="m_subscription"] #mainContent, body[data-role="merchant"][data-tab="m_statement"] #mainContent{max-width:900px;}
+  body[data-role="merchant"] #modalRoot{align-items:center;}
+  body[data-role="merchant"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="merchant"] #toast{bottom:32px;}
+}
+
+/* ---------- ديسكتوب: لوحة المسوق (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+@media (min-width:1024px){
+  body[data-role="marketer"]{background:var(--paper);}
+  body[data-role="marketer"] #appRoot{max-width:none; margin:0; box-shadow:none; background:var(--paper);}
+  body[data-role="marketer"] #appShell{margin-right:250px;}
+  body[data-role="marketer"] #topbar{padding:16px 36px;}
+  body[data-role="marketer"] #topbar .tb-title{font-size:20px;}
+  body[data-role="marketer"] #mainContent{width:100%; max-width:1240px; margin:0 auto; padding:28px 36px 48px;}
+  body[data-role="marketer"] #bottomNav{top:0; bottom:0; right:0; left:auto; transform:none; width:250px; max-width:none; flex-direction:column; justify-content:flex-start; gap:2px; overflow-y:auto; border-top:none; border-left:1px solid var(--line); padding:20px 12px; border-radius:0; margin:0; box-shadow:none; height:auto;}
+  body[data-role="marketer"] #bottomNav::before{content:'على بابك'; display:block; font-weight:800; font-size:20px; color:var(--teal); padding:4px 14px 18px;}
+  body[data-role="marketer"] .nav-btn{flex:none; flex-direction:row; justify-content:flex-start; gap:12px; padding:11px 14px; border-radius:12px; font-size:14px; text-align:right;}
+  body[data-role="marketer"] .nav-btn i{font-size:16px; width:20px; text-align:center;}
+  body[data-role="marketer"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="marketer"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="marketer"] .nav-btn .badge{position:static; margin:0 6px 0 0;}
+  body[data-role="marketer"] .stat-grid{grid-template-columns:repeat(4,1fr); gap:16px;}
+  body[data-role="marketer"] .stat-card{padding:20px;}
+  body[data-role="marketer"] .stat-card .num{font-size:28px;}
+  body[data-role="marketer"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; align-items:start;}
+  body[data-role="marketer"][data-tab="mk_earnings"] #mainContent, body[data-role="marketer"][data-tab="mk_tools"] #mainContent{max-width:900px;}
+  body[data-role="marketer"] #modalRoot{align-items:center;}
+  body[data-role="marketer"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="marketer"] #toast{bottom:32px;}
+}
+/* ---------- ديسكتوب: لوحة المندوب (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
+@media (min-width:1024px){
+  body[data-role="delivery"]{background:var(--paper);}
+  body[data-role="delivery"] #appRoot{max-width:none; margin:0; box-shadow:none; background:var(--paper);}
+  body[data-role="delivery"] #appShell{margin-right:250px;}
+  body[data-role="delivery"] #topbar{padding:16px 36px;}
+  body[data-role="delivery"] #topbar .tb-title{font-size:20px;}
+  body[data-role="delivery"] #mainContent{width:100%; max-width:1240px; margin:0 auto; padding:28px 36px 48px;}
+  body[data-role="delivery"] #bottomNav{top:0; bottom:0; right:0; left:auto; transform:none; width:250px; max-width:none; flex-direction:column; justify-content:flex-start; gap:2px; overflow-y:auto; border-top:none; border-left:1px solid var(--line); padding:20px 12px; border-radius:0; margin:0; box-shadow:none; height:auto;}
+  body[data-role="delivery"] #bottomNav::before{content:'على بابك'; display:block; font-weight:800; font-size:20px; color:var(--teal); padding:4px 14px 18px;}
+  body[data-role="delivery"] .nav-btn{flex:none; flex-direction:row; justify-content:flex-start; gap:12px; padding:11px 14px; border-radius:12px; font-size:14px; text-align:right;}
+  body[data-role="delivery"] .nav-btn i{font-size:16px; width:20px; text-align:center;}
+  body[data-role="delivery"] .nav-btn:hover{background:var(--teal-tint);}
+  body[data-role="delivery"] .nav-btn.active{background:var(--teal-tint);}
+  body[data-role="delivery"] .nav-btn .badge{position:static; margin:0 6px 0 0;}
+  body[data-role="delivery"] .stat-grid{grid-template-columns:repeat(4,1fr); gap:16px;}
+  body[data-role="delivery"] .stat-card{padding:20px;}
+  body[data-role="delivery"] .stat-card .num{font-size:28px;}
+  body[data-role="delivery"] .list-gap{display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; align-items:start;}
+  body[data-role="delivery"][data-tab="d_profile"] #mainContent{max-width:900px;}
+  body[data-role="delivery"] #modalRoot{align-items:center;}
+  body[data-role="delivery"] .modal-sheet{max-width:560px; border-radius:20px; max-height:86vh;}
+  body[data-role="delivery"] #toast{bottom:32px;}
+}
+
+/* ---------- modal ---------- */
+#modalRoot{position:fixed; inset:0; z-index:60; display:flex; align-items:flex-end; justify-content:center;}
+#modalRoot.hidden{display:none;}
+.modal-backdrop{position:absolute; inset:0; background:rgba(15,20,18,.5);}
+.modal-sheet{position:relative; width:100%; max-width:480px; background:var(--paper); border-radius:24px 24px 0 0; max-height:88vh; overflow-y:auto; padding:20px 18px calc(24px + env(safe-area-inset-bottom));}
+.modal-sheet .modal-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+.modal-sheet .modal-head h3{margin:0; font-size:17px; font-weight:800;}
+.modal-close{width:32px; height:32px; border-radius:50%; background:var(--teal-tint); border:none; color:var(--teal);}
+
+/* ---------- toast ---------- */
+#toast{position:fixed; bottom:100px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; padding:12px 20px; border-radius:999px; font-size:13px; font-weight:600; z-index:80; opacity:0; transition:.25s; pointer-events:none; white-space:nowrap; max-width:90%; overflow:hidden; text-overflow:ellipsis;}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+@media (min-width:481px){
+  body{background:#EDE7DA;}
+  #appRoot{box-shadow:0 0 40px rgba(0,0,0,.1); min-height:100vh;}
+  #bottomNav{position:fixed;}
+}
+
+.plan-pair{display:grid;grid-template-columns:1fr;gap:14px}.plan-card{padding:20px}.plan-card.ordering-plan{border-color:var(--teal);background:linear-gradient(155deg,var(--teal-tint),var(--surface) 60%)}.plan-intro{font-size:12.5px;color:var(--ink-soft);line-height:1.9;min-height:72px}.plan-fee{font-size:11.5px;line-height:1.8;background:var(--paper);padding:10px;border-radius:10px;margin:10px 0}.plan-option{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-top:1px solid var(--line);font-size:12px}.plan-option b{color:var(--teal);font-size:14px;white-space:nowrap}@media(max-width:600px){.plan-pair{grid-template-columns:1fr}.plan-intro{min-height:0}}
+.merchant-welcome{text-align:right;padding:18px}.merchant-welcome h3{font-size:19px;margin:12px 0 8px;overflow-wrap:anywhere}.welcome-note{font-size:12px;color:var(--ink-soft);line-height:1.85}.welcome-plans{display:grid;gap:10px}.welcome-plan{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface);min-width:0}.welcome-plan> b{font-size:15px;color:var(--teal)}.welcome-plan p{font-size:12px;line-height:1.8;margin:6px 0}.welcome-prices{display:flex;flex-wrap:wrap;gap:6px}.welcome-prices span{display:flex;gap:7px;align-items:center;background:var(--paper);border-radius:8px;padding:7px;font-size:11.5px}.welcome-prices b{color:var(--teal);white-space:nowrap}.welcome-plan .welcome-fee{color:var(--ink-soft);font-size:11px;margin-bottom:0}.sub-payment-guide{font-size:12px;line-height:1.85}.sub-payment-guide ol{padding-inline-start:22px;margin:8px 0 12px}.sub-payment-guide li{padding-inline-start:2px;margin-bottom:6px}.sub-payment-destination{font-size:13px;line-height:1.85;white-space:pre-line;overflow-wrap:anywhere;background:var(--teal-tint);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px;margin:7px 0;font-weight:700;unicode-bidi:plaintext}
+.growth-card{margin-bottom:14px;min-width:0}.growth-card h3{margin:10px 0;font-size:18px}.growth-card p{font-size:12px;line-height:1.9;color:var(--ink-soft)}.growth-card label{font-size:12px}.growth-card input{display:block;width:100%;min-width:0;border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px;font-size:11px;text-align:left}.growth-code{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;font-size:12px}.growth-code b{overflow-wrap:anywhere;word-break:break-all;color:var(--teal);font-size:15px;min-width:0}.growth-actions{display:flex;gap:8px}.growth-actions .btn{flex:1;min-width:0}.growth-counts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.growth-counts>div{background:var(--teal-tint);border-radius:14px;padding:14px 8px;text-align:center}.growth-counts b{display:block;font-size:28px;color:var(--teal)}.growth-counts span{display:block;font-size:11px}.growth-card .growth-note{font-size:11px}
+.founding-offer{border:1px solid var(--gold);margin:14px 0;background:linear-gradient(145deg,var(--gold-tint),var(--surface) 65%)}.founding-offer h3{margin:12px 0 8px!important}.founding-offer p{font-size:12px;line-height:1.9}.founding-preview{background:var(--ink);color:var(--paper);font-size:11px;padding:8px;border-radius:10px;margin-bottom:12px}.founding-help{color:var(--ink-soft)}
+.password-hint{font-size:12px;line-height:1.85;color:var(--ink-soft);margin:8px 0}.password-checks{list-style:none;padding:0;margin:8px 0 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11.5px;line-height:1.8}.password-checks li{border-radius:8px;padding:5px 7px;background:var(--paper)}.password-checks .met{color:var(--success)}.password-checks .missing{color:var(--ink-soft)}.password-error{color:var(--danger);font-size:12px;line-height:1.8}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.location-picker{border:1px solid var(--line);border-radius:14px;padding:12px;margin:12px 0;min-width:0}.location-picker legend{font-size:13px;font-weight:700;padding:0 5px}.location-picker select,.location-picker input{width:100%;min-width:0;max-width:100%}.location-picker [hidden]{display:none!important}.location-note{font-size:11.5px;line-height:1.8;color:var(--ink-soft);margin:6px 0}.location-picker .field{margin-bottom:10px}
+</style><link rel="stylesheet" href="brand.css"><link rel="stylesheet" href="admin-panel.css"></head><body data-role="admin"><div id="appRoot"><div id="appShell"><div id="topbar"><div class="tb-title">لوحة التحكم<small>معاينة فقط · بيانات تجريبية</small></div></div><main id="mainContent"></main></div><nav id="bottomNav" aria-label="صفحات الإدارة"></nav></div><div id="modalRoot" class="hidden"><div class="modal-backdrop" onclick="UI.closeModal()"></div><div id="modalSheet" class="modal-sheet"></div></div><script type="module">
+import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from './admin-panel.js';
+const esc=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+const S=window.S={role:'admin',profile:{adminRole:'SUPER'},user:{uid:'admin'},tab:'a_dashboard',allUsersReady:true,adminAttributionStatus:'ready',adminAttributions:[{id:'c1',referrerId:'m1'},{id:'c2',referrerId:'m1'},{id:'c3',referrerId:'m2'}],allUsers:[{_id:'m1',role:'MARKETER',firstName:'أحمد',lastName:'محمود',referralCode:'MK-AHMED'},{_id:'m2',role:'MARKETER',firstName:'سارة',lastName:'علي',referralCode:'MK-SARA'},{_id:'m3',role:'MARKETER',firstName:'محمد',lastName:'حسن',referralCode:'MK-MOHAMED'},...Array.from({length:12},(_,i)=>({_id:'c'+(i+1),role:'CUSTOMER',firstName:['منى','كريم','نور','عمر'][i%4],lastName:'عضو تجريبي',email:'member'+(i+1)+'@example.test',phone:'',referralCode:'MK-CLIENT'+i,referredBy:i<7?'m1':i<10?'m2':'m3'}))],allMerchants:[{id:'shop',businessName:'بقالة الحي',status:'ACTIVE'},{id:'pending',businessName:'متجر جديد',status:'PENDING'}],allOrders:[],allDeliveryAgents:[],products:[{id:'p1',merchantId:'shop',title:'أرز أبيض طويل الحبة',price:38,stock:15,isActive:true},{id:'p2',merchantId:'shop',title:'سائل غسيل الأطباق',price:42,stock:8,isActive:true}],allSubs:[],allWithdrawals:[],settings:{platformCommissionPercent:2,marketerCommissionPercent:20,defaultDeliveryFee:25,loyaltyEarnRate:.1,loyaltyRedeemValue:.05,referralBonusPoints:50}};
+const isSuperAdmin=()=>S.profile.adminRole!=='STAFF',fmtMoney=n=>Number(n||0).toLocaleString('ar-EG')+' ج.م',fmtDate=()=>'',emptyState=(icon,title,text)=>'<section class="empty-state"><i class="fa-solid '+icon+'"></i><h4>'+title+'</h4><p>'+text+'</p></section>',mkRate=()=>20,getMerchant=id=>S.allMerchants.find(m=>m.id===id),ORDER_STATUS={},CATEGORY_SEED=[],MerchantPlans={supportPhone:()=>''};
+window.UI={openModal:html=>{document.getElementById('modalSheet').innerHTML=html;document.getElementById('modalRoot').classList.remove('hidden');},closeModal:()=>document.getElementById('modalRoot').classList.add('hidden')};
+window.go=tab=>{S.tab=tab;renderMain();window.scrollTo(0,0);};
+window.openAdminMenu=()=>UI.openModal(adminMenu(isSuperAdmin()));
+window.searchAdminMembers=value=>{S.aUserSearch=value;S.aUserPageSize=20;renderMain();const input=document.getElementById('adminMemberSearch');input.focus();input.setSelectionRange(value.length,value.length);};
+function renderAdminUsers(){
+  const search=S.aUserSearch||'',q=search.trim().toLocaleLowerCase();
+  const head=memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء كل مسوق</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
+  if(S.allUsersError)return head+`<section class="card" role="alert">${esc(S.allUsersError)}</section>`;
+  if(S.aUserView==='codes')return head+acquisitionHTML({users:S.allUsers,usersReady:S.allUsersReady===true,attributions:isSuperAdmin()?S.adminAttributions||[]:[],status:S.adminAttributionStatus||'loading',search},esc);
+  if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
+
+  const seg = S.aUserFilter || 'ALL';
+  const tabs = [['ALL','الكل'],['CUSTOMER','عملاء'],['MERCHANT','تجار'],['DELIVERY','مناديب'],['MARKETER','مسوّقون'],['ADMIN','إدارة']];
+  const list = S.allUsers.filter(u=>(seg==='ALL'||(u.role||'').toUpperCase()===seg)&&(!q||[u.firstName,u.lastName,[u.firstName,u.lastName].filter(Boolean).join(' '),u.email,u.phone,u.referralCode].some(v=>String(v||'').toLocaleLowerCase().includes(q))));
+  const canManageAdmins = isSuperAdmin();
+  const pageSize = S.aUserPageSize || 20;
+  const visible = list.slice(0, pageSize);
+  return head+`
+    <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${seg===k?'active':''}" onclick="S.aUserFilter='${k}';S.aUserPageSize=20;renderMain()">${l}</button>`).join('')}</div>
+    ${list.length? `<div class="list-gap">${visible.map(u=>{
+      const roleLabel = u.role==='ADMIN' ? (u.adminRole==='STAFF'?'أدمن مساعد':'أدمن رئيسي') : u.role==='MERCHANT'?'تاجر':u.role==='DELIVERY'?'مندوب توصيل':u.role==='MARKETER'?'مسوّق':'عميل';
+      return `<div class="card">
+        <div class="row-between">
+          <div><b style="font-size:13.5px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b>
+            <div class="admin-member-contact">${esc(u.email||'')} ${u.phone?' · '+esc(u.phone):''}</div>
+            <div class="admin-code" dir="ltr">${esc(u.referralCode||'')}</div>
+          </div>
+          <span class="badge-chip">${roleLabel}</span>
+        </div>
+        ${canManageAdmins ? `<div class="member-role-actions" style="display:flex;gap:4px;flex-wrap:nowrap;margin-top:8px">
+          ${u.role==='CUSTOMER' && !u.merchantId && !u.deliveryAgentId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT')"><i class="fa-solid fa-store"></i> تعيين تاجر</button><button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','DELIVERY')"><i class="fa-solid fa-motorcycle"></i> تعيين مندوب</button>` : ''}
+          ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
+          ${u.role==='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openMarketerRate('${u._id}')"><i class="fa-solid fa-percent"></i> نسبته ${mkRate(u)}%</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="removeMarketer('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء المسوّق</button>` : ''}
+          ${u.role!=='ADMIN' && u.role!=='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToAdmin('${u._id}')"><i class="fa-solid fa-user-shield"></i> أدمن مساعد</button>` : ''}
+          ${u.role==='ADMIN' && u.adminRole==='STAFF' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToSuperAdmin('${u._id}')"><i class="fa-solid fa-crown"></i> ترقية لأدمن رئيسي</button>` : ''}
+          ${u.role==='ADMIN' && u._id!==S.user.uid ? `<button class="btn btn-danger btn-sm" style="width:auto" onclick="demoteAdmin('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء صلاحية الإدارة</button>` : ''}
+        </div>` : ''}
+      </div>`;
+    }).join('')}</div>` : emptyState('fa-users','لا يوجد أعضاء في هذا التصنيف','')}
+    ${list.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:12px" onclick="S.aUserPageSize=(S.aUserPageSize||20)+20;renderMain()">عرض المزيد (${list.length-visible.length} عضو آخر)</button>` : ''}
+    ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> إدارة صلاحيات الأعضاء متاحة للأدمن الرئيسي فقط.</div>` : ''}
+  `;
+}
+function renderAdminDashboard(){
+  const merchants = S.allMerchants||[];
+  const orders = S.allOrders||[];
+  const revenue = orders.filter(o=>o.status==='DELIVERED').reduce((a,o)=>a+(Number(o.total)||0),0);
+  const pendingMerchants = merchants.filter(m=>m.status==='PENDING').length;
+  const pendingAgents = (S.allDeliveryAgents||[]).filter(a=>a.status==='PENDING').length;
+  const newOrdersCount = orders.filter(o=>o.status==='PENDING_ADMIN').length;
+  return `
+    <div class="stat-grid">
+      <div class="stat-card"><i class="stat-ic fa-solid fa-shop"></i><div class="num">${merchants.filter(m=>m.status==='ACTIVE').length}</div><div class="lbl">تجار نشطون</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-clock"></i><div class="num">${pendingMerchants}</div><div class="lbl">بانتظار الموافقة</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-receipt"></i><div class="num">${orders.length}</div><div class="lbl">إجمالي الطلبات</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-sack-dollar"></i><div class="num">${fmtMoney(revenue)}</div><div class="lbl">إجمالي المبيعات</div></div>
+    </div>
+    ${newOrdersCount>0 ? `<div class="card" style="margin-top:16px;border-color:var(--teal);background:var(--teal-tint)" onclick="go('a_new_orders')">
+      <b style="font-size:13.5px"><i class="fa-solid fa-bell"></i> ${newOrdersCount} طلب جديد بانتظار المراجعة والإرسال للتاجر</b>
+    </div>` : ''}
+    ${pendingMerchants>0 ? `<div class="card" style="margin-top:16px;border-color:var(--gold);background:var(--gold-tint)" onclick="go('a_merchants')">
+      <b style="font-size:13.5px"><i class="fa-solid fa-triangle-exclamation"></i> ${pendingMerchants} طلب انضمام تاجر بانتظار مراجعتك</b>
+    </div>` : ''}
+    ${pendingAgents>0 ? `<div class="card" style="margin-top:16px;border-color:var(--gold);background:var(--gold-tint)" onclick="go('a_agents')">
+      <b style="font-size:13.5px"><i class="fa-solid fa-triangle-exclamation"></i> ${pendingAgents} طلب انضمام مندوب توصيل بانتظار مراجعتك</b>
+    </div>` : ''}
+    <div class="section-head"><h3>أحدث الطلبات</h3><span class="more" onclick="go('a_orders')">عرض الكل</span></div>
+    ${orders.slice(0,4).length? `<div class="list-gap">${orders.slice(0,4).map(o=>{
+      const st=ORDER_STATUS[o.status]||{};
+      return `<div class="order-card"><div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill ${st.color==='success'?'status-active':st.color==='danger'?'status-suspended':'status-pending'}"><i class="fa-solid ${o.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':o.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':o.status==='PREPARING'?'fa-box-open':o.status==='ACCEPTED'?'fa-check':'fa-clock'}"></i> ${st.label}</span></div><div class="date">${fmtDate(o.createdAt)} · ${esc(o.customerName)}</div><div class="row-between" style="margin-top:8px"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div></div>`;
+    }).join('')}</div>` : emptyState('fa-receipt','لا توجد طلبات بعد','')}
+    <button class="btn btn-primary a-shortcut" style="margin-top:16px" onclick="go('a_settlements')"><i class="fa-solid fa-sack-dollar"></i> الكشوف والتسويات للتجار</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_recurring')"><i class="fa-solid fa-repeat"></i> الطلبات الأسبوعية</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_agents')"><i class="fa-solid fa-motorcycle"></i> إدارة مناديب التوصيل</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_subscriptions')"><i class="fa-solid fa-gem"></i> الاشتراكات والباقات${(S.allSubs||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allSubs||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_marketers')"><i class="fa-solid fa-bullhorn"></i> المسوّقون وعمولاتهم${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length?` <span class="badge-chip" style="background:var(--danger);color:#fff">${(S.allWithdrawals||[]).filter(x=>x.status==='PENDING').length}</span>`:''}</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_coupons')"><i class="fa-solid fa-ticket"></i> أكواد الخصم والكوبونات</button>
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_reports')"><i class="fa-solid fa-chart-pie"></i> تقارير المنصة الشاملة</button>
+    ${isSuperAdmin()?`
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_settings')"><i class="fa-solid fa-gear"></i> إعدادات العمولة والمنصة</button>
+    ${isSuperAdmin()?`<button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_dbsetup')"><i class="fa-solid fa-database"></i> فحص وتهيئة قاعدة البيانات</button>`:''}
+    <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_audit')"><i class="fa-solid fa-clock-rotate-left"></i> سجل نشاط الإدارة</button>
+    ` : `<div class="hint-box" style="margin-top:10px"><i class="fa-solid fa-lock"></i> حسابك «أدمن مساعد» — الإعدادات الحساسة وسجل النشاط متاحين للأدمن الرئيسي فقط.</div>`}
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="syncCategories()"><i class="fa-solid fa-wand-magic-sparkles"></i> إضافة/تحديث الأقسام المقترحة (${CATEGORY_SEED.length} قسم)</button>
+    <button class="btn btn-ghost" style="margin-top:10px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
+  `;
+}
+function renderAdminProducts(){
+  if(S.catalogOpen&&isSuperAdmin()) return `<button class="btn btn-ghost" onclick="SharedCatalog.close()">رجوع للمنتجات</button>`+SharedCatalog.render();
+  const filterM = S.aProdMerchantFilter || 'ALL';
+  const list = filterM==='ALL' ? S.products : S.products.filter(p=>p.merchantId===filterM);
+  const pageSize = S.aProdPageSize || 20;
+  const visible = list.slice(0, pageSize);
+  return `
+    <div class="field" style="margin-bottom:14px">
+      <label>فلترة حسب التاجر</label>
+      <select onchange="S.aProdMerchantFilter=this.value;S.aProdPageSize=20;renderMain()">
+        <option value="ALL" ${filterM==='ALL'?'selected':''}>كل التجار</option>
+        ${S.allMerchants.map(m=>`<option value="${m.id}" ${filterM===m.id?'selected':''}>${esc(m.businessName)}</option>`).join('')}
+      </select>
+    </div>
+    <button class="btn btn-primary" style="margin-bottom:10px" onclick="openAdminProductForm()"><i class="fa-solid fa-plus"></i> إضافة منتج جديد</button>
+    ${isSuperAdmin()?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="SharedCatalog.open()">إدارة كتالوج المنتجات المشترك</button>`:''}
+    <button class="btn btn-ghost" style="margin-bottom:16px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
+    ${list.length? `<div class="list-gap">${visible.map(p=>{
+      const m = getMerchant(p.merchantId);
+      return `<div class="card admin-catalog-row" style="${p.isActive===false?'opacity:.55':''}">
+        <div class="thumb admin-catalog-thumb" style="background:var(--teal-tint) center/cover no-repeat;background-image:url('${esc(p.imageUrl||'')}')"></div>
+        <div class="admin-catalog-info">
+          <b class="prod-title" style="font-size:13.5px">${esc(p.title)}</b>
+          <div style="font-size:12px;color:var(--ink-soft)">${fmtMoney(p.price)} · مخزون ${p.stock}${p.isActive===false?' · <span style="color:var(--danger)">متوقف</span>':''}</div>
+          <div style="font-size:11.5px;color:var(--ink-soft)"><i class="fa-solid fa-shop"></i> ${esc(m?m.businessName:'—')}</div>
+        </div>
+        <div class="admin-catalog-actions">
+        <button class="icon-btn" aria-label="${p.isActive===false?'تفعيل المنتج':'إلغاء تفعيل المنتج'}" style="background:${p.isActive===false?'var(--success-tint);color:var(--success)':'var(--gold-tint);color:var(--warning)'}" onclick="toggleProductActive('${p.id}',${p.isActive!==false})" title="${p.isActive===false?'تفعيل':'إلغاء تفعيل'}"><i class="fa-solid ${p.isActive===false?'fa-toggle-off':'fa-toggle-on'}"></i></button>
+        <button class="icon-btn" aria-label="تعديل المنتج" style="background:var(--teal-tint);color:var(--teal)" onclick="openAdminProductForm('${p.id}')"><i class="fa-solid fa-pen"></i></button>
+        <button class="icon-btn" aria-label="حذف المنتج" style="background:var(--danger-tint);color:var(--danger)" onclick="deleteProduct('${p.id}')"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      </div>`;
+    }).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','أضف أول منتج من هنا')}
+    ${list.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:12px" onclick="S.aProdPageSize=(S.aProdPageSize||20)+20;renderMain()">عرض المزيد (${list.length-visible.length} منتج آخر)</button>` : ''}
+  `;
+}
+function renderAdminSettings(){
+  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات الحساسة متاحة للأدمن الرئيسي فقط.</p></div>`;
+  const s = S.settings;
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 14px;font-size:15px">إعدادات عامة للمنصة</h3>
+      <div class="field"><label>نسبة عمولة المنصة الافتراضية (%)</label><input id="setCommission" type="number" step="0.1" min="0" max="100" value="${s.platformCommissionPercent}"></div>
+      <div class="field"><label>نسبة المسوّق من عمولة الطلبات (%) — لو المصدر يشمل الطلبات</label><input id="setMkPct" type="number" step="0.1" min="0" max="100" value="${s.marketerCommissionPercent!=null?s.marketerCommissionPercent:20}"></div>
+      <div class="field"><label>مدة احتساب نسبة الطلبات بالأشهر (0 = بدون حد)</label><input id="setMkMonths" type="number" step="1" min="0" max="120" value="${s.marketerCommissionMonths||0}"></div>
+      <div class="field"><label>رسوم التوصيل لكل تاجر في الطلب (جنيه)</label><input id="setDeliveryFee" type="number" step="1" min="0" value="${s.defaultDeliveryFee}"></div>
+      <button class="btn btn-primary" onclick="saveAppSettings()">حفظ الإعدادات</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 14px;font-size:15px"><i class="fa-brands fa-whatsapp" style="color:var(--teal)"></i> الدعم الفني</h3>
+      <div class="field"><label>رقم واتساب الدعم الفني</label><input id="setSupport" type="tel" inputmode="tel" dir="ltr" placeholder="مثال: 01012345678" value="${esc(s.supportWhatsapp||'')}"></div>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">${MerchantPlans.supportPhone(s.supportWhatsapp)?`الرقم الحالي: <b dir="ltr">+${MerchantPlans.supportPhone(s.supportWhatsapp)}</b>. زرار «دعم فني» ظاهر لكل المستخدمين بعد تسجيل الدخول.`:'مفيش رقم دعم محفوظ. زرار «دعم فني» مخفي لحد ما تحفظ رقم صحيح.'}</p>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="saveSupportPhone()">حفظ رقم الدعم</button>${MerchantPlans.supportPhone(s.supportWhatsapp)?`<button class="btn btn-ghost" style="width:auto" onclick="openSupport('تجربة رقم الدعم')">تجربة الرابط</button>`:''}</div>
+    </div>
+    <div class="hint-box"><i class="fa-solid fa-circle-info"></i> نسبة العمولة دي هي الافتراضية اللي بتتطبق على أي تاجر ملوش نسبة مخصصة. لتحديد نسبة مختلفة لتاجر معيّن، ادخل صفحة «التجار» واضغط «تعديل» بجانب العمولة.</div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="row-between" style="margin-bottom:14px">
+        <h3 style="margin:0;font-size:15px">برنامج نقاط الولاء</h3>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
+          <input type="checkbox" id="setLoyaltyEnabled" ${s.loyaltyEnabled!==false?'checked':''}> مفعّل
+        </label>
+      </div>
+      <div class="field"><label>معدل الكسب (نقطة لكل 1 جنيه إنفاق)</label><input id="setLoyaltyEarn" type="number" step="0.01" min="0" value="${s.loyaltyEarnRate||0}"></div>
+      <div class="field"><label>قيمة النقطة عند الاستبدال (جنيه لكل نقطة)</label><input id="setLoyaltyRedeem" type="number" step="0.01" min="0" value="${s.loyaltyRedeemValue||0}"></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> مثال بالإعدادات الحالية: عميل يصرف ${fmtMoney(100)} هياخد ${Math.floor(100*(s.loyaltyEarnRate||0))} نقطة، وكل نقطة تساوي ${fmtMoney(s.loyaltyRedeemValue||0)} عند الاستخدام. النقاط بتتحسب من قيمة الطلب قبل أي خصومات، وبتضاف بعد التسليم الفعلي فقط.</p>
+      <button class="btn btn-primary" onclick="saveLoyaltySettings()">حفظ إعدادات النقاط</button>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3 style="margin:0 0 14px;font-size:15px">دعوة صديق</h3>
+      <div class="field"><label>عدد النقاط اللي ياخدها كل من الصديقين (الداعي والمدعو)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، الاتنين ياخدوا نفس عدد النقاط دي تلقائيًا.</p>
+      <button class="btn btn-primary" onclick="saveReferralSettings()">حفظ</button>
+    </div>
+  `;
+}
+window.renderMain=()=>{document.body.dataset.tab=S.tab;document.getElementById('bottomNav').innerHTML=adminNavigation(S.tab,isSuperAdmin());const fn={a_dashboard:renderAdminDashboard,a_users:renderAdminUsers,a_products:renderAdminProducts,a_settings:renderAdminSettings}[S.tab];document.getElementById('mainContent').innerHTML=adminPageHeading(S.tab,isSuperAdmin())+(fn?fn():'<div class="card">صفحة خارج نطاق بيانات المعاينة. لا يتم الاتصال بقاعدة البيانات.</div>');};
+// Prevent accidental operational actions in this review only.
+document.addEventListener('click',event=>{const b=event.target.closest('[onclick]');if(!b)return;const action=b.getAttribute('onclick');if(!['go(','openAdminMenu(','UI.closeModal(','S.aUser','searchAdminMembers('].some(prefix=>action.startsWith(prefix))){event.preventDefault();event.stopImmediatePropagation();alert('معاينة فقط، بدون حفظ أو تغيير بيانات.');}},true);
+renderMain();</script></body></html>

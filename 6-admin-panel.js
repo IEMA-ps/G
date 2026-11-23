@@ -1,0 +1,30 @@
+// Read-only presentation for the existing admin role. Never grants permissions.
+export const ADMIN_PAGES=[
+ ['a_dashboard','fa-chart-simple','نظرة عامة','تشغيل'],['a_new_orders','fa-bell','طلبات جديدة','تشغيل'],['a_orders','fa-receipt','كل الطلبات','تشغيل'],['a_recurring','fa-repeat','الطلبات الأسبوعية','تشغيل'],
+ ['a_merchants','fa-shop','التجار','المنصة'],['a_products','fa-box','المنتجات','المنصة'],['a_categories','fa-tags','الأقسام','المنصة'],['a_agents','fa-motorcycle','مناديب التوصيل','المنصة'],
+ ['a_users','fa-users','الأعضاء والأكواد','النمو'],['a_marketers','fa-bullhorn','المسوقون','النمو'],['a_subscriptions','fa-gem','الاشتراكات والباقات','النمو'],['a_coupons','fa-ticket','أكواد الخصم','النمو'],
+ ['a_settlements','fa-sack-dollar','الكشوف والتسويات','المتابعة'],['a_reports','fa-chart-pie','التقارير','المتابعة'],
+ ['a_settings','fa-gear','الإعدادات','إدارة',true],['a_dbsetup','fa-database','قاعدة البيانات','إدارة',true],['a_audit','fa-clock-rotate-left','سجل النشاط','إدارة',true]
+];
+export const adminPages=superAdmin=>ADMIN_PAGES.filter(p=>!p[4]||superAdmin);
+const button=(p,tab,extra='')=>`<button class="nav-btn ${extra} ${tab===p[0]?'active':''}" ${tab===p[0]?'aria-current="page"':''} onclick="go('${p[0]}')"><i class="fa-solid ${p[1]}" aria-hidden="true"></i><span>${p[2]}</span></button>`;
+export function adminNavigation(tab,superAdmin,counts={}){
+ const pages=adminPages(superAdmin),primary=['a_dashboard','a_orders','a_users','a_marketers'];let group='';
+ return `<div class="admin-nav-brand"><img src="/logo.svg" alt=""><div>على بابك<small>مساحة الإدارة</small></div></div>`+pages.map(p=>{let title='';if(group!==p[3]){group=p[3];title=`<span class="admin-nav-group nav-extra">${group}</span>`;}const n=Math.max(0,Number(counts[p[0]])||0);const item=n?{...p,2:p[2]+' ('+n+')'}:p;return title+button(item,tab,primary.includes(p[0])?'':'nav-extra');}).join('')+`<button class="nav-btn admin-menu-button" onclick="openAdminMenu()" aria-label="كل صفحات الإدارة"><i class="fa-solid fa-bars" aria-hidden="true"></i><span>المزيد</span></button>`;
+}
+export function adminMenu(superAdmin){return `<div class="modal-head"><h3>كل صفحات الإدارة</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div><div class="admin-menu-grid">${adminPages(superAdmin).map(p=>`<button class="btn btn-ghost" onclick="UI.closeModal();go('${p[0]}')"><i class="fa-solid ${p[1]}" aria-hidden="true"></i>${p[2]}</button>`).join('')}</div>`;}
+export function adminPageHeading(tab,superAdmin){const p=ADMIN_PAGES.find(p=>p[0]===tab);if(!p)return '';return `<header class="admin-page-heading"><div><p>الإدارة / ${p[3]}</p><h1>${p[2]}</h1></div><span class="admin-access">${superAdmin?'أدمن رئيسي':'أدمن مساعد'}</span></header>`;}
+const uid=u=>u._id||u.id;
+// Immutable attribution wins over mutable legacy data. Deleted accounts are never counted as customers.
+export function customerAcquisition(users=[],attributions=[]){
+ const people=new Map(users.filter(u=>uid(u)).map(u=>[uid(u),u])),owners=users.filter(u=>u.role==='MARKETER'),proof=new Map();
+ for(const a of attributions){if(a.id&&a.referrerId&&a.id!==a.referrerId)proof.set(a.id,a.referrerId);}
+ return owners.map(owner=>{let recorded=0,legacy=0;for(const [id,user] of people){if(id===uid(owner)||user.role!=='CUSTOMER')continue;if(proof.has(id)){if(proof.get(id)===uid(owner))recorded++;}else if(user.referredBy===uid(owner))legacy++;}return {id:uid(owner),name:[owner.firstName,owner.lastName].filter(Boolean).join(' ')||'مسوق بدون اسم',code:owner.referralCode||'',recorded,legacy,total:recorded+legacy};}).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,'ar'));
+}
+export function acquisitionHTML({users=[],attributions=[],status='loading',usersReady=false,search=''},esc){
+ if(!usersReady)return '<section class="card" role="status">جاري تحميل الأعضاء. لا نعرض البيانات الناقصة كصفر.</section>';
+ const q=search.trim().toLocaleLowerCase(),rows=customerAcquisition(users,attributions).filter(r=>[r.name,r.code].some(v=>v.toLocaleLowerCase().includes(q)));
+ const notice=status==='ready'?'تم تحميل سجل الأكواد. العدد حسب دور الحساب الحالي.':status==='legacy'?'المعروض من الإحالات القديمة فقط. السجل الثابت متاح للأدمن الرئيسي فقط، وقد تكون الأعداد ناقصة.':status==='error'?'سجل الأكواد الثابت غير متاح. المعروض من بيانات الإحالة القديمة فقط وقد يكون ناقصًا. راجع صلاحية قراءة السجل.':'جاري تحميل سجل الأكواد الثابت. الأعداد القديمة مؤقتة وقد تكون ناقصة.';
+ return `<section class="admin-report-intro"><h2>كل مسوق جاب كام عميل؟</h2><p>${notice}</p><p>دي حسابات عملاء مسجلة، مش زيارات أو طلبات أو استحقاق عمولة. الإحالة القديمة قابلة للتعديل سابقًا، وليست إثباتًا تاريخيًا.</p></section><div class="admin-acquisition-list">${rows.map(r=>`<article class="card admin-acquisition-card"><div class="row-between"><div><h3>${esc(r.name)}</h3><span class="admin-code" dir="ltr">${esc(r.code||'بدون كود')}</span></div><div class="admin-customer-count"><b>${r.total}</b><span>عميل حالي${status==='ready'?'':' · مؤقت'}</span></div></div><div class="admin-evidence"><span>سجل ثابت <b>${status==='ready'?r.recorded:'غير متاح'}</b></span><span>إحالة قديمة <b>${r.legacy}</b></span></div></article>`).join('')||'<section class="card">لا يوجد مسوقون مطابقون للبحث.</section>'}</div>`;
+}
+export function memberOverview(users,ready){const count=role=>ready?users.filter(u=>u.role===role).length:'…';return `<div class="admin-member-stats"><div><b>${ready?users.length:'…'}</b><span>كل الأعضاء</span></div><div><b>${count('CUSTOMER')}</b><span>عملاء حاليون</span></div><div><b>${count('MARKETER')}</b><span>مسوقون</span></div></div>`;}
