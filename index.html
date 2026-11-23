@@ -485,7 +485,7 @@ img{max-width:100%; display:block;}
 
 <script src="/qrcode.js"></script>
 <script type="module">
-import {marketerBenefits} from '/marketer-benefits.js?v=human-1';
+import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-1';
 import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-2';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
@@ -518,7 +518,7 @@ import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
-import { requestMessage, requestForm } from '/support-requests.js?v=store-types-1';
+import { requestMessage, requestForm } from '/support-requests.js?v=marketer-join-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
 import * as MerchantPlans from '/merchant-plans.js?v=map-link-1';
@@ -3361,7 +3361,7 @@ function renderOrderDetail(){
 
 /* ================= CUSTOMER: PROFILE / ADDRESSES / NOTIFICATIONS ================= */
 window.openJoinRequest = (kind)=>{
-  if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery'].includes(kind)) return;
+  if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery','marketer'].includes(kind)) return;
   const available=!!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
   const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
   UI.openModal(requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc):''));
@@ -3387,7 +3387,7 @@ function renderProfile(){
   const points = S.profile.loyaltyPoints || 0;
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
   return `
-    <div class="card" style="margin-bottom:16px"><h3>مهتم تشتغل مسوق معانا؟</h3><p style="line-height:1.9;margin:10px 0">اعرف دور المسوق وإزاي تترشح، وشروط العمولة والحافز قبل ما تبدأ.</p><button class="btn btn-ghost" onclick="go('marketerBenefits')">اعرف تفاصيل الشغل كمسوق</button></div>
+    <div class="card" style="margin-bottom:16px"><h3>اشتغل مسوّق مع على بابك</h3><p style="line-height:1.9;margin:10px 0">عرّف التجار بعلى بابك وساعدهم يبدأوا، وتابع شغلك ورصيدك من حسابك.</p><ul style="line-height:2;padding-inline-start:22px;margin:0 0 10px;font-size:13px"><li>كود ورابط خاصين بيك تشاركهم مع التجار.</li><li>عمولة عن كل اشتراك مدفوع تعتمده إدارة الموقع ويتسجل بكودك.</li><li>مستويات بتزود نسبتك كل ما محلاتك النشطة تكتر.</li><li>حافز إضافي في أول مهلة بعد تعيينك لو حققت هدفها.</li></ul><p style="font-size:12px;line-height:1.8;color:var(--ink-soft);margin-bottom:12px">الشغل بالعمولة حسب المعتمد، مش مرتب ثابت ولا ضمان دخل معين. التعيين بيتم بعد مراجعة إدارة الموقع.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">قدّم طلب انضمام كمسوّق</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="go('marketerBenefits')">التفاصيل والشروط</button></div></div>
     ${Program.joinButton()}${Program.candidate()}
     <div class="card" style="text-align:center;padding:24px">
       <div style="width:64px;height:64px;border-radius:50%;background:var(--teal-tint);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 10px"><i class="fa-solid fa-user"></i></div>
@@ -3403,7 +3403,7 @@ function renderProfile(){
         <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
       </div>
     </div>`:''}
-    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3><p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button></div></div>`:''}
+    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3><p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
     <div class="section-head"><h3>الحساب</h3></div>
     <div class="list-gap">
       <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('addresses')"><span><i class="fa-solid fa-location-dot" style="color:var(--teal);margin-left:8px"></i> عناويني</span><i class="fa-solid fa-chevron-left"></i></div>

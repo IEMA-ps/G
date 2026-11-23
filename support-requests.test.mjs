@@ -10,6 +10,12 @@ assert.match(m('merchant',data,account),/اسم المتجر: متجر تجرب�
 assert.match(m('delivery',data,account),/وسيلة التوصيل: دراجة/);
 assert.doesNotMatch(m('delivery',data,account),/اسم المتجر:/);
 assert.match(m('merchant',data,account),/test-uid/);
+assert.match(m('marketer',data,account),/طلب الانضمام كمسوّق/);
+assert.match(m('marketer',data,account),/منطقة العمل: مدينة الاختبار/);
+assert.doesNotMatch(m('marketer',data,account),/اسم المتجر:|وسيلة التوصيل:/);
+assert.match(m('marketer',{...data,experience:'تسويق عطور'},account),/خبرة سابقة: تسويق عطور/);
+assert.throws(()=>m('marketer',{...data,area:''},account));
+assert.throws(()=>m('marketer',{...data,phone:'bad'},account));
 assert.throws(()=>m('admin',data,account));
 assert.throws(()=>m('merchant',{...data,business:''},account));
 assert.throws(()=>m('delivery',{...data,phone:'bad'},account));
@@ -32,6 +38,8 @@ const code=html.slice(html.indexOf('window.openJoinRequest ='),html.indexOf('fun
 const els=new Map();const el=id=>{if(!els.has(id))els.set(id,{classList:{add(){},remove(){}},textContent:'',href:'',scrollIntoView(){}});return els.get(id)};
 let opened='';const c={typePicker:()=>'<div>نوع المتجر</div>',StoreTypes:{read:()=>data.activity},locationPicker:()=>'<section>المحافظة والمنطقة</section>',EgyptLocations:{address:(p,d)=>d},URLSearchParams,location:{search:'?marketer=MK-TEST'},window:{},S:{role:'customer',profile:{},settings:{supportWhatsapp:'01012345678'}},auth:{currentUser:account},MerchantPlans:plans,requestMessage:m,requestForm:f,esc,UI:{openModal:s=>opened=s},document:{getElementById:el},FormData:class{constructor(){return Object.entries(data)}}};
 vm.createContext(c);vm.runInContext(code,c);c.window.openJoinRequest('merchant');assert.match(opened,/طلب تسجيل متجر/);
+c.window.openJoinRequest('marketer');assert.match(opened,/طلب الانضمام كمسوّق/);assert.match(opened,/rqExperience/);
+c.window.prepareSupportRequest({preventDefault(){},target:{}},'marketer');assert.match(el('requestText').textContent,/طلب الانضمام كمسوّق/);assert.match(el('requestWhatsApp').href,/^https:\/\/wa.me\//);
 c.window.prepareSupportRequest({preventDefault(){},target:{}},'merchant');assert.match(el('requestText').textContent,/test-uid/);assert.match(el('requestWhatsApp').href,/^https:\/\/wa.me\//);
 c.S.settings.supportWhatsapp='';c.window.prepareSupportRequest({preventDefault(){},target:{}},'delivery');assert.match(el('requestError').textContent,/الدعم غير متاح/);
 opened='';c.S.role='admin';c.window.openJoinRequest('merchant');assert.equal(opened,'');
