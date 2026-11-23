@@ -49,4 +49,16 @@ await bootCtx.bootAuthUser(googleUser);assert.equal(writes,0);assert.equal(store
 stored=null;bootCtx.subscribeCustomer=()=>{};await bootCtx.bootAuthUser(googleUser);assert.equal(writes,1);assert.equal(stored.id,'u');assert.equal(stored.role,'CUSTOMER');
 stored=null;const passwordUser={...googleUser,providerData:[{providerId:'password'}]};bootCtx.auth.currentUser=passwordUser;
 await assert.rejects(bootCtx.bootAuthUser(passwordUser),/profile-needs-admin-repair/);assert.equal(writes,1);
-console.log('PASS: policy, mocked Auth UI and profile-preservation tests, no external requests');
+const diagnostics=policy.accountLoadError;
+assert.equal(diagnostics(new Error('profile-needs-admin-repair')).code,'profile-needs-admin-repair');
+assert.match(diagnostics(new Error('profile-needs-admin-repair')).message,/لم تكتمل/);
+assert.equal(diagnostics(new Error('private details')).code,'unexpected');
+assert.match(diagnostics({code:'permission-denied',bootStage:'profile-create'}).message,/إنشاء بيانات الحساب/);
+assert.match(diagnostics({code:'unavailable',bootStage:'profile-read'}).message,/الاتصال/);
+assert.equal(diagnostics({code:'secret-unknown',bootStage:'unsafe'}).code,'unexpected');
+assert.equal(diagnostics({code:'secret-unknown',bootStage:'unsafe'}).stage,'unknown');
+bootCtx.auth.currentUser=googleUser;bootCtx.getDoc=async()=>{throw {code:'permission-denied'}};
+await assert.rejects(bootCtx.bootAuthUser(googleUser),x=>x.bootStage==='profile-read' && x.code==='permission-denied');
+bootCtx.getDoc=async()=>snap();stored=null;bootCtx.runTransaction=async()=>{throw {code:'unavailable'}};
+await assert.rejects(bootCtx.bootAuthUser(googleUser),x=>x.bootStage==='profile-create' && x.code==='unavailable');
+console.log('PASS: Auth policy/UI, profile preservation and stage diagnostics, no external requests');

@@ -26,3 +26,13 @@ export function googleError(code) {
   };
   return messages[code] || 'تعذّر الدخول بجوجل. حاول تاني أو استخدم البريد وكلمة المرور.';
 }
+
+export function accountLoadError(error) {
+  const code=String(error?.code || (error?.message==='profile-needs-admin-repair'?'profile-needs-admin-repair':'')).replace(/^firestore\//,'');
+  const stage=['profile-read','profile-create','profile-read-back','profile-prepare','app-open'].includes(error?.bootStage)?error.bootStage:'unknown';
+  const labels={'profile-read':'قراءة الحساب','profile-create':'إنشاء بيانات الحساب','profile-read-back':'تأكيد حفظ الحساب','profile-prepare':'تجهيز الحساب','app-open':'فتح التطبيق',unknown:'تحميل الحساب'};
+  const known=['permission-denied','unavailable','deadline-exceeded','unauthenticated','failed-precondition','resource-exhausted','profile-needs-admin-repair'];
+  const safeCode=known.includes(code)?code:'unexpected';
+  const reason=code==='permission-denied'?'تم رفض الوصول لبيانات الحساب. تواصل مع الدعم، لا تحتاج لإنشاء حساب جديد.':code==='unauthenticated'?'جلسة الدخول تحتاج تحديثًا. اخرج ثم ادخل تاني.':['unavailable','deadline-exceeded'].includes(code)?'تعذّر الاتصال بخدمة البيانات. راجع الاتصال وأعد المحاولة.':code==='profile-needs-admin-repair'?'بيانات التسجيل لم تكتمل. تواصل مع الإدارة، ولا تعمل حسابًا جديدًا.':'تم الدخول لكن تعذّر إكمال فتح الحساب. أعد المحاولة، ولو تكرر الخطأ ابعت رمز التشخيص للدعم.';
+  return {code:safeCode,stage,message:reason+' ('+labels[stage]+' / '+safeCode+')'};
+}

@@ -415,6 +415,7 @@ img{max-width:100%; display:block;}
         <button class="auth-tab" id="tabRegister" onclick="Auth.switchTab('register')">حساب جديد</button>
       </div>
       <div id="authError" class="auth-error hidden"></div>
+      <div id="accountRecovery" class="hidden" style="margin-bottom:14px"><p style="font-size:13px;line-height:1.8">حساب Google دخل بالفعل. تقدر تعيد تحميل بياناته بدون إنشاء حساب جديد.</p><button class="btn btn-primary" id="accountRetryBtn" type="button" onclick="Auth.retryAccount()">إعادة تحميل الحساب</button><button class="btn btn-ghost" style="margin-top:8px" type="button" onclick="Auth.confirmLogout()">خروج من الحساب الحالي</button></div>
 
       <form id="loginForm" onsubmit="Auth.login(event)">
         <div class="field"><label>البريد الإلكتروني أو اسم المستخدم</label><input type="text" id="loginEmail" required placeholder="example@mail.com أو اسم المستخدم" autocapitalize="none" autocomplete="username" dir="ltr" style="text-align:right"></div>
@@ -493,7 +494,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
 import { requestMessage, requestForm } from './support-requests.js';
-import { needsEmailVerification, googleProfile, googleError, INTERNAL_EMAIL } from './auth-policy.js';
+import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from './auth-policy.js';
 
 import * as MerchantPlans from './merchant-plans.js?v=ca9d7bc';
 
@@ -768,6 +769,14 @@ const Auth = {
     }catch(e){ Auth.verificationNotice = 'تعذّر التأكد من حالة البريد. راجع الاتصال وحاول تاني.'; if(auth.currentUser?.uid===user.uid) Auth.showVerification(); }
     finally{ Auth.checkingEmail = false; button.disabled = false; }
   },
+  async retryAccount(){
+    if(!auth.currentUser || Auth.retryingAccount) return;
+    Auth.retryingAccount=true;
+    document.getElementById('accountRetryBtn').disabled=true;
+    try{ await bootAuthUser(auth.currentUser); document.getElementById('accountRecovery').classList.add('hidden'); }
+    catch(e){ showAccountLoadFailure(e); }
+    finally{ Auth.retryingAccount=false; document.getElementById('accountRetryBtn').disabled=false; }
+  },
   async googleLogin(){
     if(Auth.googleBusy || Auth.registering || Auth.loginBusy) return;
     Auth.googleBusy = true;
@@ -921,6 +930,7 @@ function showSignedOut(){
   document.getElementById('appShell').classList.add('hidden');
   document.getElementById('verifyScreen').classList.add('hidden');
   document.getElementById('supportBtn').classList.add('hidden');
+  document.getElementById('accountRecovery').classList.add('hidden');
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab('login');
@@ -934,18 +944,24 @@ async function bootAuthUser(user) {
   S.user = user;
   if(needsEmailVerification(user)){ Auth.showVerification(); return; }
   document.getElementById('verifyScreen').classList.add('hidden');
+  let bootStage='profile-read';
+  try{
   const psnap = await getDoc(doc(db,'users',user.uid));
   if(!psnap.exists()){
     if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
     // Create only when absent; preserve an existing UID, role and balances on Google login.
+    bootStage='profile-create';
     await runTransaction(db, async tx=>{
       const ref = doc(db,'users',user.uid); const existing = await tx.get(ref);
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
   }
+  bootStage='profile-read-back';
   const finalSnap = psnap.exists() ? psnap : await getDoc(doc(db,'users',user.uid));
   if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+  bootStage='profile-prepare';
+  if(!finalSnap.exists()) throw new Error('profile-missing-after-create');
   S.profile = finalSnap.data();
   const missing = userDefaults(user.uid, S.profile);
   if(Object.keys(missing).length){
@@ -953,6 +969,7 @@ async function bootAuthUser(user) {
     catch(e){ console.warn('User defaults need admin repair', e.code); }
   }
   if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+  bootStage='app-open';
   S.role = (S.profile.role||'CUSTOMER').toLowerCase();
   loadCart();
   loadWishlist();
@@ -968,15 +985,27 @@ async function bootAuthUser(user) {
   if(S.role==='delivery') subscribeDeliveryAgent();
   if(S.role==='admin') subscribeAdmin();
   renderShell();
+  document.getElementById('accountRecovery').classList.add('hidden');
+  }catch(e){
+    if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+    e.bootStage=bootStage; throw e;
+  }
+}
+function showAccountLoadFailure(e){
+  clearSubs();
+  const problem=accountLoadError(e);
+  console.error('Account boot failed', {stage:problem.stage,code:problem.code});
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('appShell').classList.add('hidden');
+  document.getElementById('supportBtn').classList.add('hidden');
+  document.getElementById('authScreen').classList.remove('hidden');
+  document.getElementById('accountRecovery').classList.remove('hidden');
+  Auth.showError(problem.message);
 }
 onAuthStateChanged(auth, async user=>{
   if(Auth.registering) return;
   try{ await bootAuthUser(user); }
-  catch(e){
-    clearSubs(); document.getElementById('loadingScreen').classList.add('hidden');
-    document.getElementById('appShell').classList.add('hidden');
-    document.getElementById('authScreen').classList.remove('hidden');
-    Auth.showError(e.message==='profile-needs-admin-repair' ? 'حساب الدخول موجود لكن بيانات التسجيل لم تكتمل. لا تعمل حسابًا جديدًا؛ تواصل مع الإدارة لإكماله.' : 'تم تسجيل الدخول، لكن تعذّر تحميل بيانات الحساب. راجع الاتصال وأعد الدخول.');
+  catch(e){ showAccountLoadFailure(e);
   }
 });
 
