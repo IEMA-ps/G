@@ -34,3 +34,6 @@ Activation is a separate reviewed code/config change after the owner publishes t
 - Visual review at390px of locked, achieved, candidate, join confirmation, admin exception and credit review states. Demo screenshots are fake-data review, not live financial results.
 
 Emulator command after installing firebase-tools, firebase and @firebase/rules-unit-testing and Java21: `firebase emulators:exec --only firestore --project demo-marketer-program --config tests/marketer-program/tests/marketer-program/firebase.json 'node tests/marketer-program/tests/marketer-program/rules.test.mjs'`.
+
+## Hidden release revision
+All program UI, invite landing, candidate link, join confirmation, incentive card, admin period controls and new appointment modal return no markup while the code flag is off, even if the settings flag is accidentally true. No program subscriptions or writes run. Existing PR41 admin appointment continues unchanged until explicit program activation; activating the new program switches it to the gated proof/exception flow. Subscription approval adds no new program snapshot fields while off. The standalone fake-data review page stays reachable. This is not program activation and requires fresh review/approval of the revised head.
