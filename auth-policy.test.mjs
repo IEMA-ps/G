@@ -50,6 +50,9 @@ stored=null;bootCtx.subscribeCustomer=()=>{};await bootCtx.bootAuthUser(googleUs
 stored=null;const passwordUser={...googleUser,providerData:[{providerId:'password'}]};bootCtx.auth.currentUser=passwordUser;
 await assert.rejects(bootCtx.bootAuthUser(passwordUser),/profile-needs-admin-repair/);assert.equal(writes,1);
 const diagnostics=policy.accountLoadError;
+assert.equal(diagnostics(new Error('profile-needs-admin-repair')).code,'profile-needs-admin-repair');
+assert.match(diagnostics(new Error('profile-needs-admin-repair')).message,/لم تكتمل/);
+assert.equal(diagnostics(new Error('private details')).code,'unexpected');
 assert.match(diagnostics({code:'permission-denied',bootStage:'profile-create'}).message,/إنشاء بيانات الحساب/);
 assert.match(diagnostics({code:'unavailable',bootStage:'profile-read'}).message,/الاتصال/);
 assert.equal(diagnostics({code:'secret-unknown',bootStage:'unsafe'}).code,'unexpected');
