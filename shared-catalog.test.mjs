@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {catalogEntry,parseCSV,offerData,offerId,escapeHTML} from './shared-catalog.js';
+import {catalogEntry,parseCSV,offerData,offerId,escapeHTML,mapCatalogRows} from './shared-catalog.js';
 const cats=[{id:'c',isActive:true}],row={sku:'rice-1kg',title:'أرز أبيض',description:'',categoryId:'c',unit:'كيس 1 كجم',barcode:'',source:'Supplier feed',rightsConfirmed:true};
 test('base product validates source, rights and category',()=>{assert.equal(catalogEntry(row,cats).sku,row.sku);for(const patch of [{sku:'../x'},{source:''},{rightsConfirmed:false},{categoryId:'bad'},{title:''}])assert.throws(()=>catalogEntry({...row,...patch},cats));});
 test('CSV supports Arabic, BOM, quoted commas, multiline and escaped quotes',()=>{const rows=parseCSV('\uFEFFsku,title,categoryId,unit,source\r\na,"أرز, أبيض",c,كيس,"مورد ""محلي""\nمرخص"');assert.equal(rows[0].title,'أرز, أبيض');assert.match(rows[0].source,/\n/);});
@@ -9,3 +9,5 @@ test('reject invalid money, quantities, inactive base and missing merchant',()=>
 test('escape untrusted catalog copy',()=>{assert.equal(escapeHTML('<img onerror="x">'), '&lt;img onerror=&quot;x&quot;&gt;');});
 
 test('CSV normalizes SKU before duplicate check and zero stock is allowed',()=>{assert.throws(()=>parseCSV('sku,title,categoryId,unit,source\na,t,c,u,s\n a ,t,c,u,s'));assert.equal(offerData({...row,isActive:true,version:1},'m',1,0).stock,0);});
+
+test('preview mapping resolves names/tokens to active IDs and rejects missing or inactive mapping',()=>{const rows=[{...row,categoryId:'سوبر ماركت'}];assert.equal(mapCatalogRows(rows,{'سوبر ماركت':'c'},cats)[0].categoryId,'c');assert.throws(()=>mapCatalogRows(rows,{},cats));assert.throws(()=>mapCatalogRows(rows,{'سوبر ماركت':'c'},[{id:'c',isActive:false}]));});
