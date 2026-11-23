@@ -502,7 +502,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
-import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=egypt-locations-1';
+import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=store-map-1';
 import { locationPicker, installLocations } from '/egypt-locations.js?v=eg-2';
 installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
@@ -511,7 +511,7 @@ import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPasswor
 import { requestMessage, requestForm } from '/support-requests.js?v=egypt-locations-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
-import * as MerchantPlans from '/merchant-plans.js?v=ca9d7bc';
+import * as MerchantPlans from '/merchant-plans.js?v=map-link-1';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE",
@@ -1562,7 +1562,7 @@ function merchantCanEditProducts(){
 function publicStoreUrl(id){const u=new URL('/store.html',location.origin);u.searchParams.set('id',id);return u.href;}
 function publicMerchantData(m){
   const out={};
-  for(const k of ['id','businessName','description','address','phone','whatsappNumber','latitude','longitude','logoUrl','activityType','openTime','closeTime','status','subEndsAt','subPlanType']) if(m[k]!==undefined) out[k]=m[k];
+  for(const k of ['id','businessName','description','address','phone','whatsappNumber','latitude','longitude','googleMapsUrl','logoUrl','activityType','openTime','closeTime','status','subEndsAt','subPlanType']) if(m[k]!==undefined) out[k]=m[k];
   out.publishedAt=nowMs();return out;
 }
 function merchantContactCard(m){
@@ -1908,10 +1908,12 @@ window.openMarketerMerchantForm = ()=>{
     <div class="field"><label>إيميل صاحب المحل (للإدارة لربط حسابه)</label><input id="mkEmail" type="email"></div>
     <div class="field"><label>نوع النشاط</label><select id="mkActivity">${['مطاعم','سوبر ماركت','خضار وفاكهة','لحوم ودواجن وأسماك','حلويات','مشروبات','صيدلية','عناية وتجميل','إلكترونيات','ملابس','مستلزمات أطفال','مستلزمات منزلية','ورد وهدايا','حيوانات أليفة','مكتبات وقرطاسية'].map(a=>`<option value="${a}">${a}</option>`).join('')}</select></div>
     ${locationPicker('mkLoc')}<div class="field"><label>العنوان التفصيلي</label><input id="mkAddress"></div>
+    ${MerchantPlans.mapField('mkMap',{},esc)}
     <div class="field"><label>نبذة (اختياري)</label><textarea id="mkDesc"></textarea></div>
     <button class="btn btn-primary" onclick="saveMarketerMerchant()">إرسال للمراجعة</button>`);
 };
 window.saveMarketerMerchant = async ()=>{
+  let mapPatch;try{mapPatch=MerchantPlans.mapLocationPatch(document.getElementById('mkMap').value);}catch{UI.toast('أدخل رابط Google Maps صحيح');return;}
   let locationAddress;try{locationAddress=EgyptLocations.address('mkLoc',document.getElementById('mkAddress').value);}catch(e){UI.toast(e.message);return;}
   const businessName = document.getElementById('mkBusiness').value.trim();
   const phone = document.getElementById('mkPhone').value.trim();
@@ -1921,7 +1923,7 @@ window.saveMarketerMerchant = async ()=>{
     id, businessName, managerName: document.getElementById('mkManager').value.trim(), phone,
     whatsappNumber: document.getElementById('mkWhats').value.trim() || phone,
     email: document.getElementById('mkEmail').value.trim(), activityType: document.getElementById('mkActivity').value,
-    categoryIds:'', address: locationAddress, description: document.getElementById('mkDesc').value.trim(),
+    categoryIds:'', address: locationAddress, ...mapPatch, description: document.getElementById('mkDesc').value.trim(),
     logoUrl:'', coverUrl:'', ...(S.settings.merchantPlansV2?{subscriptionModel:MerchantPlans.MODEL,subPlanType:null}:{}), status:'PENDING', rating:4.8, totalOrdersCount:0, ownerId:null, registeredAt: nowMs(),
     marketerId: S.user.uid, marketerName: ((S.profile.firstName||'')+' '+(S.profile.lastName||'')).trim(), marketerSince: nowMs()
   });
@@ -3716,6 +3718,7 @@ function renderMerchantProfile(){
     <button class="btn btn-danger" style="margin-top:10px" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
   `;
 }
+window.updateStoreMapPreview = id=>{const input=document.getElementById(id),preview=document.getElementById(id+'Preview');if(input&&preview)preview.innerHTML=MerchantPlans.mapPreviewHTML(input.value,esc);};
 window.openMerchantEdit = ()=>{
   const m = S.myMerchant;
   UI.openModal(`
@@ -3726,7 +3729,7 @@ window.openMerchantEdit = ()=>{
     <div class="field"><label>رقم التواصل</label><input id="mePhone" type="tel" value="${esc(m.phone||'')}"></div>
     <div class="field"><label>رقم واتساب</label><input id="meWa" value="${esc(m.whatsappNumber)}"></div>
     ${locationPicker('meLoc')}<div class="field"><label>العنوان الحالي / التفاصيل</label><input id="meAddr" value="${esc(m.address)}"></div>
-    <div style="display:flex;gap:10px"><div class="field" style="flex:1"><label>خط العرض (اختياري)</label><input id="meLat" type="number" step="any" min="-90" max="90" value="${esc(m.latitude??'')}"></div><div class="field" style="flex:1"><label>خط الطول (اختياري)</label><input id="meLng" type="number" step="any" min="-180" max="180" value="${esc(m.longitude??'')}"></div></div>
+    ${MerchantPlans.mapField('meMap',m,esc)}
     <div class="field"><label>رابط الشعار</label><input id="meLogo" value="${esc(m.logoUrl||'')}" placeholder="https://..."></div>
     <div style="display:flex;gap:10px">
       <div class="field" style="flex:1"><label>وقت الفتح</label><input id="meOpen" type="time" value="${esc(m.openTime||'09:00')}"></div>
@@ -3738,11 +3741,10 @@ window.openMerchantEdit = ()=>{
 };
 window.saveMerchantEdit = async ()=>{
   let locationAddress;try{locationAddress=EgyptLocations.address('meLoc',document.getElementById('meAddr').value);}catch(e){UI.toast(e.message);return;}
-  const latRaw=document.getElementById('meLat').value.trim(),lngRaw=document.getElementById('meLng').value.trim();
-  if((latRaw==='' && lngRaw!=='')||(lngRaw==='' && latRaw!=='')||(latRaw!=='' && (!Number.isFinite(+latRaw)||!Number.isFinite(+lngRaw)||Math.abs(+latRaw)>90||Math.abs(+lngRaw)>180))){UI.toast('أدخل إحداثيات صحيحة معًا أو اتركهما فارغين');return;}
+  let mapPatch;try{mapPatch=MerchantPlans.mapLocationPatch(document.getElementById('meMap').value,S.myMerchant);}catch{UI.toast('أدخل رابط Google Maps صحيح');return;}
   await updateDoc(doc(db,'merchants',S.myMerchant.id), {
     phone: document.getElementById('mePhone').value.trim(),
-    latitude:latRaw===''?null:+latRaw,longitude:lngRaw===''?null:+lngRaw,
+    ...mapPatch,
     businessName: document.getElementById('meName').value.trim(),
     description: document.getElementById('meDesc').value.trim(),
     whatsappNumber: document.getElementById('meWa').value.trim(),
@@ -4109,6 +4111,7 @@ window.openAdminMerchantForm = ()=>{
       </select>
     </div>
     ${locationPicker('amLoc')}<div class="field"><label>العنوان التفصيلي</label><input id="amAddress"></div>
+    ${MerchantPlans.mapField('amMap',{},esc)}
     <div class="field"><label>نبذة عن المتجر (اختياري)</label><textarea id="amDescription"></textarea></div>
     <div class="field"><label>نسبة عمولة المنصة لهذا التاجر (%) — اختياري</label><input id="amCommission" type="number" step="0.1" min="0" max="100" placeholder="افتراضي: ${S.settings.platformCommissionPercent}%"></div>
     <div class="divider"></div>
@@ -4119,6 +4122,7 @@ window.openAdminMerchantForm = ()=>{
   `);
 };
 window.saveAdminMerchant = async ()=>{
+  let mapPatch;try{mapPatch=MerchantPlans.mapLocationPatch(document.getElementById('amMap').value);}catch{UI.toast('أدخل رابط Google Maps صحيح');return;}
   let locationAddress;try{locationAddress=EgyptLocations.address('amLoc',document.getElementById('amAddress').value);}catch(e){UI.toast(e.message);return;}
   const businessName = document.getElementById('amBusinessName').value.trim();
   const phone = document.getElementById('amPhone').value.trim();
@@ -4132,7 +4136,7 @@ window.saveAdminMerchant = async ()=>{
     managerName: document.getElementById('amManagerName').value.trim(),
     phone, whatsappNumber,
     email:'', activityType: document.getElementById('amActivityType').value,
-    categoryIds:'', address: locationAddress,
+    categoryIds:'', address: locationAddress, ...mapPatch,
     description: document.getElementById('amDescription').value.trim(),
     logoUrl:'', coverUrl:'', status:'ACTIVE', rating:4.8, totalOrdersCount:0,
     commissionPercent,
@@ -4919,7 +4923,7 @@ window.openAssignMemberRole = (userId,role)=>{
   const type=assignmentType(role), user=(S.allUsers||[]).find(u=>u._id===userId);
   if(!type || !user || user.role!=='CUSTOMER' || user.merchantId || user.deliveryAgentId){ UI.toast('العضو لم يعد عميلًا متاحًا للتعيين'); return; }
   window._memberRecordDraft={userId,role,recordId:(role==='MERCHANT'?'merch_':'agent_')+uid()};
-  UI.openModal(memberRecordForm(user,role,esc,locationPicker('memberLoc')));
+  UI.openModal(memberRecordForm(user,role,esc,locationPicker('memberLoc'),role==='MERCHANT'?MerchantPlans.mapField('memberRecordMap',{},esc):''));
 };
 window.fillMemberRecordFromRequest = role=>{
   const draft=window._memberRecordDraft;if(!draft || draft.role!==role) return;
@@ -4939,6 +4943,7 @@ window.saveMemberRole = async (userId,role)=>{
   error.textContent=''; btn.disabled=true;
   try{
     input.address=EgyptLocations.address('memberLoc',input.address);
+    if(role==='MERCHANT')input.mapLocation=MerchantPlans.mapLocationPatch(value('memberRecordMap'));
     if(input.marketerCode){
       if(!/^[A-Z0-9-]{4,64}$/.test(input.marketerCode)) throw Error('marketer-unavailable');
       const matches=await getDocs(query(collection(db,'users'),where('referralCode','==',input.marketerCode),limit(2)));
@@ -4951,7 +4956,7 @@ window.saveMemberRole = async (userId,role)=>{
   }catch(e){
     btn.disabled=false;
     const messages={'marketer-unavailable':'كود المسوّق غير صالح أو غير فريد. راجعه قبل إنشاء المتجر.','invalid-contact':'أدخل الاسم ورقم هاتف وواتساب صحيحين.','missing-store-details':'أدخل نوع النشاط وعنوان المتجر.','missing-courier-details':'أدخل وسيلة التوصيل ومنطقة العمل.','customer-required':'العضو لم يعد عميلًا غير مربوط. أغلق النافذة وراجع حسابه.','record-already-exists':'السجل موجود بالفعل. أغلق النافذة وحدّث قائمة الأعضاء قبل المحاولة.','super-required':'الإنشاء والتعيين متاحان للأدمن الرئيسي فقط.'};
-    error.textContent=messages[e?.message]||'تعذّر تأكيد الإنشاء. حدّث قائمة الأعضاء قبل المحاولة مجددًا. لا يتم حفظ ربط جزئي.';
+    error.textContent=(e?.message==='invalid-map-link'?'أدخل رابط Google Maps صحيح':messages[e?.message])||'تعذّر تأكيد الإنشاء. حدّث قائمة الأعضاء قبل المحاولة مجددًا. لا يتم حفظ ربط جزئي.';
   }
 };
 window.promoteToAdmin = async (uid_)=>{
