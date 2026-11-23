@@ -1,0 +1,74 @@
+    // MARKETER PROGRAM v1, merge into the current rules before enabling.
+    // These records are separate from user-editable profiles.
+    function joinProof(id, candidate){
+      return id != candidate && get(/databases/$(database)/documents/marketerJoinRequests/$(id)).data.inviterId == candidate
+        && get(/databases/$(database)/documents/marketerJoinRequests/$(id)).data.emailVerified == true;
+    }
+    function validAppointment(uid){
+      let a=request.resource.data;
+      let ids=a.proofIds;
+      return isSuper() && a.keys().hasOnly(['id','mode','proofIds','reason','createdAt','createdBy'])
+        && a.id == uid && a.createdBy == request.auth.uid && a.createdAt == request.time
+        && get(/databases/$(database)/documents/users/$(uid)).data.role == 'CUSTOMER'
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'MARKETER'
+        && ((a.mode == 'EXCEPTION' && ids.size()==0 && a.reason is string && a.reason.size()>=10 && a.reason.size()<=1000)
+          || (a.mode == 'TARGET' && ids is list && ids.size()==5 && ids.toSet().size()==5 && a.reason == ''
+            && joinProof(ids[0],uid) && joinProof(ids[1],uid) && joinProof(ids[2],uid)
+            && joinProof(ids[3],uid) && joinProof(ids[4],uid)));
+    }
+    function promotionHasProof(uid){
+      return request.resource.data.get('role','') != 'MARKETER' || resource.data.get('role','') == 'MARKETER'
+        || (existsAfter(/databases/$(database)/documents/marketerAppointments/$(uid))
+          && getAfter(/databases/$(database)/documents/marketerAppointments/$(uid)).data.createdAt == request.time);
+    }
+    match /marketerJoinRequests/{uid} {
+      allow read: if signedIn() && (isSuper() || uid == request.auth.uid || resource.data.inviterId == request.auth.uid);
+      allow create: if signedIn() && request.auth.uid == uid && request.auth.token.email_verified == true
+        && me().role == 'CUSTOMER' && request.resource.data.keys().hasOnly(['id','inviterId','emailVerified','createdAt'])
+        && request.resource.data.id == uid && request.resource.data.emailVerified == true
+        && request.resource.data.inviterId is string && request.resource.data.inviterId != uid
+        && get(/databases/$(database)/documents/users/$(request.resource.data.inviterId)).data.role in ['CUSTOMER','MARKETER']
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+    match /marketerAppointments/{uid} {
+      allow read: if signedIn() && (isSuper() || uid == request.auth.uid);
+      allow create: if validAppointment(uid);
+      allow update, delete: if false;
+    }
+    match /marketerPeriods/{pid} {
+      allow read: if signedIn();
+      allow create: if isSuper() && request.resource.data.keys().hasOnly(['id','startAt','endAt','target','createdBy','createdAt'])
+        && request.resource.data.id == pid && request.resource.data.startAt >= request.time.toMillis()
+        && request.resource.data.endAt == request.resource.data.startAt + 604800000
+        && (!exists(/databases/$(database)/documents/marketerProgramState/schedule) || get(/databases/$(database)/documents/marketerProgramState/schedule).data.endAt <= request.resource.data.startAt)
+        && getAfter(/databases/$(database)/documents/marketerProgramState/schedule).data.periodId == pid
+        && getAfter(/databases/$(database)/documents/marketerProgramState/schedule).data.endAt == request.resource.data.endAt
+        && request.resource.data.target is int && request.resource.data.target>=1 && request.resource.data.target<=1000
+        && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time;
+      allow update, delete: if false;
+    }
+    match /marketerProgramState/{id} {
+      allow read: if isSuper();
+      allow create, update: if isSuper() && id == 'schedule'
+        && request.resource.data.keys().hasOnly(['periodId','endAt'])
+        && getAfter(/databases/$(database)/documents/marketerPeriods/$(request.resource.data.periodId)).data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/marketerPeriods/$(request.resource.data.periodId)).data.endAt == request.resource.data.endAt;
+      allow delete: if false;
+    }
+    match /marketerIncentives/{iid} {
+      allow read: if signedIn() && (isSuper() || resource.data.marketerId == request.auth.uid);
+      // Main admin is the trusted verifier of payment evidence and arithmetic. No client claim path.
+      allow create: if isSuper()
+        && request.resource.data.keys().hasOnly(['id','periodId','marketerId','amount','baseAmount','qualifyingCount','subscriptionIds','verifiedBy','verifiedAt'])
+        && iid == request.resource.data.periodId+'_'+request.resource.data.marketerId && request.resource.data.id == iid
+        && get(/databases/$(database)/documents/users/$(request.resource.data.marketerId)).data.role == 'MARKETER'
+        && get(/databases/$(database)/documents/marketerPeriods/$(request.resource.data.periodId)).data.endAt <= request.time.toMillis()
+        && request.resource.data.qualifyingCount >= get(/databases/$(database)/documents/marketerPeriods/$(request.resource.data.periodId)).data.target
+        && request.resource.data.amount is number && request.resource.data.amount>=0
+        && request.resource.data.baseAmount is number && request.resource.data.baseAmount>=0
+        && request.resource.data.amount <= request.resource.data.baseAmount * 0.5 + 0.01
+        && request.resource.data.subscriptionIds is list && request.resource.data.subscriptionIds.size()<=1000
+        && request.resource.data.verifiedBy == request.auth.uid && request.resource.data.verifiedAt == request.time;
+      allow update, delete: if false;
+    }
