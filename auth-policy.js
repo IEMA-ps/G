@@ -28,7 +28,7 @@ export function googleError(code) {
 }
 
 export function accountLoadError(error) {
-  const code=String(error?.code || '').replace(/^firestore\//,'');
+  const code=String(error?.code || (error?.message==='profile-needs-admin-repair'?'profile-needs-admin-repair':'')).replace(/^firestore\//,'');
   const stage=['profile-read','profile-create','profile-read-back','profile-prepare','app-open'].includes(error?.bootStage)?error.bootStage:'unknown';
   const labels={'profile-read':'قراءة الحساب','profile-create':'إنشاء بيانات الحساب','profile-read-back':'تأكيد حفظ الحساب','profile-prepare':'تجهيز الحساب','app-open':'فتح التطبيق',unknown:'تحميل الحساب'};
   const known=['permission-denied','unavailable','deadline-exceeded','unauthenticated','failed-precondition','resource-exhausted','profile-needs-admin-repair'];
