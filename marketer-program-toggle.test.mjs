@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';import{readFileSync}from'node:fs';
+const model=readFileSync('marketer-program.js','utf8'),ui=readFileSync('marketer-program-ui.js','utf8');
+async function fixture({main=true,enabled=true,setting,live=setting,exists=true,fail=false,auditFail=false,accept=true}={}){
+ const moduleURL='data:text/javascript;base64,'+Buffer.from(model.replace(/enabled:(?:true|false)/,'enabled:'+enabled)).toString('base64');const {installProgram}=await import('data:text/javascript;base64,'+Buffer.from(ui.replace('/marketer-program.js?v=program-1',moduleURL)).toString('base64'));const writes=[],toasts=[],confirms=[],audits=[];const state={user:{uid:'admin'},role:'admin',unsubs:[],settings:{...(setting===undefined?{}:{marketerProgramEnabled:setting}),marketerOfferEnabled:false,useBackend:false}};
+ globalThis.confirm=t=>{confirms.push(t);return accept;};
+ const api={doc:(db,c,id)=>({c,id}),collection:(db,c)=>({c}),query:r=>r,where:()=>null,onSnapshot:()=>()=>{},runTransaction:async(db,fn)=>{if(fail)throw Error('permission-denied');return fn({get:async()=>({exists:()=>exists,data:()=>({marketerProgramEnabled:live,marketerOfferEnabled:false,useBackend:false})}),update:(...a)=>writes.push(a)});}};
+ const p=installProgram({state:()=>state,db:{},api,auth:{},ui:{toast:t=>toasts.push(t)},esc:String,superAdmin:()=>main,logAudit:async(...a)=>{if(auditFail)throw Error('audit-failed');audits.push(a);},render:()=>{}});return{p,state,writes,toasts,confirms,audits};
+}
+for(const setting of [undefined,false,'true',1]){const f=await fixture({setting});assert.match(f.p.settings(),/الحالة الحالية: <b>مقفول/);assert.match(f.p.settings(),/Program.setEnabled\(true\)/);await f.p.setEnabled(true);assert.deepEqual(f.writes,[[{c:'settings',id:'app'},{marketerProgramEnabled:true}]]);assert.equal(f.state.settings.marketerOfferEnabled,false);assert.equal(f.state.settings.useBackend,false);assert.equal(f.p.enabled(),true);assert.match(f.confirms[0],/القواعد المراجعة/);assert.match(f.confirms[0],/المتاح للسحب/);}
+let f=await fixture({setting:true});assert.match(f.p.settings(),/Program.setEnabled\(false\)/);await f.p.setEnabled(false);assert.deepEqual(f.writes[0][1],{marketerProgramEnabled:false});assert.equal(f.p.enabled(),false);assert.equal(f.audits.length,1);
+for(const opts of [{main:false},{enabled:false}]){f=await fixture(opts);assert.equal(f.p.settings(),'');await f.p.setEnabled(true);assert.equal(f.writes.length,0);assert.equal(f.confirms.length,0);}
+for(const opts of [{accept:false},{fail:true},{exists:false},{setting:false,live:true}]){f=await fixture(opts);await f.p.setEnabled(true);assert.equal(f.writes.length,0);assert.equal(f.p.enabled(),false);}
+f=await fixture({auditFail:true});await f.p.setEnabled(true);assert.equal(f.writes.length,1);assert.equal(f.p.enabled(),true);assert.match(f.toasts.at(-1),/تعذر تسجيل/);
+f=await fixture();await f.p.setEnabled('true');assert.equal(f.writes.length,0);await f.p.setEnabled(false);assert.equal(f.writes.length,0);
+assert.match((await fixture()).p.admin(),/فتح برنامج المسوقين/);
+console.log('PASS main-only toggle: default OFF, isolated transaction, confirmation/cancel, stale-state/failure guards and main-admin marketers page wiring');
