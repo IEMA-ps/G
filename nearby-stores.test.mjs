@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import vm from 'node:vm';
 const load=async f=>import('data:text/javascript;base64,'+Buffer.from(readFileSync(f)).toString('base64'));
+const {typeOptions,filterStoresByType}=await load('store-types.js');
 const {nearbyStores,storedLocation}=await load('nearby-stores.js');
 const pref={governorate:'الجيزة',area:'الدقي'};
 const stores=[{id:'near',businessName:'متجر تجربة في الدقي',address:'المحافظة: الجيزة | المنطقة: الدقي | شارع تجربة'},{id:'far',businessName:'متجر تجربة في مدينة نصر',address:'المحافظة: القاهرة | المنطقة: مدينة نصر | شارع تجربة'},{id:'legacy',businessName:'متجر قديم، المنطقة غير محددة',address:'الدقي، الجيزة'}];
@@ -14,7 +15,7 @@ vm.createContext(ctx);vm.runInContext(html.slice(html.indexOf('const Auth = {'),
 el('regEmail').value='test@example.test';ctx.invalid=true;await ctx.window.Auth.register({preventDefault(){}});assert.equal(created,0);assert.match(el('authError').textContent,/المحافظة/);
 ctx.invalid=false;await ctx.window.Auth.register({preventDefault(){}});assert.equal(created,1);assert.equal(writes.length,2);assert.equal(writes[0].d.preferredLocation,undefined);assert.deepEqual(writes[1].d.preferredLocation,pref);
 failPref=true;await ctx.window.Auth.register({preventDefault(){}});assert.equal(created,2);assert.equal(ctx.window.Auth.registering,false);
-const renderCtx={S:{profile:{preferredLocation:pref},merchants:stores,showAllStores:false},nearbyStores,esc:s=>String(s).replaceAll('<','&lt;'),merchantCard:m=>`<div class="merchant-card"><div class="info"><h4>${m.businessName}</h4><p class="location-note">${m.address}</p></div></div>`,window:{}};
+const renderCtx={typeOptions,filterStoresByType,S:{profile:{preferredLocation:pref},merchants:stores,showAllStores:false},nearbyStores,esc:s=>String(s).replaceAll('<','&lt;'),merchantCard:m=>`<div class="merchant-card"><div class="info"><h4>${m.businessName}</h4><p class="location-note">${m.address}</p></div></div>`,window:{}};
 vm.createContext(renderCtx);vm.runInContext(html.slice(html.indexOf('function renderCustomerStores(){'),html.indexOf('window.openCustomerLocation=')),renderCtx);
 assert.match(renderCtx.renderCustomerStores(),/نفس منطقتك/);assert.doesNotMatch(renderCtx.renderCustomerStores(),/متجر قديم/);renderCtx.S.profile.preferredLocation={...pref,area:'أخرى'};assert.match(renderCtx.renderCustomerStores(),/بنعرض كل المتاجر/);assert.match(renderCtx.renderCustomerStores(),/متجر قديم/);
 console.log('PASS exact-area stores only, legacy never guessed, all-store fallback and toggle, signup validates before account creation, preference is separate update, failure leaves account intact');

@@ -18,7 +18,7 @@ export function requestMessage(kind, data, account) {
   lines.push('أرغب في متابعة طلبي مع الدعم. حسابي يظل عميلًا حتى مراجعة الإدارة.');
   return lines.join('\n');
 }
-export function requestForm(kind, profile, available, esc,locationHTML='') {
+export function requestForm(kind, profile, available, esc,locationHTML='',typeHTML='') {
   const merchant=kind==='merchant';
   return `<div class="modal-head"><h3>${merchant?'طلب تسجيل متجر':'طلب الانضمام كمندوب'}</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div>
   <p style="font-size:13px;line-height:1.8;margin-bottom:14px">حسابك هيفضل عميل. راجع بياناتك، وبعدها افتح واتساب واضغط إرسال بنفسك. الطلب مش بيتحفظ في التطبيق.</p>
@@ -26,7 +26,7 @@ export function requestForm(kind, profile, available, esc,locationHTML='') {
   <form oninput="document.getElementById('requestPreview').classList.add('hidden')" onsubmit="prepareSupportRequest(event, '${kind}')">
   <div class="field"><label for="rqName">الاسم</label><input id="rqName" name="name" required maxlength="120" autocomplete="name" value="${esc(((profile.firstName||'')+' '+(profile.lastName||'')).trim())}"></div>
   <div class="field"><label for="rqPhone">رقم الهاتف</label><input id="rqPhone" name="phone" required maxlength="30" type="tel" autocomplete="tel" value="${esc(profile.phone||'')}"></div>
-  ${merchant?'<div class="field"><label for="rqBusiness">اسم المتجر</label><input id="rqBusiness" name="business" required maxlength="120"></div><div class="field"><label for="rqActivity">نوع النشاط</label><input id="rqActivity" name="activity" required maxlength="120"></div>':'<div class="field"><label for="rqVehicle">وسيلة التوصيل</label><input id="rqVehicle" name="vehicle" required maxlength="50" placeholder="موتوسيكل، دراجة، سيارة..."></div>'}
+  ${merchant?'<div class="field"><label for="rqBusiness">اسم المتجر</label><input id="rqBusiness" name="business" required maxlength="120"></div>'+(typeHTML||'<div class="field"><label for="rqActivity">نوع النشاط</label><input id="rqActivity" name="activity" required maxlength="120"></div>')+'':'<div class="field"><label for="rqVehicle">وسيلة التوصيل</label><input id="rqVehicle" name="vehicle" required maxlength="50" placeholder="موتوسيكل، دراجة، سيارة..."></div>'}
   ${locationHTML}
   <div class="field"><label for="rqArea">${merchant?'عنوان المتجر التفصيلي':'تفاصيل منطقة العمل'}</label><input id="rqArea" name="area" required maxlength="200"></div>
   ${merchant?`<div class="field"><label for="rqMarketer">كود المسوّق (اختياري)</label><input id="rqMarketer" name="marketerCode" maxlength="64" value="${esc(profile.marketerCode||'')}"></div>`:''}

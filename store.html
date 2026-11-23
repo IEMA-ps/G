@@ -42,7 +42,7 @@ async function load(){
   const m=snap.data();
   if(m.status!=='ACTIVE'||!(m.subEndsAt>Date.now())||!['PROFILE','ORDERING'].includes(m.subPlanType)){unavailable();return;}
   document.title=(m.businessName||'صفحة المتجر')+' | على بابك';
-  for(const [key,value] of Object.entries({name:m.businessName||'متجر',activity:m.activityType||'',description:m.description||'أهلًا بيك في صفحة متجرنا على بابك.',address:m.address||'تواصل مع المتجر لمعرفة العنوان.',hours:m.openTime&&m.closeTime?'ساعات العمل: '+m.openTime+' إلى '+m.closeTime:''})) $(key).textContent=value;
+  for(const [key,value] of Object.entries({name:m.businessName||'متجر',activity:m.activityType||'غير محدد',description:m.description||'أهلًا بيك في صفحة متجرنا على بابك.',address:m.address||'تواصل مع المتجر لمعرفة العنوان.',hours:m.openTime&&m.closeTime?'ساعات العمل: '+m.openTime+' إلى '+m.closeTime:''})) $(key).textContent=value;
   $('kind').textContent=m.subPlanType==='PROFILE'?'صفحة تعريفية':'منتجات وطلبات';
   const phone=phoneHref(m.phone),wa=phoneHref(m.whatsappNumber),map=mapHref(m);
   if(phone){$('phone').href=phone;$('phone').textContent='اتصل: '+m.phone;$('phone').classList.remove('hidden');}
