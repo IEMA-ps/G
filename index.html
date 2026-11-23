@@ -493,6 +493,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
+import { assignmentType, assignMemberRole } from './member-roles.js';
 import { requestMessage, requestForm } from './support-requests.js';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from './auth-policy.js?v=account-diagnostics-1';
 
@@ -4833,11 +4834,12 @@ function renderAdminUsers(){
           </div>
           <span class="badge-chip">${roleLabel}</span>
         </div>
-        ${canManageAdmins ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-          ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
-          ${u.role==='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMarketerRate('${u._id}')"><i class="fa-solid fa-percent"></i> نسبته ${mkRate(u)}%</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="removeMarketer('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء المسوّق</button>` : ''}
-          ${u.role!=='ADMIN' && u.role!=='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto" onclick="promoteToAdmin('${u._id}')"><i class="fa-solid fa-user-shield"></i> ترقية لأدمن مساعد</button>` : ''}
-          ${u.role==='ADMIN' && u.adminRole==='STAFF' ? `<button class="btn btn-ghost btn-sm" style="width:auto" onclick="promoteToSuperAdmin('${u._id}')"><i class="fa-solid fa-crown"></i> ترقية لأدمن رئيسي</button>` : ''}
+        ${canManageAdmins ? `<div class="member-role-actions" style="display:flex;gap:4px;flex-wrap:nowrap;margin-top:8px">
+          ${u.role==='CUSTOMER' && !u.merchantId && !u.deliveryAgentId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT')"><i class="fa-solid fa-store"></i> تعيين تاجر</button><button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','DELIVERY')"><i class="fa-solid fa-motorcycle"></i> تعيين مندوب</button>` : ''}
+          ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
+          ${u.role==='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openMarketerRate('${u._id}')"><i class="fa-solid fa-percent"></i> نسبته ${mkRate(u)}%</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="removeMarketer('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء المسوّق</button>` : ''}
+          ${u.role!=='ADMIN' && u.role!=='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToAdmin('${u._id}')"><i class="fa-solid fa-user-shield"></i> أدمن مساعد</button>` : ''}
+          ${u.role==='ADMIN' && u.adminRole==='STAFF' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToSuperAdmin('${u._id}')"><i class="fa-solid fa-crown"></i> ترقية لأدمن رئيسي</button>` : ''}
           ${u.role==='ADMIN' && u._id!==S.user.uid ? `<button class="btn btn-danger btn-sm" style="width:auto" onclick="demoteAdmin('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء صلاحية الإدارة</button>` : ''}
         </div>` : ''}
       </div>`;
@@ -4846,6 +4848,35 @@ function renderAdminUsers(){
     ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> إدارة صلاحيات الأعضاء متاحة للأدمن الرئيسي فقط.</div>` : ''}
   `;
 }
+window.openAssignMemberRole = (userId,role)=>{
+  if(!isSuperAdmin()) return;
+  const type=assignmentType(role), user=(S.allUsers||[]).find(u=>u._id===userId);
+  if(!type || !user || user.role!=='CUSTOMER' || user.merchantId || user.deliveryAgentId){ UI.toast('العضو لم يعد عميلًا متاحًا للتعيين'); return; }
+  const records=(role==='MERCHANT'?S.allMerchants:S.allDeliveryAgents)||[];
+  const available=records.filter(r=>r.id && !r.ownerId);
+  const name=esc(((user.firstName||'')+' '+(user.lastName||'')).trim()||user.email||'العضو');
+  UI.openModal(`
+    <div class="modal-head"><h3>تعيين ${type.label}</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <p style="line-height:1.8;margin-bottom:12px">ربط <b>${name}</b> بسجل ${type.recordLabel} موجود وغير مربوط بحساب. لن تتغير حالة التفعيل أو الاشتراك.</p>
+    ${available.length?`<div class="field"><label>${type.recordLabel}</label><select id="memberRoleRecord">${available.map(r=>`<option value="${esc(r.id)}">${esc(r.businessName||r.name||r.id)}${r.phone?' · '+esc(r.phone):''}</option>`).join('')}</select></div>
+    <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-bottom:12px">بعد التأكيد سيدخل العضو كـ${type.label} بنفس حسابه. لن يُنشأ حساب جديد.</p>
+    <button id="memberRoleSave" class="btn btn-primary" onclick="saveMemberRole('${userId}','${role}')">تأكيد تعيين ${type.label}</button>`:`<div class="hint-box">لا يوجد سجل ${type.recordLabel} متاح. أضفه أولًا من شاشة ${role==='MERCHANT'?'التجار':'المناديب'}، ثم ارجع للتعيين.</div>`}`);
+};
+window.saveMemberRole = async (userId,role)=>{
+  if(!isSuperAdmin()) return;
+  const recordId=document.getElementById('memberRoleRecord')?.value, btn=document.getElementById('memberRoleSave');
+  if(!recordId || !btn || btn.disabled) return;
+  if(!confirm('تأكيد تغيير صلاحية العضو وربطه بالسجل المختار؟')) return;
+  btn.disabled=true;
+  try{
+    await assignMemberRole({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId,recordId,role});
+    UI.closeModal(); UI.toast('تم التعيين وربط الحساب بنجاح');
+    try{await logAudit('تعيين عضو '+assignmentType(role).label,userId+' / '+recordId);}catch(e){UI.toast('تم التعيين، لكن تعذّر تسجيله في سجل التدقيق');}
+  }catch(e){
+    btn.disabled=false;
+    UI.toast(['customer-required','record-unavailable'].includes(e?.message)?'تغيرت بيانات العضو أو السجل. أغلق النافذة واختر سجلًا متاحًا.':e?.message==='super-required'?'التعيين متاح للأدمن الرئيسي فقط':'تعذّر التعيين. لم يتم حفظ ربط جزئي. حاول مرة أخرى.');
+  }
+};
 window.promoteToAdmin = async (uid_)=>{
   if(!isSuperAdmin()) return;
   await updateDoc(doc(db,'users',uid_), { role:'ADMIN', adminRole:'STAFF' });
