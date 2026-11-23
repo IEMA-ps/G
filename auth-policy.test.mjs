@@ -51,10 +51,10 @@ stored=null;const passwordUser={...googleUser,providerData:[{providerId:'passwor
 await assert.rejects(bootCtx.bootAuthUser(passwordUser),/profile-needs-admin-repair/);assert.equal(writes,1);
 const diagnostics=policy.accountLoadError;
 assert.equal(diagnostics(new Error('profile-needs-admin-repair')).code,'profile-needs-admin-repair');
-assert.match(diagnostics(new Error('profile-needs-admin-repair')).message,/لم تكتمل/);
+assert.match(diagnostics(new Error('profile-needs-admin-repair')).message,/مش كاملة/);
 assert.equal(diagnostics(new Error('private details')).code,'unexpected');
 assert.match(diagnostics({code:'permission-denied',bootStage:'profile-create'}).message,/إنشاء بيانات الحساب/);
-assert.match(diagnostics({code:'unavailable',bootStage:'profile-read'}).message,/الاتصال/);
+assert.match(diagnostics({code:'unavailable',bootStage:'profile-read'}).message,/نتصل/);
 assert.equal(diagnostics({code:'secret-unknown',bootStage:'unsafe'}).code,'unexpected');
 assert.equal(diagnostics({code:'secret-unknown',bootStage:'unsafe'}).stage,'unknown');
 bootCtx.auth.currentUser=googleUser;bootCtx.getDoc=async()=>{throw {code:'permission-denied'}};
