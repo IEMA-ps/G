@@ -424,52 +424,15 @@ img{max-width:100%; display:block;}
       </form>
 
       <form id="registerForm" class="hidden" onsubmit="Auth.register(event)">
-        <div class="role-picker">
-          <div class="role-opt active" data-role="customer" onclick="Auth.pickRole('customer')"><i class="fa-solid fa-user"></i><span>عميل</span></div>
-          <div class="role-opt" data-role="merchant" onclick="Auth.pickRole('merchant')"><i class="fa-solid fa-shop"></i><span>صاحب متجر</span></div>
-          <div class="role-opt" data-role="delivery" onclick="Auth.pickRole('delivery')"><i class="fa-solid fa-motorcycle"></i><span>مندوب توصيل</span></div>
-        </div>
+        <p class="hint-box" style="margin-bottom:14px">التسجيل الجديد للعملاء فقط. بعد الدخول تقدر تطلب تسجيل متجر أو الانضمام كمندوب من «حسابي».</p>
         <div class="field"><label>الاسم الأول</label><input type="text" id="regFirst" required></div>
         <div class="field"><label>الاسم الأخير</label><input type="text" id="regLast"></div>
         <div class="field"><label>رقم الهاتف</label><input type="tel" id="regPhone" required placeholder="01xxxxxxxxx"></div>
         <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" required></div>
         <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" required minlength="6" placeholder="6 أحرف على الأقل"></div>
-        <div id="marketerCodeField" class="field hidden"><label>كود المسوّق (اختياري)</label><input type="text" id="regMarketer" placeholder="لو مسوّق سجّلك، اكتب كوده هنا" style="text-transform:uppercase"></div>
         <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="لو صاحبك دعاك، اكتب كوده هنا" style="text-transform:uppercase"></div>
 
-        <div id="merchantFields" class="hidden">
-          <div class="divider"></div>
-          <div class="field"><label>اسم المتجر</label><input type="text" id="mBusinessName"></div>
-          <div class="field"><label>نوع النشاط</label>
-            <select id="mActivityType">
-              <option value="مطاعم">مطاعم ومأكولات</option>
-              <option value="سوبر ماركت">سوبر ماركت ومؤن</option>
-              <option value="حلويات">حلويات ومخبوزات</option>
-              <option value="إلكترونيات">إلكترونيات وأجهزة</option>
-              <option value="صيدلية">صيدلية وعناية</option>
-              <option value="ملابس">ملابس وأزياء</option>
-            </select>
-          </div>
-          <div class="field"><label>رقم واتساب المتجر</label><input type="tel" id="mWhatsapp" placeholder="01xxxxxxxxx"></div>
-          <div class="field"><label>عنوان المتجر</label><input type="text" id="mAddress"></div>
-          <div class="field"><label>نبذة عن المتجر</label><textarea id="mDescription"></textarea></div>
-        </div>
-
-        <div id="deliveryFields" class="hidden">
-          <div class="divider"></div>
-          <div class="field"><label>رقم واتساب (اختياري)</label><input type="tel" id="dWhatsapp" placeholder="لو فاضي هنستخدم رقم الهاتف"></div>
-          <div class="field"><label>وسيلة التوصيل</label>
-            <select id="dVehicle"><option value="موتوسيكل">موتوسيكل</option><option value="دراجة">دراجة</option><option value="سيارة">سيارة</option></select>
-          </div>
-        </div>
-
         <button class="btn btn-primary" type="submit" id="registerBtn"><i class="fa-solid fa-user-plus"></i> إنشاء الحساب</button>
-        <div class="hint-box" id="merchantHint" style="display:none">
-          <i class="fa-solid fa-circle-info"></i> بعد التسجيل هيتحول طلبك لفريق الإدارة للمراجعة والموافقة قبل ما متجرك يظهر للعملاء.
-        </div>
-        <div class="hint-box" id="deliveryHint" style="display:none">
-          <i class="fa-solid fa-circle-info"></i> بعد التسجيل هيتحول طلبك لفريق الإدارة للمراجعة والموافقة قبل ما تقدر تستلم مهام توصيل.
-        </div>
       </form>
 
       <div style="margin-top:16px">
@@ -529,6 +492,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
+import { requestMessage, requestForm } from './support-requests.js';
 import { needsEmailVerification, googleProfile, googleError, INTERNAL_EMAIL } from './auth-policy.js';
 
 import * as MerchantPlans from './merchant-plans.js?v=ca9d7bc';
@@ -757,7 +721,6 @@ window.addEventListener('unhandledrejection', (e)=>{
 
 /* ================= AUTH ================= */
 const Auth = {
-  role:'customer',
   registering:false,
   googleBusy:false,
   verificationBusy:false,
@@ -768,6 +731,7 @@ const Auth = {
     document.getElementById('authScreen').classList.add('hidden');
     document.getElementById('appShell').classList.add('hidden');
     document.getElementById('verifyScreen').classList.remove('hidden');
+    document.getElementById('supportBtn').classList.add('hidden');
     document.getElementById('verifyAddress').textContent = auth.currentUser?.email || '';
     document.getElementById('verifyStatus').textContent = Auth.verificationNotice || 'لسه محتاجين تأكيد البريد. تقدر تطلب رابط من الزرار تحت.';
   },
@@ -821,15 +785,6 @@ const Auth = {
     document.getElementById('registerForm').classList.toggle('hidden', t!=='register');
     document.getElementById('authError').classList.add('hidden');
   },
-  pickRole(r){
-    Auth.role = r;
-    document.querySelectorAll('.role-opt').forEach(el=>el.classList.toggle('active', el.dataset.role===r));
-    document.getElementById('merchantFields').classList.toggle('hidden', r!=='merchant');
-    document.getElementById('marketerCodeField').classList.toggle('hidden', r!=='merchant');
-    document.getElementById('merchantHint').style.display = r==='merchant' ? 'block' : 'none';
-    document.getElementById('deliveryFields').classList.toggle('hidden', r!=='delivery');
-    document.getElementById('deliveryHint').style.display = r==='delivery' ? 'block' : 'none';
-  },
   showError(msg){
     const e = document.getElementById('authError');
     e.textContent = msg; e.classList.remove('hidden');
@@ -861,7 +816,6 @@ const Auth = {
   async register(ev){
     ev.preventDefault();
     const btn = document.getElementById('registerBtn'); if(Auth.registering || Auth.googleBusy || Auth.loginBusy) return; btn.disabled = true; Auth.registering = true; document.getElementById('googleLoginBtn').disabled = true;
-    const selectedRole = Auth.role;
     try{
       const email = document.getElementById('regEmail').value.trim();
       if(INTERNAL_EMAIL.test(email)){ Auth.showError('استخدم بريد حقيقي تقدر تفتح عليه رابط التأكيد، مش بريد داخلي.'); return; }
@@ -872,47 +826,13 @@ const Auth = {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: (first+' '+last).trim() });
       Auth.verificationNotice = '';
-      // onAuthStateChanged waits until the selected role/profile has been saved below.
+      // onAuthStateChanged waits until the customer profile has been saved below.
 
 
-      let merchantId = null;
-      let mkAttr = {};
-      if(selectedRole === 'merchant'){
-        const mkCode = (document.getElementById('regMarketer').value||'').trim().toUpperCase();
-        if(mkCode){
-          try{
-            const mq = await getDocs(query(collection(db,'users'), where('referralCode','==',mkCode)));
-            const md = mq.docs.find(d=>(d.data().role||'')==='MARKETER');
-            if(md) mkAttr = { marketerId: md.id, marketerName: ((md.data().firstName||'')+' '+(md.data().lastName||'')).trim(), marketerSince: nowMs() };
-          }catch(e){ console.error('marketer code lookup failed', e); }
-        }
-        merchantId = 'merch_' + uid();
-        await setDoc(doc(db,'merchants',merchantId), {
-          id: merchantId,
-          businessName: document.getElementById('mBusinessName').value.trim() || (first+' متجر'),
-          managerName: (first+' '+last).trim(),
-          phone, whatsappNumber: document.getElementById('mWhatsapp').value.trim() || phone,
-          email, activityType: document.getElementById('mActivityType').value,
-          categoryIds:'', address: document.getElementById('mAddress').value.trim(),
-          description: document.getElementById('mDescription').value.trim(),
-          logoUrl:'', coverUrl:'', ...(S.settings.merchantPlansV2?{subscriptionModel:MerchantPlans.MODEL,subPlanType:null}:{}), status:'PENDING', rating:4.8, totalOrdersCount:0,
-          ownerId: cred.user.uid, registeredAt: nowMs(), ...mkAttr
-        });
-      }
-      let deliveryAgentId = null;
-      if(selectedRole === 'delivery'){
-        deliveryAgentId = 'agent_' + uid();
-        await setDoc(doc(db,'deliveryAgents',deliveryAgentId), {
-          id: deliveryAgentId, name: (first+' '+last).trim(), phone,
-          whatsapp: document.getElementById('dWhatsapp').value.trim() || phone,
-          vehicleType: document.getElementById('dVehicle').value, status:'PENDING',
-          rating:5, ratingCount:0, ratingSum:0, ownerId: cred.user.uid, registeredAt: nowMs()
-        });
-      }
       await setDoc(doc(db,'users',cred.user.uid), {
         id: cred.user.uid, firstName:first, lastName:last, phone, email,
-        role: selectedRole === 'merchant' ? 'MERCHANT' : selectedRole === 'delivery' ? 'DELIVERY' : 'CUSTOMER',
-        merchantId, deliveryAgentId, ...userDefaults(cred.user.uid), createdAt: nowMs()
+        role: 'CUSTOMER',
+        merchantId:null, deliveryAgentId:null, ...userDefaults(cred.user.uid), createdAt: nowMs()
       });
 
       // معالجة كود دعوة الصديق لو العميل الجديد دخل واحد
@@ -936,7 +856,7 @@ const Auth = {
         await sendEmailVerification(cred.user); Auth.verificationSentAt = Date.now();
         Auth.verificationNotice = 'بعتنا رابط التأكيد على بريدك. راجع Inbox وSpam.';
       }catch(e){ Auth.verificationNotice = 'الحساب اتعمل، لكن تعذّر إرسال رابط التأكيد. استخدم زر إرسال الرابط للمحاولة تاني.'; }
-      UI.toast((selectedRole==='merchant'||selectedRole==='delivery') ? 'تم إرسال طلبك، بانتظار موافقة الإدارة ✅' : 'تم إنشاء حسابك بنجاح 🎉');
+      UI.toast('تم إنشاء حسابك بنجاح 🎉');
     }catch(err){
       Auth.showError(Auth.friendlyError(err));
     } finally{
@@ -1000,6 +920,7 @@ function showSignedOut(){
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appShell').classList.add('hidden');
   document.getElementById('verifyScreen').classList.add('hidden');
+  document.getElementById('supportBtn').classList.add('hidden');
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab('login');
@@ -3300,6 +3221,28 @@ function renderOrderDetail(){
 }
 
 /* ================= CUSTOMER: PROFILE / ADDRESSES / NOTIFICATIONS ================= */
+window.openJoinRequest = (kind)=>{
+  if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery'].includes(kind)) return;
+  const available=!!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
+  const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
+  UI.openModal(requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc));
+};
+window.prepareSupportRequest = (ev,kind)=>{
+  ev.preventDefault();
+  if(S.role!=='customer' || !auth.currentUser) return;
+  const preview=document.getElementById('requestPreview'), error=document.getElementById('requestError');
+  preview.classList.add('hidden'); error.textContent='';
+  try{
+    const message=requestMessage(kind,Object.fromEntries(new FormData(ev.target)),{uid:auth.currentUser.uid,email:auth.currentUser.email});
+    const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,message);
+    if(!href) throw new Error('الدعم غير متاح حاليًا. حاول لاحقًا بعد ضبط رقم الدعم.');
+    document.getElementById('requestText').textContent=message;
+    document.getElementById('requestWhatsApp').href=href;
+    preview.classList.remove('hidden');
+    preview.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }catch(e){ error.textContent=e.message; }
+};
+
 function renderProfile(){
   const points = S.profile.loyaltyPoints || 0;
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
@@ -3318,6 +3261,7 @@ function renderProfile(){
         <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
       </div>
     </div>`:''}
+    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3><p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button></div></div>`:''}
     <div class="section-head"><h3>الحساب</h3></div>
     <div class="list-gap">
       <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('addresses')"><span><i class="fa-solid fa-location-dot" style="color:var(--teal);margin-left:8px"></i> عناويني</span><i class="fa-solid fa-chevron-left"></i></div>
@@ -4904,8 +4848,7 @@ function applyMarketerLanding(){
   _appliedMarketerLanding=true;
   const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
   if(!/^[A-Z0-9-]{4,64}$/.test(code)) return;
-  Auth.switchTab('register'); Auth.pickRole('merchant');
-  document.getElementById('regMarketer').value=code;
+  Auth.switchTab('register');
   if(MARKETING_CONFIG.backendEnabled){
     try{
       const key='marketer-visit-'+code;
