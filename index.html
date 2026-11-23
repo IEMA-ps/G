@@ -472,12 +472,28 @@ img{max-width:100%; display:block;}
         </div>
       </form>
 
+      <div style="margin-top:16px">
+        <button class="btn btn-ghost" type="button" id="googleLoginBtn" onclick="Auth.googleLogin()"><i class="fa-brands fa-google" aria-hidden="true"></i> المتابعة باستخدام Google</button>
+        <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-top:8px">الحساب الجديد بجوجل بيبدأ كعميل. عايز تنضم كمسوّق؟ سجّل كعميل، والإدارة تراجع طلبك وتحوّلك لمسوق بعد الموافقة.</p>
+      </div>
       <div class="auth-switch">
         على بابك — اطلب اللي محتاجه، وإحنا نوصلّه لحد بابك
       </div>
     </div>
   </div>
 
+  <div id="verifyScreen" class="hidden" dir="rtl" style="max-width:480px;margin:32px auto;padding:16px" role="region" aria-label="تأكيد البريد الإلكتروني">
+    <div class="card" style="padding:24px">
+      <h2 style="font-size:22px;margin-bottom:12px">أكّد بريدك الإلكتروني</h2>
+      <p style="line-height:1.9">افتح رابط التأكيد في بريدك، وبعدها ارجع واضغط «تحققت من بريدي».</p>
+      <p id="verifyAddress" dir="ltr" style="overflow-wrap:anywhere;margin:12px 0;text-align:center"></p>
+      <p id="verifyStatus" role="status" aria-live="polite" style="line-height:1.8;margin:12px 0"></p>
+      <button class="btn btn-primary" id="verifyCheckBtn" onclick="Auth.checkEmail()">تحققت من بريدي</button>
+      <button class="btn btn-ghost" id="verifyResendBtn" style="margin-top:10px" onclick="Auth.sendVerification()">إرسال رابط التأكيد</button>
+      <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-top:12px">لو الرسالة مش ظاهرة، راجع Spam. لو عنوان البريد مكتوب غلط، اخرج وراجع بياناتك مع الإدارة، مش محتاج تعمل حساب تاني.</p>
+      <button class="btn btn-ghost" style="margin-top:10px" onclick="Auth.confirmLogout()">تسجيل الخروج</button>
+    </div>
+  </div>
   <div id="appShell" class="hidden">
     <div id="topbar"></div>
     <div id="searchBar" class="hidden"></div>
@@ -504,7 +520,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/fireba
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
   signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail, sendEmailVerification, reload,
-  updatePassword, reauthenticateWithCredential, EmailAuthProvider
+  updatePassword, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider, signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
@@ -512,6 +528,8 @@ import {
   writeBatch, runTransaction, increment, limit, startAfter, documentId
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
+
+import { needsEmailVerification, googleProfile, googleError, INTERNAL_EMAIL } from './auth-policy.js';
 
 import * as MerchantPlans from './merchant-plans.js?v=ca9d7bc';
 
@@ -529,6 +547,7 @@ if(MARKETING_CONFIG.backendEnabled && MARKETING_CONFIG.appCheckSiteKey){
   initializeAppCheck(fbApp, {provider:new ReCaptchaV3Provider(MARKETING_CONFIG.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
 }
 const auth = getAuth(fbApp);
+auth.languageCode = 'ar';
 const BACKEND_REGION = 'europe-west1';   // لازم تطابق REGION في functions/index.js
 const fns = getFunctions(fbApp, BACKEND_REGION);
 const useBackend = () => !!(S.settings && S.settings.useBackend);
@@ -739,6 +758,62 @@ window.addEventListener('unhandledrejection', (e)=>{
 /* ================= AUTH ================= */
 const Auth = {
   role:'customer',
+  registering:false,
+  googleBusy:false,
+  verificationBusy:false,
+  verificationSentAt:0,
+  verificationNotice:'',
+  showVerification(){
+    document.getElementById('loadingScreen').classList.add('hidden');
+    document.getElementById('authScreen').classList.add('hidden');
+    document.getElementById('appShell').classList.add('hidden');
+    document.getElementById('verifyScreen').classList.remove('hidden');
+    document.getElementById('verifyAddress').textContent = auth.currentUser?.email || '';
+    document.getElementById('verifyStatus').textContent = Auth.verificationNotice || 'لسه محتاجين تأكيد البريد. تقدر تطلب رابط من الزرار تحت.';
+  },
+  async sendVerification(){
+    const user = auth.currentUser;
+    if(!user || Auth.verificationBusy) return;
+    const wait = Math.ceil((Auth.verificationSentAt + 60000 - Date.now())/1000);
+    if(wait > 0){ Auth.verificationNotice = 'استنى '+wait+' ثانية قبل طلب رابط جديد.'; Auth.showVerification(); return; }
+    Auth.verificationBusy = true;
+    const button = document.getElementById('verifyResendBtn'); button.disabled = true;
+    try{
+      await sendEmailVerification(user);
+      if(auth.currentUser?.uid !== user.uid) return;
+      Auth.verificationSentAt = Date.now();
+      Auth.verificationNotice = 'بعتنا رابط التأكيد. راجع بريدك وSpam ثم اضغط «تحققت من بريدي».';
+    }catch(e){
+      Auth.verificationNotice = e.code==='auth/too-many-requests' ? 'طلبات كتير. استنى شوية قبل المحاولة تاني.' : 'الحساب اتعمل، لكن تعذّر إرسال رابط التأكيد. راجع الاتصال واضغط إرسال الرابط مرة تانية.';
+    }finally{
+      Auth.verificationBusy = false; button.disabled = false;
+      if(auth.currentUser?.uid === user.uid) Auth.showVerification();
+    }
+  },
+  async checkEmail(){
+    const user = auth.currentUser;
+    if(!user || Auth.checkingEmail) return;
+    Auth.checkingEmail = true;
+    const button = document.getElementById('verifyCheckBtn'); button.disabled = true;
+    try{
+      await reload(user);
+      if(auth.currentUser?.uid !== user.uid) return;
+      if(!user.emailVerified){ Auth.verificationNotice = 'لسه البريد مش مؤكد. افتح أحدث رابط وصلك، وبعدين ارجع هنا.'; Auth.showVerification(); return; }
+      await user.getIdToken(true);
+      await bootAuthUser(user);
+    }catch(e){ Auth.verificationNotice = 'تعذّر التأكد من حالة البريد. راجع الاتصال وحاول تاني.'; if(auth.currentUser?.uid===user.uid) Auth.showVerification(); }
+    finally{ Auth.checkingEmail = false; button.disabled = false; }
+  },
+  async googleLogin(){
+    if(Auth.googleBusy || Auth.registering || Auth.loginBusy) return;
+    Auth.googleBusy = true;
+    const button = document.getElementById('googleLoginBtn'); button.disabled = true;
+    try{
+      // A direct user click opens the popup. No extra Google API scopes or token storage.
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    }catch(e){ Auth.showError(googleError(e.code)); }
+    finally{ Auth.googleBusy = false; button.disabled = false; }
+  },
   switchTab(t){
     document.getElementById('tabLogin').classList.toggle('active', t==='login');
     document.getElementById('tabRegister').classList.toggle('active', t==='register');
@@ -761,12 +836,14 @@ const Auth = {
   },
   async login(ev){
     ev.preventDefault();
+    if(Auth.googleBusy || Auth.registering || Auth.loginBusy) return;
+    Auth.loginBusy = true;
     const btn = document.getElementById('loginBtn'); btn.disabled = true;
     try{
       await signInWithEmailAndPassword(auth, toLoginEmail(document.getElementById('loginEmail').value), document.getElementById('loginPassword').value);
     }catch(err){
       Auth.showError(Auth.friendlyError(err));
-    } finally{ btn.disabled = false; }
+    } finally{ btn.disabled = false; Auth.loginBusy = false; }
   },
   async forgotPassword(ev){
     ev.preventDefault();
@@ -783,20 +860,24 @@ const Auth = {
   },
   async register(ev){
     ev.preventDefault();
-    const btn = document.getElementById('registerBtn'); btn.disabled = true;
+    const btn = document.getElementById('registerBtn'); if(Auth.registering || Auth.googleBusy || Auth.loginBusy) return; btn.disabled = true; Auth.registering = true; document.getElementById('googleLoginBtn').disabled = true;
+    const selectedRole = Auth.role;
     try{
       const email = document.getElementById('regEmail').value.trim();
+      if(INTERNAL_EMAIL.test(email)){ Auth.showError('استخدم بريد حقيقي تقدر تفتح عليه رابط التأكيد، مش بريد داخلي.'); return; }
       const password = document.getElementById('regPassword').value;
       const first = document.getElementById('regFirst').value.trim();
       const last = document.getElementById('regLast').value.trim();
       const phone = document.getElementById('regPhone').value.trim();
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: (first+' '+last).trim() });
-      try{ await sendEmailVerification(cred.user); }catch(e){ console.warn('verify mail', e); }
+      Auth.verificationNotice = '';
+      // onAuthStateChanged waits until the selected role/profile has been saved below.
+
 
       let merchantId = null;
       let mkAttr = {};
-      if(Auth.role === 'merchant'){
+      if(selectedRole === 'merchant'){
         const mkCode = (document.getElementById('regMarketer').value||'').trim().toUpperCase();
         if(mkCode){
           try{
@@ -819,7 +900,7 @@ const Auth = {
         });
       }
       let deliveryAgentId = null;
-      if(Auth.role === 'delivery'){
+      if(selectedRole === 'delivery'){
         deliveryAgentId = 'agent_' + uid();
         await setDoc(doc(db,'deliveryAgents',deliveryAgentId), {
           id: deliveryAgentId, name: (first+' '+last).trim(), phone,
@@ -830,7 +911,7 @@ const Auth = {
       }
       await setDoc(doc(db,'users',cred.user.uid), {
         id: cred.user.uid, firstName:first, lastName:last, phone, email,
-        role: Auth.role === 'merchant' ? 'MERCHANT' : Auth.role === 'delivery' ? 'DELIVERY' : 'CUSTOMER',
+        role: selectedRole === 'merchant' ? 'MERCHANT' : selectedRole === 'delivery' ? 'DELIVERY' : 'CUSTOMER',
         merchantId, deliveryAgentId, ...userDefaults(cred.user.uid), createdAt: nowMs()
       });
 
@@ -851,10 +932,25 @@ const Auth = {
         }catch(e){ console.error('referral code lookup failed', e); }
       }
 
-      UI.toast((Auth.role==='merchant'||Auth.role==='delivery') ? 'تم إرسال طلبك، بانتظار موافقة الإدارة ✅' : 'تم إنشاء حسابك بنجاح 🎉');
+      try{
+        await sendEmailVerification(cred.user); Auth.verificationSentAt = Date.now();
+        Auth.verificationNotice = 'بعتنا رابط التأكيد على بريدك. راجع Inbox وSpam.';
+      }catch(e){ Auth.verificationNotice = 'الحساب اتعمل، لكن تعذّر إرسال رابط التأكيد. استخدم زر إرسال الرابط للمحاولة تاني.'; }
+      UI.toast((selectedRole==='merchant'||selectedRole==='delivery') ? 'تم إرسال طلبك، بانتظار موافقة الإدارة ✅' : 'تم إنشاء حسابك بنجاح 🎉');
     }catch(err){
       Auth.showError(Auth.friendlyError(err));
-    } finally{ btn.disabled = false; }
+    } finally{
+      btn.disabled = false; Auth.registering = false; document.getElementById('googleLoginBtn').disabled = false;
+      // A partial signup is not silently converted to a customer: retain the error for admin repair.
+      if(auth.currentUser){
+        const profile = await getDoc(doc(db,'users',auth.currentUser.uid)).catch(()=>null);
+        if(profile?.exists()){
+          try{ await bootAuthUser(auth.currentUser); }
+          catch(e){ Auth.showError('الحساب اتعمل، لكن تعذّر تحميله. راجع الاتصال وأعد الدخول.'); }
+        }
+        else Auth.showError('حساب الدخول اتعمل، لكن بيانات التسجيل لم تكتمل. لا تسجل حسابًا جديدًا؛ تواصل مع الإدارة لإكماله.');
+      }
+    }
   },
   friendlyError(err){
     const c = err.code || '';
@@ -903,19 +999,29 @@ function resetSession(){
 function showSignedOut(){
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appShell').classList.add('hidden');
+  document.getElementById('verifyScreen').classList.add('hidden');
+  Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab('login');
   applyMarketerLanding();
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
-onAuthStateChanged(auth, async (user) => {
+async function bootAuthUser(user) {
   const epoch = ++authEpoch;
   clearSubs();
   if(!user){ resetSession(); showSignedOut(); return; }
   S.user = user;
+  if(needsEmailVerification(user)){ Auth.showVerification(); return; }
+  document.getElementById('verifyScreen').classList.add('hidden');
   const psnap = await getDoc(doc(db,'users',user.uid));
   if(!psnap.exists()){
-    await setDoc(doc(db,'users',user.uid), {id:user.uid, firstName:user.displayName||'مستخدم', lastName:'', phone:'', email:user.email, role:'CUSTOMER', merchantId:null, ...userDefaults(user.uid), createdAt: nowMs()});
+    if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
+    if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+    // Create only when absent; preserve an existing UID, role and balances on Google login.
+    await runTransaction(db, async tx=>{
+      const ref = doc(db,'users',user.uid); const existing = await tx.get(ref);
+      if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
+    });
   }
   const finalSnap = psnap.exists() ? psnap : await getDoc(doc(db,'users',user.uid));
   if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
@@ -934,7 +1040,6 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('appShell').classList.remove('hidden');
   S.tab = tabFromHash() || defaultTabForRole();
   try{ history.replaceState({tab:S.tab}, '', '#'+S.tab); }catch(e){}
-  try{ history.replaceState({tab:S.tab}, '', '#'+S.tab); }catch(e){}
   subscribeShared();
   if(S.role==='customer') subscribeCustomer();
   if(S.role==='merchant') subscribeMerchant();
@@ -942,6 +1047,16 @@ onAuthStateChanged(auth, async (user) => {
   if(S.role==='delivery') subscribeDeliveryAgent();
   if(S.role==='admin') subscribeAdmin();
   renderShell();
+}
+onAuthStateChanged(auth, async user=>{
+  if(Auth.registering) return;
+  try{ await bootAuthUser(user); }
+  catch(e){
+    clearSubs(); document.getElementById('loadingScreen').classList.add('hidden');
+    document.getElementById('appShell').classList.add('hidden');
+    document.getElementById('authScreen').classList.remove('hidden');
+    Auth.showError(e.message==='profile-needs-admin-repair' ? 'حساب الدخول موجود لكن بيانات التسجيل لم تكتمل. لا تعمل حسابًا جديدًا؛ تواصل مع الإدارة لإكماله.' : 'تم تسجيل الدخول، لكن تعذّر تحميل بيانات الحساب. راجع الاتصال وأعد الدخول.');
+  }
 });
 
 function userDefaults(id, profile={}){
@@ -1712,7 +1827,7 @@ window.openVerifyEmail = ()=>{
 };
 window.resendVerification = async ()=>{ try{ await sendEmailVerification(auth.currentUser); UI.toast('تم إرسال الرابط ✅'); }catch(e){ UI.toast('استنى شوية وحاول تاني'); } };
 window.refreshVerified = async ()=>{
-  try{ await reload(auth.currentUser); }catch(e){}
+  try{ await reload(auth.currentUser); await auth.currentUser.getIdToken(true); }catch(e){}
   if(auth.currentUser && auth.currentUser.emailVerified){ UI.closeModal(); UI.toast('تم تأكيد بريدك ✅ ، كمّل طلبك'); render(); }
   else UI.toast('لسه ماتأكدش، افتح الرابط في بريدك الأول');
 };
