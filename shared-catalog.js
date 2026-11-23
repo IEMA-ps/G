@@ -41,3 +41,12 @@ export function offerData(base,mid,price,stock){
  return {id,catalogId:base.sku,catalogVersion:base.version,merchantId:mid,title:base.title,description:base.description,categoryId:base.categoryId,unit:base.unit,barcode:base.barcode,price:Number(price),stock:Number(stock),imageUrl:'',isActive:true,isPopular:false,isNew:true,rating:0,oldPrice:null,discountPercent:0,flashPrice:null,flashEndsAt:null,groupDiscountPercent:0,groupMinParticipants:3};
 }
 export const escapeHTML=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Explicit preview-time mapping from CSV labels/tokens to current active category IDs.
+export function mapCatalogRows(rows,mapping,categories){
+ return rows.map(row=>{
+  const id=mapping[row.categoryId];
+  if(!id||!categories.some(c=>c.id===id&&c.isActive!==false))throw Error('اربط كل قسم في الملف بقسم مفعّل في البرنامج');
+  return catalogEntry({...row,categoryId:id,rightsConfirmed:true},categories);
+ });
+}
