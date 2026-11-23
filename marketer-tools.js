@@ -14,7 +14,7 @@ export function renderMarketerGrowth(state,esc){
   const value=(key,ready)=>ready==='ready'?counts[key]:'—';
   const paidReady=load.merchants==='ready' && load.subscriptions==='ready'?'ready':'';
   return `<section class="card growth-card"><span class="badge-chip">رابطك وكودك</span><h3>كل محل بيبدأ بدعوة منك</h3><p>شارك رابطك مع التاجر. الكود بيتعبّى في طلب الانضمام، والإدارة بتراجعه وتربط المتجر بيك.</p><label for="growthLink">رابط التسجيل الخاص بيك</label><input id="growthLink" readonly dir="ltr" value="${esc(link)}" onclick="this.select()"><div class="growth-code"><span>كودك</span><b dir="ltr">${esc(code)||'غير متاح'}</b></div><div class="growth-actions"><button class="btn btn-primary btn-sm" ${link?'':'disabled'} onclick="MarketerTools.copyLink()">نسخ الرابط</button><button class="btn btn-ghost btn-sm" ${link?'':'disabled'} onclick="MarketerTools.copyCode()">نسخ الكود</button></div>${!link?'<p class="hint-box">كودك غير متاح. تواصل مع الإدارة قبل مشاركة الرابط.</p>':''}</section>
-  <section class="card growth-card"><h3>من التسجيل لأول اشتراك مدفوع</h3><div class="growth-counts"><div><b>${value('registered',load.merchants)}</b><span>متجر مسجّل بيك</span></div><div><b>${value('paid',paidReady)}</b><span>دفع اشتراكًا معتمدًا</span></div></div><p>كل متجر بيتحسب مرة واحدة حتى لو جدّد اشتراكه. الدفع هنا اشتراك بسعر أكبر من صفر اعتمدته الإدارة، مش مجرد متجر نشط أو تفعيل مجاني.</p><p class="growth-note">العداد يبدأ بعد إنشاء سجل المتجر وربطه بيك، مش بمجرد فتح الرابط أو إرسال واتساب.</p>${[load.merchants,load.subscriptions].includes('error')?'<div class="hint-box">تعذّر تحميل بعض الأرقام. مش هنعرضها كأنها صفر. حاول فتح اللوحة تاني.</div>':load.merchants!=='ready'||load.subscriptions!=='ready'?'<p>جاري تحميل الأرقام المؤكدة…</p>':''}</section>`;
+  <section class="card growth-card"><h3>من التسجيل لأول اشتراك مدفوع</h3><div class="growth-counts"><div><b>${value('registered',load.merchants)}</b><span>متجر مسجّل بيك</span></div><div><b>${value('paid',paidReady)}</b><span>دفع اشتراكًا معتمدًا</span></div></div><p>المتجر بيتحسب مرة واحدة، حتى لو جدّد بعد كده. لازم يكون دفع اشتراك بسعر أكبر من صفر والإدارة اعتمدته. ظهور المتجر كنشط أو تفعيله مجانًا مش كفاية.</p><p class="growth-note">العدد بيظهر بعد تسجيل المتجر وربطه بحسابك. فتح الرابط أو إرسال رسالة واتساب لوحده مش بيتحسب.</p>${[load.merchants,load.subscriptions].includes('error')?'<div class="hint-box">تعذّر تحميل بعض الأرقام. مش هنعرضها كأنها صفر. حاول فتح اللوحة تاني.</div>':load.merchants!=='ready'||load.subscriptions!=='ready'?'<p>جاري تحميل الأرقام المؤكدة…</p>':''}</section>`;
 }
 /* Marketer tools. Sharing opens a composer; nothing is posted automatically. */
 export function createMarketerTools({state, ui, escape, callBackend}){
@@ -54,7 +54,7 @@ export function createMarketerTools({state, ui, escape, callBackend}){
       <div class="card" style="margin-top:14px"><h3>شارك رابط التسجيل</h3>
         <label for="marketerLink">رابطك الخاص</label><input id="marketerLink" readonly dir="ltr" value="${ready?e(link()):''}" style="width:100%;font-size:12px;padding:12px;box-sizing:border-box" onclick="this.select()">
         ${ready?btn("share('whatsapp')",'مشاركة على واتساب',true)+btn("share('facebook')",'مشاركة على فيسبوك')+btn('copyLink()','نسخ الرابط')+btn("share('native')",'مشاركة بطرق أخرى'):''}
-        <p style="font-size:11px;color:var(--ink-soft)">المشاركة بتفتح رسالة أو منشور تراجعه بنفسك. مفيش إرسال تلقائي.</p>
+        <p style="font-size:11px;color:var(--ink-soft)">راجع الرسالة أو المنشور بنفسك قبل ما تبعته. المشاركة مش بتبعت حاجة تلقائي.</p>
       </div>
       <div class="card" style="margin-top:14px"><h3>رسائل جاهزة للتجار</h3>
         ${templates().map((t,i)=>`<details style="padding:12px 0;border-bottom:1px solid var(--line)"><summary style="cursor:pointer;font-weight:700">${t.title}</summary><p style="font-size:13px;white-space:pre-line;line-height:1.9">${e(ready?t.text:'فعّل كودك أولًا')}</p>${ready?btn(`copyTemplate(${i})`,'نسخ الرسالة')+btn(`sendTemplate(${i})`,'فتح في واتساب'):''}</details>`).join('')}
@@ -65,17 +65,17 @@ export function createMarketerTools({state, ui, escape, callBackend}){
         <p style="font-size:12px">التاجر يمسح الرمز، يفتح التسجيل ويلاقي كودك مكتوب.</p>
         ${ready?btn('downloadQr()','تنزيل QR للطباعة'):''}
       </div>
-      <div class="card" style="margin-top:14px"><h3>صور ومنشورات جاهزة</h3><p style="font-size:13px;line-height:1.9">تصميم بشعار على بابك وكودك ورمز التسجيل. التنزيل بصيغة PNG، مناسب للنشر أو الطباعة.</p>
+      <div class="card" style="margin-top:14px"><h3>صور ومنشورات جاهزة</h3><p style="font-size:13px;line-height:1.9">نزّل تصميم عليه شعار على بابك وكودك ورمز التسجيل. هيتحفظ كصورة PNG تقدر تنشرها أو تطبعها.</p>
         ${ready?btn("previewMaterial('post')",'معاينة بوست مربع 1080 × 1080')+btn("previewMaterial('story')",'معاينة ستوري 1080 × 1920'):''}
       </div>
       ${renderBackend()}`;
   }
   function renderBackend(){
-    if(!state().settings.marketerToolsBackend) return `<div class="hint-box" style="margin-top:14px"><b>إشعارات الإنجاز والترتيب وإحصائيات الزيارات</b><p style="font-size:12px">الأدوات دي محتاجة تفعيل خدمة الإحصائيات الآمنة من الإدارة. لحد التفعيل، مش هنعرض أرقام تقديرية كأنها حقيقية. عدد المحلات وحالاتها متاح في «محلاتي».</p></div>`;
+    if(!state().settings.marketerToolsBackend) return `<div class="hint-box" style="margin-top:14px"><b>إشعارات الإنجاز والترتيب وإحصائيات الزيارات</b><p style="font-size:12px">الإحصائيات دي لسه محتاجة تفعيل من الإدارة. لحد ما تشتغل، مش هنحط أرقام تقديرية مكان الأرقام الحقيقية. تقدر تتابع عدد محلاتك وحالتها من «محلاتي».</p></div>`;
     return `<div class="card" style="margin-top:14px"><h3>أداء رابطك</h3>${btn('refresh()','تحديث الإحصائيات')}
-      ${loading?'<p>جاري التحميل...</p>':loadError?'<p>تعذّر تحميل البيانات. حاول التحديث.</p>':data?`<div class="stat-grid"><div class="stat-card"><div class="num">${data.metrics.visits||0}</div><div class="lbl">زيارات متصفح تقريبية</div></div><div class="stat-card"><div class="num">${data.metrics.linkedStores||0}</div><div class="lbl">محلات مسجّلة بكودك</div></div></div><p style="font-size:11px">الزيارات مش عدد أشخاص مؤكد، ومش أساس لحساب أي عمولة. مفيش نسب تحويل قبل توافر تتبع كامل.</p>
+      ${loading?'<p>جاري التحميل...</p>':loadError?'<p>تعذّر تحميل البيانات. حاول التحديث.</p>':data?`<div class="stat-grid"><div class="stat-card"><div class="num">${data.metrics.visits||0}</div><div class="lbl">زيارات متصفح تقريبية</div></div><div class="stat-card"><div class="num">${data.metrics.linkedStores||0}</div><div class="lbl">محلات مسجّلة بكودك</div></div></div><p style="font-size:11px">الزيارة مش بالضرورة شخص مختلف، ومش بنحسب عليها عمولة. نسب التحويل مش هتظهر إلا لما تتوفر بيانات التتبع كاملة.</p>
       <h3>آخر الإنجازات</h3>${data.notifications.length?data.notifications.map(n=>`<p style="padding:10px;background:var(--teal-tint);border-radius:10px"><b>${e(n.title)}</b><br><span style="font-size:12px">${e(n.body)}</span></p>`).join(''):'<p>لسه مفيش إشعارات جديدة.</p>'}
-      <h3>لوحة الصدارة</h3><p style="font-size:12px">بالاشتراك الاختياري فقط، الترتيب بعدد المحلات النشطة. لا نعرض أرباح أو بيانات تواصل.</p>
+      <h3>لوحة الصدارة</h3><p style="font-size:12px">الظهور هنا باختيارك. الترتيب حسب عدد المحلات النشطة، من غير عرض أرباحك أو بيانات تواصلك.</p>
       <label style="display:flex;gap:8px"><input type="checkbox" ${data.optIn?'checked':''} onchange="MarketerTools.setVisibility(this.checked)"> إظهار اسمي المستعار ضمن ترتيب المسوّقين</label>
       ${data.leaderboard.length?`<ol>${data.leaderboard.map(r=>`<li style="padding:10px">${e(r.alias)} <b>(${r.activeStores} محل نشط)</b></li>`).join('')}</ol>`:'<p>مفيش مشاركين في الترتيب حاليًا.</p>'}`:'<p>اضغط تحديث لعرض البيانات.</p>'}</div>`;
   }
