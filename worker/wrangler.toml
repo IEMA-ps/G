@@ -1,6 +1,6 @@
 name = "ala-babk-tg-notify"
 main = "worker.js"
-compatibility_date = "2026-11-24"
+compatibility_date = "2026-11-23"
 
 [vars]
 # اسم البوت من BotFather (من غير @) — اتأكد من إسلام 24 نوفمبر
@@ -11,7 +11,7 @@ FIREBASE_PROJECT_ID = "ala-babk"
 # wrangler kv namespace create TG_LINKS
 [[kv_namespaces]]
 binding = "TG_LINKS"
-id = "PUT_KV_NAMESPACE_ID_HERE"
+id = "4deabb4f83ff4413995f63f7bac2edb5"
 
 # الأسرار (متتحطش في الملف ده أبدًا):
 # wrangler secret put BOT_TOKEN        ← توكن البوت من BotFather
