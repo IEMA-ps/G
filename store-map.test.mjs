@@ -21,7 +21,7 @@ assert.equal(p.mapHref({googleMapsUrl:short,...legacy}),short);
 const html=readFileSync('index.html','utf8');assert.doesNotMatch(html,/id="meLat"|id="meLng"/);
 assert.match(html,/'googleMapsUrl'/);for(const id of ['meMap','amMap','memberRecordMap'])assert.ok(html.includes(id));
 const fields={meMap:{value:pin},meAddr:{value:'address'},mePhone:{value:'01000000000'},meWa:{value:''},meName:{value:'name'},meDesc:{value:''},meLogo:{value:''},meOpen:{value:'09:00'},meClose:{value:'23:00'},meMinOrder:{value:'0'}};
-let writes=[],toasts=[];const ctx={window:{},S:{myMerchant:{id:'legacy',...legacy}},document:{getElementById:id=>fields[id]},EgyptLocations:{address:()=> 'address'},MerchantPlans:{...p,isNewMerchant:()=>false},UI:{toast:s=>toasts.push(s),closeModal(){}},updateDoc:async(ref,patch)=>writes.push(patch),doc(){},db:{}};vm.createContext(ctx);
+let writes=[],toasts=[];const ctx={StoreTypes:{read:()=>''},window:{},S:{myMerchant:{id:'legacy',...legacy}},document:{getElementById:id=>fields[id]},EgyptLocations:{address:()=> 'address'},MerchantPlans:{...p,isNewMerchant:()=>false},UI:{toast:s=>toasts.push(s),closeModal(){}},updateDoc:async(ref,patch)=>writes.push(patch),doc(){},db:{}};vm.createContext(ctx);
 vm.runInContext(html.slice(html.indexOf('window.saveMerchantEdit ='),html.indexOf('/* ================= DELIVERY AGENT')),ctx);
 await ctx.window.saveMerchantEdit();assert.equal(writes.length,1);assert.equal(writes[0].googleMapsUrl,pin);assert.equal('latitude' in writes[0],false);
 fields.meMap.value='https://evil.test/maps';await ctx.window.saveMerchantEdit();assert.equal(writes.length,1);assert.ok(toasts.at(-1).includes('Google Maps'));
