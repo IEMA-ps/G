@@ -15,9 +15,14 @@ vm.createContext(ctx);vm.runInContext(html.slice(html.indexOf('const Auth = {'),
 el('regEmail').value='test@example.test';ctx.invalid=true;await ctx.window.Auth.register({preventDefault(){}});assert.equal(created,0);assert.match(el('authError').textContent,/المحافظة/);
 ctx.invalid=false;await ctx.window.Auth.register({preventDefault(){}});assert.equal(created,1);assert.equal(writes.length,2);assert.equal(writes[0].d.preferredLocation,undefined);assert.deepEqual(writes[1].d.preferredLocation,pref);
 failPref=true;await ctx.window.Auth.register({preventDefault(){}});assert.equal(created,2);assert.equal(ctx.window.Auth.registering,false);
-const renderCtx={typeOptions,filterStoresByType,S:{profile:{preferredLocation:pref},merchants:stores,showAllStores:false},nearbyStores,esc:s=>String(s).replaceAll('<','&lt;'),merchantCard:m=>`<div class="merchant-card"><div class="info"><h4>${m.businessName}</h4><p class="location-note">${m.address}</p></div></div>`,window:{}};
+const renderCtx={S:{profile:{preferredLocation:pref},merchants:stores,showAllStores:false},nearbyStores,esc:s=>String(s).replaceAll('<','&lt;'),merchantCard:m=>`<div class="merchant-card"><div class="info"><h4>${m.businessName}</h4><p class="location-note">${m.address}</p></div></div>`,window:{}};
 vm.createContext(renderCtx);vm.runInContext(html.slice(html.indexOf('function renderCustomerStores(){'),html.indexOf('window.openCustomerLocation=')),renderCtx);
-assert.match(renderCtx.renderCustomerStores(),/نفس منطقتك/);assert.doesNotMatch(renderCtx.renderCustomerStores(),/متجر قديم/);renderCtx.S.profile.preferredLocation={...pref,area:'أخرى'};assert.match(renderCtx.renderCustomerStores(),/بنعرض كل المتاجر/);assert.match(renderCtx.renderCustomerStores(),/متجر قديم/);
+const direct=renderCtx.renderCustomerStores();
+assert.match(direct,/متجر تجربة في الدقي/);assert.doesNotMatch(direct,/متجر تجربة في مدينة نصر/);assert.doesNotMatch(direct,/متجر قديم/);
+for(const removed of ['نفس منطقتك','تغيير منطقتي','عرض كل المتاجر','storeTypeFilter','تصفية حسب نوع المتجر','<section class="card"'])assert.ok(!direct.includes(removed),removed);
+assert.doesNotMatch(direct,/اختار منطقتك/);
+renderCtx.S.profile.preferredLocation={...pref,area:'أخرى'};const fallback=renderCtx.renderCustomerStores();assert.match(fallback,/متجر قديم/);assert.match(fallback,/متجر تجربة في مدينة نصر/);assert.doesNotMatch(fallback,/اختار منطقتك/);
+renderCtx.S.profile.preferredLocation=null;const unselected=renderCtx.renderCustomerStores();assert.match(unselected,/اختار منطقتك/);assert.match(unselected,/openCustomerLocation\(\)/);assert.match(unselected,/متجر قديم/);
 console.log('PASS exact-area stores only, legacy never guessed, all-store fallback and toggle, signup validates before account creation, preference is separate update, failure leaves account intact');
 if(process.argv.includes('--preview')){
  const dataURI=f=>'data:text/javascript;base64,'+Buffer.from(readFileSync(f)).toString('base64');const source=readFileSync('egypt-locations.js','utf8').replace("'./egypt-locations-data.js?v=eg-1'",JSON.stringify(dataURI('egypt-locations-data.js')));const p=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
