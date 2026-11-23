@@ -78,9 +78,64 @@ export function phoneHref(raw){
   if(!/^0[0-9]{8,10}$|^20[0-9]{8,10}$/.test(digits)) return '';
   return 'tel:+'+(digits.startsWith('0')?'20'+digits.slice(1):digits);
 }
-export function mapHref(m){
+// Google links are data, never arbitrary iframe HTML. No short-link network resolver.
+export function googleMapsURL(raw){
+  const value=String(raw||'').trim();if(!value)return '';
+  if(value.length>4096)throw Error('invalid-map-link');
+  let u;try{u=new URL(value);}catch{throw Error('invalid-map-link');}
+  const host=u.hostname.toLowerCase(),path=u.pathname;
+  const allowed=(host==='maps.app.goo.gl'&&path.length>1)||(host==='goo.gl'&&path.startsWith('/maps/'))||((host==='www.google.com'||host==='google.com')&&(path==='/maps'||path.startsWith('/maps/')))||(host==='maps.google.com'&&(path==='/'||path==='/maps'||path.startsWith('/maps/')));
+  if(u.protocol!=='https:'||u.username||u.password||u.port||!allowed)throw Error('invalid-map-link');
+  return u.href;
+}
+export function mapCoordinates(m){
   const lat=Number(m?.latitude),lng=Number(m?.longitude);
-  if(m?.latitude!==''&&m?.longitude!==''&&m?.latitude!=null&&m?.longitude!=null&&Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180) return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(lat+','+lng);
+  return m?.latitude!==''&&m?.longitude!==''&&m?.latitude!=null&&m?.longitude!=null&&Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180?{latitude:lat,longitude:lng}:null;
+}
+export function coordinatesFromMapURL(raw){
+  const href=googleMapsURL(raw);if(!href)return null;
+  const u=new URL(href);if(u.hostname==='maps.app.goo.gl'||u.hostname==='goo.gl')return null;
+  const pair=value=>{const m=String(value||'').match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);return m?mapCoordinates({latitude:m[1],longitude:m[2]}):null;};
+  for(const k of ['query','q']){const c=pair(u.searchParams.get(k));if(c)return c;}
+  let path;try{path=decodeURIComponent(u.pathname);}catch{return null;}
+  // Place pins use !3d / !4d. @lat,lng is often just the camera center, not the pin.
+  const pin=path.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  if(pin)return mapCoordinates({latitude:pin[1],longitude:pin[2]});
+  const simple=path.match(/^\/maps\/(?:place|search)\/(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:\/|$)/);
+  return simple?mapCoordinates({latitude:simple[1],longitude:simple[2]}):null;
+}
+export function mapInputValue(m){
+  try{if(m?.googleMapsUrl)return googleMapsURL(m.googleMapsUrl);}catch{}
+  const c=mapCoordinates(m);return c?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(c.latitude+','+c.longitude):'';
+}
+export function mapLocationPatch(raw,existing={}){
+  const googleMapsUrl=googleMapsURL(raw),old=mapInputValue(existing);
+  // An unchanged form never rewrites legacy coordinates. Changed opaque links remove stale coordinates.
+  if(googleMapsUrl===old)return {googleMapsUrl};
+  const c=coordinatesFromMapURL(googleMapsUrl);
+  return {googleMapsUrl,latitude:c?.latitude??null,longitude:c?.longitude??null};
+}
+export function mapPreview(raw){
+  let href;try{href=googleMapsURL(raw);}catch{return {state:'invalid',href:'',embed:''};}
+  if(!href)return {state:'empty',href:'',embed:''};
+  const u=new URL(href),c=coordinatesFromMapURL(href);
+  if(c)return {state:'pin',href,embed:'https://maps.google.com/maps?q='+encodeURIComponent(c.latitude+','+c.longitude)+'&z=16&hl=ar&output=embed'};
+  if((u.hostname==='www.google.com'||u.hostname==='google.com')&&u.pathname==='/maps/embed'&&u.searchParams.get('pb'))return {state:'embed',href,embed:href};
+  return {state:'unresolved',href,embed:''};
+}
+export function mapPreviewHTML(raw,esc){
+  const p=mapPreview(raw);
+  if(p.state==='invalid')return '<p role="alert" style="color:var(--danger);font-size:12px">أدخل رابط Google Maps صحيح يبدأ بـ https://</p>';
+  if(p.state==='empty')return '<p style="font-size:12px;color:var(--ink-soft)">الصق رابط لوكيشن المتجر لعرض معاينة الخريطة هنا.</p>';
+  const note=p.embed?'راجع العلامة على الخريطة قبل الحفظ. لو الخريطة مش ظاهرة، افتح الرابط في Google Maps.':'الرابط هيتحفظ عند الضغط على حفظ. لا نقدر نحدد نقطة مؤكدة للمعاينة من الرابط ده، ومش هنعرض مكان تخميني. افتحه في Google Maps وانسخ الرابط الكامل الذي يحتوي على إحداثيات، أو رابط تضمين الخريطة.';
+  return (p.embed?'<iframe title="خريطة موقع المتجر من Google" src="'+esc(p.embed)+'" width="100%" height="240" style="display:block;border:0;border-radius:16px;min-width:200px" loading="lazy" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>':'')+'<p style="font-size:12px;line-height:1.9;color:var(--ink-soft)">'+note+'</p><a href="'+esc(p.href)+'" target="_blank" rel="noopener noreferrer" style="font-size:12px">افتح اللوكيشن في Google Maps</a>';
+}
+export function mapField(id,m,esc){
+  const value=mapInputValue(m);
+  return '<div class="field"><label for="'+id+'">رابط اللوكيشن من Google Maps (اختياري)</label><input id="'+id+'" type="url" dir="ltr" maxlength="4096" value="'+esc(value)+'" placeholder="https://maps.app.goo.gl/..." oninput="clearTimeout(this._mapTimer);this._mapTimer=setTimeout(()=>updateStoreMapPreview(\''+id+'\'),600)"><p style="font-size:11px;line-height:1.8;color:var(--ink-soft)">من Google Maps اضغط مشاركة، ثم نسخ الرابط. المعاينة تتصل بـ Google لعرض موقع المتجر.</p><div id="'+id+'Preview" aria-live="polite">'+mapPreviewHTML(value,esc)+'</div></div>';
+}
+export function mapHref(m){
+  const saved=mapInputValue(m);if(saved)return saved;
   return m?.address?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(m.address):'';
 }
 
