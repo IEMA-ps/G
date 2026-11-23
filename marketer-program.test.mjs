@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';import{readFileSync}from'node:fs';
 const mod=await import('data:text/javascript;base64,'+Buffer.from(readFileSync('marketer-program.js')).toString('base64'));
 const {inviteToken,inviteOwner,candidateLink,distinctJoins,appointmentProof,weeklyProgress,validatePeriod,incentiveCard,MARKETER_PROGRAM}=mod;
-assert.equal(MARKETER_PROGRAM.enabled,false);assert.equal(inviteOwner(inviteToken('Candidate_uid-1')),'Candidate_uid-1');for(const t of ['bad!','a',''])assert.equal(inviteOwner(t),null);assert.match(candidateLink('Candidate_uid-1'),/\/register\?team=/);
+assert.equal(MARKETER_PROGRAM.enabled,true);assert.equal(inviteOwner(inviteToken('Candidate_uid-1')),'Candidate_uid-1');for(const t of ['bad!','a',''])assert.equal(inviteOwner(t),null);assert.match(candidateLink('Candidate_uid-1'),/\/register\?team=/);
 const rows=Array.from({length:5},(_,i)=>({id:'join'+i,inviterId:'candidate',emailVerified:true}));assert.equal(distinctJoins([...rows,rows[0],{id:'candidate',inviterId:'candidate',emailVerified:true}], 'candidate').length,5);assert.equal(appointmentProof(rows,'candidate').mode,'TARGET');assert.throws(()=>appointmentProof(rows.slice(1),'candidate'));assert.equal(appointmentProof([], 'candidate','استثناء لخبرة سابقة مثبتة').mode,'EXCEPTION');
 const startAt=Date.UTC(2026,10,24),p={id:'p',startAt,endAt:startAt+7*86400000,target:5};validatePeriod(p);assert.throws(()=>validatePeriod({...p,target:0}));assert.throws(()=>validatePeriod({...p,endAt:p.endAt-1}));
 const subs=Array.from({length:5},(_,i)=>({id:'s'+i,merchantId:'m'+i,marketerId:'mk',status:'APPROVED',price:100,approvedAt:startAt+i,marketerBasePercent:10,marketerBaseAmount:10,marketerAmount:10}));
