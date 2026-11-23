@@ -13,6 +13,7 @@
 <meta property="og:url" content="https://3alababk.com/">
 <meta property="og:image" content="https://3alababk.com/icon-512.png">
 <meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="/shared-catalog.css?v=shared-1">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -483,6 +484,7 @@ img{max-width:100%; display:block;}
 
 <script src="/qrcode.js"></script>
 <script type="module">
+import {installCatalog} from '/shared-catalog-ui.js?v=shared-1';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
 import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
@@ -657,7 +659,7 @@ const MERCHANT_STATUS = {
 /* ================= STATE ================= */
 const S = {
   user:null, profile:null, role:'customer',
-  categories:[], merchants:[], products:[], banners:[],
+  categories:[], merchants:[], products:[], banners:[], catalogOpen:false,
   myAddresses:[], myOrders:[], mySubOrders:[], myRecurringOrders:[], openGroupBuys:[], myGroupBuys:[],
   allMerchants:[], allCategories:[], allOrders:[], allSubOrders:[], allUsers:[], allSettlements:[], allDeliveryAgents:[], allCoupons:[], allAuditLogs:[],
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
@@ -3586,8 +3588,10 @@ function renderMerchantProducts(){
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const m = S.myMerchant;
   if(!m || m.status!=='ACTIVE') return emptyState('fa-lock','متجرك غير مفعّل بعد','لا يمكنك إضافة منتجات حتى تتم الموافقة على متجرك');
+  if(S.catalogOpen) return `<button class="btn btn-ghost" onclick="SharedCatalog.close()">رجوع لمنتجاتي</button>`+SharedCatalog.render();
   const prods = S.myProducts||[];
   return `
+    <button class="btn btn-primary" style="margin-bottom:12px" onclick="SharedCatalog.open()">اختار من كتالوج المنتجات</button>
     <button class="btn btn-primary" style="margin-bottom:16px" onclick="openProductForm()"><i class="fa-solid fa-plus"></i> إضافة منتج جديد</button>
     ${prods.length? `<div class="list-gap">${prods.map(p=>`
       <div class="card" style="display:flex;gap:10px;align-items:center${p.isActive===false?';opacity:.55':''}">
@@ -4412,6 +4416,7 @@ window.removeCategory = async (id)=>{ if(confirm('حذف هذا القسم؟')){
 window.toggleCategoryActive = async (id, cur)=>{ await updateDoc(doc(db,'categories',id), {isActive:!cur}); UI.toast(!cur?'تم تفعيل القسم':'تم تعطيل القسم'); };
 
 function renderAdminProducts(){
+  if(S.catalogOpen&&isSuperAdmin()) return `<button class="btn btn-ghost" onclick="SharedCatalog.close()">رجوع للمنتجات</button>`+SharedCatalog.render();
   const filterM = S.aProdMerchantFilter || 'ALL';
   const list = filterM==='ALL' ? S.products : S.products.filter(p=>p.merchantId===filterM);
   const pageSize = S.aProdPageSize || 20;
@@ -4425,6 +4430,7 @@ function renderAdminProducts(){
       </select>
     </div>
     <button class="btn btn-primary" style="margin-bottom:10px" onclick="openAdminProductForm()"><i class="fa-solid fa-plus"></i> إضافة منتج جديد</button>
+    ${isSuperAdmin()?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="SharedCatalog.open()">إدارة كتالوج المنتجات المشترك</button>`:''}
     <button class="btn btn-ghost" style="margin-bottom:16px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
     ${list.length? `<div class="list-gap">${visible.map(p=>{
       const m = getMerchant(p.merchantId);
@@ -5005,6 +5011,7 @@ window.MarketerTools = createMarketerTools({state:()=>S, ui:UI, escape:esc,
     if(!MARKETING_CONFIG.backendEnabled) throw new Error('marketing-backend-disabled');
     return (await httpsCallable(fns,name)(data||{})).data;
   }});
+const SharedCatalog=installCatalog({S,db,collection,query,where,orderBy,documentId,limit,startAfter,getDocs,doc,runTransaction,writeBatch,UI,renderMain,canEdit:merchantCanEditProducts,isSuper:isSuperAdmin,now:nowMs});
 let _appliedMarketerLanding = false;
 function applyMarketerLanding(){
   if(_appliedMarketerLanding) return;
