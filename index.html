@@ -392,6 +392,8 @@ img{max-width:100%; display:block;}
 
 .plan-pair{display:grid;grid-template-columns:1fr;gap:14px}.plan-card{padding:20px}.plan-card.ordering-plan{border-color:var(--teal);background:linear-gradient(155deg,var(--teal-tint),var(--surface) 60%)}.plan-intro{font-size:12.5px;color:var(--ink-soft);line-height:1.9;min-height:72px}.plan-fee{font-size:11.5px;line-height:1.8;background:var(--paper);padding:10px;border-radius:10px;margin:10px 0}.plan-option{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-top:1px solid var(--line);font-size:12px}.plan-option b{color:var(--teal);font-size:14px;white-space:nowrap}@media(max-width:600px){.plan-pair{grid-template-columns:1fr}.plan-intro{min-height:0}}
 .merchant-welcome{text-align:right;padding:18px}.merchant-welcome h3{font-size:19px;margin:12px 0 8px;overflow-wrap:anywhere}.welcome-note{font-size:12px;color:var(--ink-soft);line-height:1.85}.welcome-plans{display:grid;gap:10px}.welcome-plan{border:1px solid var(--line);border-radius:14px;padding:13px;background:var(--surface);min-width:0}.welcome-plan> b{font-size:15px;color:var(--teal)}.welcome-plan p{font-size:12px;line-height:1.8;margin:6px 0}.welcome-prices{display:flex;flex-wrap:wrap;gap:6px}.welcome-prices span{display:flex;gap:7px;align-items:center;background:var(--paper);border-radius:8px;padding:7px;font-size:11.5px}.welcome-prices b{color:var(--teal);white-space:nowrap}.welcome-plan .welcome-fee{color:var(--ink-soft);font-size:11px;margin-bottom:0}.sub-payment-guide{font-size:12px;line-height:1.85}.sub-payment-guide ol{padding-inline-start:22px;margin:8px 0 12px}.sub-payment-guide li{padding-inline-start:2px;margin-bottom:6px}.sub-payment-destination{font-size:13px;line-height:1.85;white-space:pre-line;overflow-wrap:anywhere;background:var(--teal-tint);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px;margin:7px 0;font-weight:700;unicode-bidi:plaintext}
+.growth-card{margin-bottom:14px;min-width:0}.growth-card h3{margin:10px 0;font-size:18px}.growth-card p{font-size:12px;line-height:1.9;color:var(--ink-soft)}.growth-card label{font-size:12px}.growth-card input{display:block;width:100%;min-width:0;border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px;font-size:11px;text-align:left}.growth-code{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0;font-size:12px}.growth-code b{overflow-wrap:anywhere;word-break:break-all;color:var(--teal);font-size:15px;min-width:0}.growth-actions{display:flex;gap:8px}.growth-actions .btn{flex:1;min-width:0}.growth-counts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.growth-counts>div{background:var(--teal-tint);border-radius:14px;padding:14px 8px;text-align:center}.growth-counts b{display:block;font-size:28px;color:var(--teal)}.growth-counts span{display:block;font-size:11px}.growth-card .growth-note{font-size:11px}
+.founding-offer{border:1px solid var(--gold);margin:14px 0;background:linear-gradient(145deg,var(--gold-tint),var(--surface) 65%)}.founding-offer h3{margin:12px 0 8px!important}.founding-offer p{font-size:12px;line-height:1.9}.founding-preview{background:var(--ink);color:var(--paper);font-size:11px;padding:8px;border-radius:10px;margin-bottom:12px}.founding-help{color:var(--ink-soft)}
 </style>
 <link rel="stylesheet" href="/brand.css?v=modals1">
 <script src="/brand.js" defer></script>
@@ -478,7 +480,8 @@ img{max-width:100%; display:block;}
 
 <script src="./qrcode.js"></script>
 <script type="module">
-import { createMarketerTools } from "./marketer-tools.js";
+import { createMarketerTools, renderMarketerGrowth } from "./marketer-tools.js?v=growth-review-1";
+import { renderFoundingOffer } from './founding-merchants.js?v=review-2';
 import { MARKETING_CONFIG } from "./marketing-config.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
@@ -494,7 +497,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
-import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from './member-roles.js?v=create-record-1';
+import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from './member-roles.js?v=marketer-attribution-1';
 import { requestMessage, requestForm } from './support-requests.js';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from './auth-policy.js?v=account-diagnostics-1';
 
@@ -1420,6 +1423,7 @@ function renderMerchantSubscription(){
     ${S.settings.merchantPlansV2?`<div class="hint-box" style="margin-bottom:14px">باقة تعريفية: لوكيشن وأرقام تواصل فقط. باقة الطلبات: منتجات وطلبات وتجهيز للاستلام من المندوب، وعمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، بدون رسوم التوصيل. الدفع كاش فقط. تغيير نوع باقة سارية يتم بعد انتهاء مدتها.</div>`:''}
     ${pending?`<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-clock"></i> طلب «${esc(pending.planName)}» قيد المراجعة${pending.reference?` (مرجع: ${esc(pending.reference)})`:''}.</div>`:''}
     <div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة دفع الاشتراك</b><div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></div>
+    ${renderFoundingOffer({settings:S.settings,plans,merchant:m},esc,fmtMoney)}
     <div class="section-head"><h3>الباقات المتاحة</h3></div>
     ${plans.some(MerchantPlans.isNewPlan)?renderNewPlanCatalog(plans,pending):plans.length? `<div class="list-gap">${plans.map(p=>`<div class="card">
       <div class="row-between"><b style="font-size:15px">${esc(p.name)}</b><b style="color:var(--teal);font-size:16px">${fmtMoney(p.price)}</b></div>
@@ -1428,6 +1432,10 @@ function renderMerchantSubscription(){
       <button class="btn btn-primary btn-sm" ${pending?'disabled':''} onclick="openSubscribe('${p._id}')">${active?'تجديد / ترقية':'اشترك الآن'}</button></div>`).join('')}</div>` : emptyState('fa-box-open','لا توجد باقات متاحة حاليًا','تواصل مع الإدارة')}
     ${mine.length?`<div class="section-head" style="margin-top:18px"><h3>سجل الاشتراكات</h3></div><div class="list-gap">${mine.map(x=>`<div class="card row-between"><div><b style="font-size:13px">${esc(x.planName)}</b><div style="font-size:11.5px;color:var(--ink-soft)">${fmtDay(x.createdAt)} · ${fmtMoney(x.price)}</div></div><span class="status-pill ${x.status==='APPROVED'?'status-active':x.status==='REJECTED'?'status-suspended':'status-pending'}">${x.status==='APPROVED'?'معتمد':x.status==='REJECTED'?'مرفوض':'قيد المراجعة'}</span></div>`).join('')}</div>`:''}`;
 }
+window.previewFoundingOffer=()=>{
+  if(!isSuperAdmin())return;
+  UI.openModal(`<div class="modal-head"><h3>معاينة مربع عرض300</h3><button class="modal-close" onclick="UI.closeModal()">×</button></div>${renderFoundingOffer({settings:S.settings,plans:S.plans,preview:true},esc,fmtMoney)}`);
+};
 window.openSubscribe = (planId)=>{
   const p = (S.plans||[]).find(x=>x._id===planId); if(!p) return;
   const upg=MerchantPlans.canRequestUpgrade(S.myMerchant,p);
@@ -1605,6 +1613,7 @@ function renderAdminSubscriptions(){
   const sa = isSuperAdmin(); const st = S.settings;
   const activeMerchants = S.allMerchants.filter(subOk);
   return `
+    ${sa?`<div class="card" style="margin-bottom:14px"><h3>عرض300 · معاينة نظرية</h3><p style="font-size:12px;line-height:1.9">مربع منفصل للعرض مع كود مسوّق اختياري. لا عداد أو مؤشر أو مناطق أو حجز مقاعد. الخانة للمعاينة فقط، ولا تغيّر السعر أو تربط مسوّقًا أو ترسل طلبًا. مفتاح300 لم يتغير.</p><button class="btn btn-ghost" onclick="previewFoundingOffer()">معاينة مربع عرض300 فقط</button></div>`:''}
     ${pend.length?`<div class="section-head"><h3>طلبات تنتظر الاعتماد (${pend.length})</h3></div><div class="list-gap" style="margin-bottom:16px">${pend.map(x=>{
       const m = S.allMerchants.find(y=>y.id===x.merchantId)||{};
       return `<div class="card" style="border-color:var(--gold)"><div class="row-between"><b style="font-size:13.5px">${esc(x.merchantName||m.businessName||'')}</b><b>${fmtMoney(x.price)}</b></div>
@@ -1762,13 +1771,15 @@ function subscribeMarketer(){
     render();
   }));
   S.mkMerchants = []; S.mkSubOrders = []; S.mkPayouts = []; S.mkSubs = []; S.mkWithdrawals = [];
+  S.mkGrowthLoad={merchants:'loading',subscriptions:'loading'};
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((x,y)=>(x.sortOrder||0)-(y.sortOrder||0)||x.price-y.price); render(); }));
   S.unsubs.push(onSnapshot(query(collection(db,'withdrawals'), where('marketerId','==',uid_)), snap=>{ S.mkWithdrawals = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
-  S.unsubs.push(onSnapshot(query(collection(db,'subscriptions'), where('marketerId','==',uid_)), snap=>{ S.mkSubs = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }, err=>console.error('marketer subs denied', err)));
+  S.unsubs.push(onSnapshot(query(collection(db,'subscriptions'), where('marketerId','==',uid_)), snap=>{ S.mkSubs = snap.docs.map(d=>({...d.data(),_id:d.id})); S.mkGrowthLoad.subscriptions='ready'; render(); }, err=>{S.mkGrowthLoad.subscriptions='error';console.error('marketer subs denied', err);render();}));
   const subUnsubs = {}; const subData = {};
   S.unsubs.push(()=>Object.values(subUnsubs).forEach(u=>{try{u()}catch(e){}}));
   S.unsubs.push(onSnapshot(query(collection(db,'merchants'), where('marketerId','==',uid_)), snap=>{
-    S.mkMerchants = snap.docs.map(d=>d.data()).sort((a,b)=>(b.registeredAt||0)-(a.registeredAt||0));
+    S.mkMerchants = snap.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>(b.registeredAt||0)-(a.registeredAt||0));
+    S.mkGrowthLoad.merchants='ready';
     const ids = new Set(S.mkMerchants.map(m=>m.id));
     // اشتراك لكل محل على حدة (استعلام تساوي) عشان قواعد الأمان تقدر تتحقق منه
     ids.forEach(id=>{
@@ -1780,7 +1791,7 @@ function subscribeMarketer(){
     });
     Object.keys(subUnsubs).forEach(id=>{ if(!ids.has(id)){ try{subUnsubs[id]()}catch(e){} delete subUnsubs[id]; delete subData[id]; } });
     render();
-  }));
+  },err=>{S.mkGrowthLoad.merchants='error';console.error('marketer merchants denied',err);render();}));
   S.unsubs.push(onSnapshot(query(collection(db,'marketerPayouts'), where('marketerId','==',uid_)), snap=>{
     S.mkPayouts = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render();
   }));
@@ -1820,13 +1831,8 @@ function renderMarketerDashboard(){
   const t = mkMyTotals(); const ms = S.mkMerchants||[];
   const code = S.profile.referralCode || '';
   return `
-    <div class="card" style="margin-bottom:14px;border-color:var(--teal)">
-      <div style="font-size:12px;color:var(--ink-soft)">كودك كمسوّق — لما التاجر يكتبه عند التسجيل يتنسب لك</div>
-      <div class="row-between" style="margin-top:6px"><b style="font-size:16px;overflow-wrap:anywhere;color:var(--teal)">${esc(code)||'الكود غير متاح'}</b>
-        <button class="btn btn-ghost btn-sm" style="width:auto" ${code?'':'disabled'} onclick="copyText('${esc(code)}')"><i class="fa-solid fa-copy"></i> نسخ</button></div>
-      ${code?'':'<p class="hint-box">اطلب من الإدارة إصلاح حقول الحساب لتفعيل كودك.</p>'}
-      <div style="font-size:12px;color:var(--ink-soft);margin-top:6px">${mkSource()!=='ORDERS'?'نسبتك من كل اشتراك بتعتمده الإدارة لمحلاتك (النسبة بتتحدد لكل باقة). ':''}${mkSource()!=='SUBSCRIPTIONS'?`وكمان ${mkRate(S.profile)}% من عمولة المنصة على طلبات محلاتك المسلّمة${(S.settings.marketerCommissionMonths||0)>0?` لمدة ${S.settings.marketerCommissionMonths} شهر من تاريخ تسجيل كل محل`:''}.`:''}</div>
-    </div>
+    ${renderMarketerGrowth(S,esc)}
+    <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك من الاشتراكات التي تعتمدها الإدارة لمحلاتك حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
     ${(()=>{ const tr = mkTier(ms.filter(m=>m.status==='ACTIVE').length); const tiers = mkTiers(); return `<div class="card" style="margin-bottom:14px">
       <div class="row-between"><b style="font-size:14px">مستواك: ${esc(tr.cur.name)}</b><span class="badge-chip">${tr.cur.bonus>0?'+'+tr.cur.bonus+'% على كل باقة':mkBaseRateLabel()}</span></div>
       <div role="progressbar" aria-label="التقدم للمستوى التالي" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${mkTierProgress(tr)}" style="height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 6px"><div style="width:${mkTierProgress(tr)}%;height:100%;background:var(--teal)"></div></div>
@@ -4884,7 +4890,7 @@ window.openAssignMemberRole = (userId,role)=>{
 window.fillMemberRecordFromRequest = role=>{
   const draft=window._memberRecordDraft;if(!draft || draft.role!==role) return;
   const text=document.getElementById('memberRequestPaste')?.value||'',result=parseMemberRequest(text,role);
-  const ids={name:'memberRecordName',manager:'memberRecordManager',phone:'memberRecordPhone',whatsapp:'memberRecordWhatsapp',activity:'memberRecordActivity',vehicle:'memberRecordVehicle',address:'memberRecordAddress'};
+  const ids={name:'memberRecordName',manager:'memberRecordManager',phone:'memberRecordPhone',whatsapp:'memberRecordWhatsapp',activity:'memberRecordActivity',vehicle:'memberRecordVehicle',address:'memberRecordAddress',marketerCode:'memberRecordMarketer'};
   for(const [key,value] of Object.entries(result.fields)){const el=document.getElementById(ids[key]);if(el)el.value=value;}
   const notice=document.getElementById('memberPasteNotice');
   notice.textContent=result.accountId && result.accountId!==draft.userId?'تنبيه: معرّف الحساب في الرسالة مختلف عن العضو المختار. راجع العضو والرسالة قبل الإنشاء.':Object.keys(result.fields).length?'تمت تعبئة الحقول المعروفة. راجع الاسم والهاتف وباقي البيانات قبل الإنشاء.':'لم أجد حقولًا معروفة. يمكنك إكمال البيانات يدويًا.';
@@ -4895,15 +4901,21 @@ window.saveMemberRole = async (userId,role)=>{
   const draft=window._memberRecordDraft,btn=document.getElementById('memberRoleSave'),error=document.getElementById('memberRecordError');
   if(!draft || draft.userId!==userId || draft.role!==role || !btn || btn.disabled) return;
   const value=id=>document.getElementById(id)?.value||'';
-  const input={name:value('memberRecordName'),manager:value('memberRecordManager'),phone:value('memberRecordPhone'),whatsapp:value('memberRecordWhatsapp'),activity:value('memberRecordActivity'),vehicle:value('memberRecordVehicle'),address:value('memberRecordAddress'),description:value('memberRecordDescription')};
+  const input={name:value('memberRecordName'),manager:value('memberRecordManager'),phone:value('memberRecordPhone'),whatsapp:value('memberRecordWhatsapp'),activity:value('memberRecordActivity'),vehicle:value('memberRecordVehicle'),address:value('memberRecordAddress'),description:value('memberRecordDescription'),marketerCode:role==='MERCHANT'?value('memberRecordMarketer').trim().toUpperCase():''};
   error.textContent=''; btn.disabled=true;
   try{
+    if(input.marketerCode){
+      if(!/^[A-Z0-9-]{4,64}$/.test(input.marketerCode)) throw Error('marketer-unavailable');
+      const matches=await getDocs(query(collection(db,'users'),where('referralCode','==',input.marketerCode),limit(2)));
+      if(matches.docs.length!==1 || matches.docs[0].data().role!=='MARKETER') throw Error('marketer-unavailable');
+      input.marketerId=matches.docs[0].id;
+    }
     await createMemberRecord({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId,recordId:draft.recordId,role,input,now:nowMs()});
     window._memberRecordDraft=null;UI.closeModal();UI.toast('تم إنشاء السجل قيد المراجعة وربطه بالعضو');
     try{await logAudit('إنشاء وتعيين '+assignmentType(role).label,userId+' / '+draft.recordId);}catch(e){UI.toast('تم الإنشاء، لكن تعذّر تسجيله في سجل التدقيق');}
   }catch(e){
     btn.disabled=false;
-    const messages={'invalid-contact':'أدخل الاسم ورقم هاتف وواتساب صحيحين.','missing-store-details':'أدخل نوع النشاط وعنوان المتجر.','missing-courier-details':'أدخل وسيلة التوصيل ومنطقة العمل.','customer-required':'العضو لم يعد عميلًا غير مربوط. أغلق النافذة وراجع حسابه.','record-already-exists':'السجل موجود بالفعل. أغلق النافذة وحدّث قائمة الأعضاء قبل المحاولة.','super-required':'الإنشاء والتعيين متاحان للأدمن الرئيسي فقط.'};
+    const messages={'marketer-unavailable':'كود المسوّق غير صالح أو غير فريد. راجعه قبل إنشاء المتجر.','invalid-contact':'أدخل الاسم ورقم هاتف وواتساب صحيحين.','missing-store-details':'أدخل نوع النشاط وعنوان المتجر.','missing-courier-details':'أدخل وسيلة التوصيل ومنطقة العمل.','customer-required':'العضو لم يعد عميلًا غير مربوط. أغلق النافذة وراجع حسابه.','record-already-exists':'السجل موجود بالفعل. أغلق النافذة وحدّث قائمة الأعضاء قبل المحاولة.','super-required':'الإنشاء والتعيين متاحان للأدمن الرئيسي فقط.'};
     error.textContent=messages[e?.message]||'تعذّر تأكيد الإنشاء. حدّث قائمة الأعضاء قبل المحاولة مجددًا. لا يتم حفظ ربط جزئي.';
   }
 };

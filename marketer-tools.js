@@ -1,9 +1,27 @@
+// Counts are scoped to records already attributed to this marketer. No visit tracking or writes.
+export function marketerReferralLink(code){
+  const value=String(code||'').trim();
+  if(!/^[A-Z0-9-]{4,128}$/.test(value)) return '';
+  const url=new URL('https://3alababk.com/');url.searchParams.set('marketer',value);url.hash='register';return url.href;
+}
+export function marketerFunnel(merchants,subscriptions,marketerId){
+  const stores=new Map((merchants||[]).filter(m=>m.marketerId===marketerId && (m.id||m._id)).map(m=>[m.id||m._id,m]));
+  const paid=new Set((subscriptions||[]).filter(s=>s.marketerId===marketerId && stores.has(s.merchantId) && s.status==='APPROVED' && Number.isFinite(Number(s.price)) && Number(s.price)>0 && s.grantedByAdmin!==true).map(s=>s.merchantId));
+  return {registered:stores.size,paid:paid.size,notPaid:stores.size-paid.size};
+}
+export function renderMarketerGrowth(state,esc){
+  const code=state.profile?.referralCode||'',link=marketerReferralLink(code),load=state.mkGrowthLoad||{},counts=marketerFunnel(state.mkMerchants,state.mkSubs,state.user?.uid);
+  const value=(key,ready)=>ready==='ready'?counts[key]:'—';
+  const paidReady=load.merchants==='ready' && load.subscriptions==='ready'?'ready':'';
+  return `<section class="card growth-card"><span class="badge-chip">رابطك وكودك</span><h3>كل محل بيبدأ بدعوة منك</h3><p>شارك رابطك مع التاجر. الكود بيتعبّى في طلب الانضمام، والإدارة بتراجعه وتربط المتجر بيك.</p><label for="growthLink">رابط التسجيل الخاص بيك</label><input id="growthLink" readonly dir="ltr" value="${esc(link)}" onclick="this.select()"><div class="growth-code"><span>كودك</span><b dir="ltr">${esc(code)||'غير متاح'}</b></div><div class="growth-actions"><button class="btn btn-primary btn-sm" ${link?'':'disabled'} onclick="MarketerTools.copyLink()">نسخ الرابط</button><button class="btn btn-ghost btn-sm" ${link?'':'disabled'} onclick="MarketerTools.copyCode()">نسخ الكود</button></div>${!link?'<p class="hint-box">كودك غير متاح. تواصل مع الإدارة قبل مشاركة الرابط.</p>':''}</section>
+  <section class="card growth-card"><h3>من التسجيل لأول اشتراك مدفوع</h3><div class="growth-counts"><div><b>${value('registered',load.merchants)}</b><span>متجر مسجّل بيك</span></div><div><b>${value('paid',paidReady)}</b><span>دفع اشتراكًا معتمدًا</span></div></div><p>كل متجر بيتحسب مرة واحدة حتى لو جدّد اشتراكه. الدفع هنا اشتراك بسعر أكبر من صفر اعتمدته الإدارة، مش مجرد متجر نشط أو تفعيل مجاني.</p><p class="growth-note">العداد يبدأ بعد إنشاء سجل المتجر وربطه بيك، مش بمجرد فتح الرابط أو إرسال واتساب.</p>${[load.merchants,load.subscriptions].includes('error')?'<div class="hint-box">تعذّر تحميل بعض الأرقام. مش هنعرضها كأنها صفر. حاول فتح اللوحة تاني.</div>':load.merchants!=='ready'||load.subscriptions!=='ready'?'<p>جاري تحميل الأرقام المؤكدة…</p>':''}</section>`;
+}
 /* Marketer tools. Sharing opens a composer; nothing is posted automatically. */
 export function createMarketerTools({state, ui, escape, callBackend}){
   const e=escape;
   let data=null, loading=false, loadError=false;
   const code=()=>state().profile?.referralCode||'';
-  const link=()=>{const u=new URL('https://3alababk.com/');u.searchParams.set('marketer',code());u.hash='register';return u.href;};
+  const link=()=>marketerReferralLink(code());
   const pitch=()=>`أهلًا! تطبيق على بابك بيساعد العملاء يطلبوا من محلات منطقتهم. لو حابب تنضم كتاجر، سجّل بيانات محلك من الرابط ده عشان الإدارة تراجعها وتتواصل معاك:\n${link()}\nكود المسوّق: ${code()}`;
   const templates=()=>[
     {title:'أول تواصل',text:pitch()},
@@ -100,7 +118,7 @@ export function createMarketerTools({state, ui, escape, callBackend}){
   }
   return {render,share,link,pitch,qrSvg,material,previewMaterial,refresh,
     reset(){data=null;loading=false;loadError=false;},
-    copyLink:()=>copy(link()),copyTemplate:i=>copy(templates()[i]?.text||''),
+    copyLink:()=>copy(link()),copyCode:()=>copy(code()),copyTemplate:i=>copy(templates()[i]?.text||''),
     sendTemplate:i=>open('https://wa.me/?text='+encodeURIComponent(templates()[i]?.text||'')),
     downloadQr:()=>download(new Blob([qrSvg(600)],{type:'image/svg+xml'}),'3ala-babk-qr.svg'),
     async downloadMaterial(kind){try{const c=await material(kind);c.toBlob(b=>{if(b) download(b,`3ala-babk-${kind}.png`);},'image/png');}catch{ui.toast('تعذّر تنزيل الصورة');}},
