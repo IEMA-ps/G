@@ -483,6 +483,7 @@ img{max-width:100%; display:block;}
 
 <script src="/qrcode.js"></script>
 <script type="module">
+import {installProgram} from '/marketer-program-ui.js?v=program-1';
 import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
 import { renderFoundingOffer } from '/founding-merchants.js?v=review-2';
 import { routeFromLocation, routeURL, authRoute, normalizeLegacy } from '/app-routes.js?v=clean-1';
@@ -959,6 +960,7 @@ function showSignedOut(){
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab(authRoute(location));
   applyMarketerLanding();
+  let team=document.getElementById('teamLanding');if(!team){team=document.createElement('div');team.id='teamLanding';document.getElementById('authScreen').prepend(team);}team.innerHTML=Program.joinLanding();
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
 async function bootAuthUser(user) {
@@ -1003,6 +1005,7 @@ async function bootAuthUser(user) {
   document.getElementById('appShell').classList.remove('hidden');
   S.tab = routeFromLocation(location,S.role) || defaultTabForRole();
   try{const current=routeURL(S.tab,S.role,location.search);seedHistory(routeURL(defaultTabForRole(),S.role,location.search),current);history.replaceState({...history.state,tab:S.tab},'',current);}catch(e){}
+  window.Program?.subscribe();
   subscribeShared();
   if(S.role==='customer') subscribeCustomer();
   if(S.role==='merchant') subscribeMerchant();
@@ -1033,6 +1036,8 @@ onAuthStateChanged(auth, async user=>{
   catch(e){ showAccountLoadFailure(e);
   }
 });
+
+installProgram({state:()=>S,db,auth,api:{doc,collection,query,where,onSnapshot,getDoc,getDocs,setDoc,runTransaction,serverTimestamp},ui:UI,esc,superAdmin:isSuperAdmin,logAudit,render,totals:mkMyTotals});
 
 function userDefaults(id, profile={}){
   const patch = {};
@@ -1090,7 +1095,9 @@ function needProducts(){
 
 function subscribeShared(){
   S.unsubs.push(onSnapshot(doc(db,'settings','app'), d=>{
+    const programWasEnabled=window.Program?.enabled();
     if(d.exists()) S.settings = {...S.settings, ...d.data()};
+    if(window.Program?.enabled()&&!programWasEnabled) window.Program.subscribe();
     if(S._rawMerchants) recomputeMerchants();
     render();
   }));
@@ -1501,7 +1508,7 @@ async function activateSubscription(subId, sub){
   const tierBonus = marketerId ? mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId && x.status==='ACTIVE').length).cur.bonus : 0;
   const pct = Math.min(100, basePct + tierBonus);
   const marketerAmount = marketerId ? roundMoney(sub.price*pct/100) : 0;
-  await setDoc(doc(db,'subscriptions',subId), { ...sub, status:'APPROVED', approvedAt:nowMs(), approvedBy:S.user.uid, endsAt, marketerId, marketerPercent: marketerId?pct:0, marketerAmount }, {merge:true});
+  await setDoc(doc(db,'subscriptions',subId), { ...sub, status:'APPROVED', approvedAt:nowMs(), approvedBy:S.user.uid, endsAt, marketerId, marketerPercent: marketerId?pct:0, marketerAmount,...(Program.enabled()?{marketerBasePercent:marketerId?basePct:0,marketerBaseAmount:marketerId?roundMoney(sub.price*basePct/100):0}:{}) }, {merge:true});
   await updateDoc(doc(db,'merchants',m.id), { subPlanId:sub.planId, subPlanName:sub.planName, subEndsAt:endsAt });
   try{ await pushNotification('MERCHANT', m.id, 'تم تفعيل اشتراكك ✅', `${sub.planName} حتى ${fmtDay(endsAt)}`); }catch(e){}
   await logAudit('اعتماد اشتراك', `${m.businessName} — ${sub.planName} — ${sub.price}`);
@@ -1614,7 +1621,7 @@ async function activateNewSubscription(subId,input){
     const tierBonus=marketerId?mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId&&x.status==='ACTIVE').length).cur.bonus:0;
     const pct=marketerId?Math.min(100,basePct+tierBonus):0;
     const paid=offer?offer.price:p.price; // marketer share is computed on what the merchant actually paid
-    tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:paid,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:roundMoney(paid*pct/100)},{merge:true});
+    tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:paid,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:roundMoney(paid*pct/100),...(Program.enabled()?{marketerBasePercent:marketerId?basePct:0,marketerBaseAmount:marketerId?roundMoney(paid*basePct/100):0}:{})},{merge:true});
     tx.update(mr,{...terms,...(offer?{marketerOfferUsed:true,marketerOfferUsedAt:nowMs()}:{})});
     tx.set(doc(db,'publicMerchantProfiles',m.id),publicMerchantData({...m,...terms}));
   });
@@ -1821,7 +1828,7 @@ function mkMyTotals(){
   const c = mkCalc(mkRate(S.profile), S.mkMerchants||[], S.mkSubOrders||[], S.mkSubs||[], S.user.uid);
   const paid = roundMoney((S.mkPayouts||[]).reduce((a,x)=>a+(x.amount||0),0));
   const pendingW = roundMoney((S.mkWithdrawals||[]).filter(x=>x.status==='PENDING').reduce((a,x)=>a+(x.amount||0),0));
-  const balance = roundMoney(c.earn-paid);
+  const balance = roundMoney(c.earn+Program.creditTotal(S.user.uid)-paid);
   return { ...c, paid, balance, pendingW, available: roundMoney(Math.max(0, balance-pendingW)) };
 }
 // حسابات التجار/المسوقين اللي الأدمن بينشئها بيوزر نيم (إيميل داخلي) معفية من تأكيد البريد
@@ -1852,6 +1859,7 @@ function renderMarketerDashboard(){
   const t = mkMyTotals(); const ms = S.mkMerchants||[];
   const code = S.profile.referralCode || '';
   return `
+    ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
     <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك من الاشتراكات التي تعتمدها الإدارة لمحلاتك حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
     ${(()=>{ const tr = mkTier(ms.filter(m=>m.status==='ACTIVE').length); const tiers = mkTiers(); return `<div class="card" style="margin-bottom:14px">
@@ -1937,13 +1945,15 @@ window.saveMarketerMerchant = async ()=>{
 };
 
 /* ---- إدارة (أدمن) ---- */
-window.makeMarketer = async (id)=>{
+window.makeMarketer = async id=>{
+  if(Program.enabled()) return Program.openAppointment(id);
+  // Preserve the existing admin appointment flow while the new program is off.
   if(!isSuperAdmin()) return;
   if(!confirm('تعيين هذا العضو كمسوّق؟ هيشوف لوحة المسوّق بدل لوحة العميل.')) return;
-  const member = await getDoc(doc(db,'users',id));
-  if(!member.exists()){ UI.toast('العضو غير موجود'); return; }
-  await updateDoc(doc(db,'users',id), { role:'MARKETER', ...userDefaults(id, member.data()) });
-  await logAudit('تعيين مسوّق', id); UI.toast('تم تعيين العضو كمسوّق ✅');
+  const member=await getDoc(doc(db,'users',id));
+  if(!member.exists()){UI.toast('العضو غير موجود');return;}
+  await updateDoc(doc(db,'users',id),{role:'MARKETER',...userDefaults(id,member.data())});
+  await logAudit('تعيين مسوّق',id);UI.toast('تم تعيين العضو كمسوّق ✅');
 };
 window.removeMarketer = async (id)=>{
   if(!isSuperAdmin()) return;
@@ -2033,7 +2043,7 @@ function mkBalanceOf(u){
   const ms = S.allMerchants.filter(m=>m.marketerId===u._id);
   const c = mkCalc(mkRate(u), ms, S.allSubOrders||[], S.allSubs||[], u._id);
   const paid = roundMoney((S.allMkPayouts||[]).filter(x=>x.marketerId===u._id).reduce((a,x)=>a+(x.amount||0),0));
-  return { earn:c.earn, paid, balance: roundMoney(c.earn-paid) };
+  return { earn:c.earn+Program.creditTotal(u._id), paid, balance: roundMoney(c.earn+Program.creditTotal(u._id)-paid) };
 }
 window.payWithdrawal = async (id)=>{
   if(!isSuperAdmin()){ UI.toast('للأدمن الرئيسي فقط'); return; }
@@ -2077,9 +2087,9 @@ function renderAdminWithdrawals(){
 
 function renderAdminMarketers(){
   const mks = S.allUsers.filter(u=>u.role==='MARKETER');
-  if(!mks.length) return emptyState('fa-bullhorn','لا يوجد مسوّقون بعد','من «الأعضاء» اختر عضوًا واضغط «تعيين كمسوّق»');
+  if(!mks.length) return (isSuperAdmin()?Program.admin():'')+emptyState('fa-bullhorn','لا يوجد مسوّقون بعد','من «الأعضاء» اختر عضوًا واضغط «تعيين كمسوّق»');
   const pays = S.allMkPayouts||[];
-  return `${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
+  return `${isSuperAdmin()?Program.admin():''}${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
   <div class="list-gap">${mks.map(u=>{
     const ms = S.allMerchants.filter(m=>m.marketerId===u._id);
     const c = mkCalc(mkRate(u), ms, S.allSubOrders||[], S.allSubs||[], u._id);
@@ -3344,6 +3354,7 @@ function renderProfile(){
   const points = S.profile.loyaltyPoints || 0;
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
   return `
+    ${Program.joinButton()}${Program.candidate()}
     <div class="card" style="text-align:center;padding:24px">
       <div style="width:64px;height:64px;border-radius:50%;background:var(--teal-tint);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 10px"><i class="fa-solid fa-user"></i></div>
       <h3 style="margin:0">${esc((S.profile.firstName||'')+' '+(S.profile.lastName||''))}</h3>
