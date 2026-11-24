@@ -524,7 +524,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
-import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=member-svc-2';
+import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=member-svc-3';
 import { locationPicker, installLocations } from '/egypt-locations.js?v=eg-2';
 installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
@@ -1692,7 +1692,7 @@ async function activateNewSubscription(subId,input){
     const [md,pd,settingsDoc]=await Promise.all([tx.get(mr),tx.get(pr),tx.get(doc(db,'settings','app'))]);
     if(!md.exists()||!pd.exists()) throw new Error('المتجر أو الباقة غير موجود');
     const m={...md.data(),id:md.id},p={...pd.data(),_id:pd.id,id:pd.id},settings=settingsDoc.exists()?settingsDoc.data():{};
-    if(m.status!=='ACTIVE') throw new Error('وافق على انضمام المتجر أولًا قبل تفعيل اشتراكه');
+    if(m.status!=='ACTIVE') throw new Error(Services.isServiceProvider(m)?'وافق على انضمام مقدم الخدمة أولًا قبل تفعيل اشتراكه':'وافق على انضمام المتجر أولًا قبل تفعيل اشتراكه');
     if(!MerchantPlans.isNewPlan(p)||p.active===false||sub.model!==p.model||sub.kind!==p.kind||sub.termsVersion!==p.termsVersion||sub.months!==p.months) throw new Error('شروط الباقة تغيّرت أو غير متطابقة. اطلب اشتراكًا جديدًا بالشروط الحالية.');
     // Price must equal the list price, or the marketer-offer price re-validated here from authoritative data.
     const offer=sub.offerId?MerchantPlans.marketerOfferFor(m,p,settings):null;
@@ -5362,7 +5362,7 @@ window.approveMemberRequest = async rid=>{
   if(!isSuperAdmin()) return;
   const r=(S.memberRequests||[]).find(x=>x.id===rid);if(!r||r.status!=='PENDING') return;
   const role=r.kind==='courier'?'DELIVERY':'MERCHANT';
-  if(!confirm('الموافقة هتنشئ السجل قيد المراجعة وتربطه بحساب العضو. تكمل؟')) return;
+  if(!confirm('الموافقة هتفعّل السجل على طول وتربطه بحساب العضو. تكمل؟')) return;
   try{
     const input={name:role==='MERCHANT'?r.business:r.name,manager:r.name,phone:r.phone,whatsapp:r.phone,activity:r.activity||'',vehicle:r.vehicle||'',address:r.address||'',description:'',marketerCode:r.marketerCode||''};
     if(r.kind==='service'&&!Services.SERVICE_TYPES.includes(input.activity)) throw Error('missing-store-details');
@@ -5371,9 +5371,9 @@ window.approveMemberRequest = async rid=>{
       if(matches.docs.length===1&&matches.docs[0].data().role==='MARKETER') input.marketerId=matches.docs[0].id; else input.marketerCode='';
     }
     const recordId=(role==='MERCHANT'?'merch_':'agent_')+uid();
-    await createMemberRecord({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId:rid,recordId,role,input,now:nowMs()});
+    await createMemberRecord({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId:rid,recordId,role,input,now:nowMs(),status:'ACTIVE'});
     try{await updateDoc(doc(db,'memberRequests',rid),{status:'APPROVED',reviewedAt:nowMs(),reviewedBy:auth.currentUser.uid});}catch(e){UI.toast('تم إنشاء السجل، لكن تعذّر تحديث حالة الطلب');return;}
-    UI.toast('تمت الموافقة وربط العضو');
+    UI.toast('تمت الموافقة وتفعيل السجل وربط العضو');
     try{await logAudit('موافقة على طلب انضمام',rid+' / '+recordId);}catch(e){}
   }catch(e){ UI.toast(e?.message==='customer-required'?'العضو لم يعد عميلًا متاحًا للتعيين':e?.message==='record-already-exists'?'السجل موجود بالفعل':'تعذّرت الموافقة. حدّث الصفحة وحاول تاني'); }
 };
