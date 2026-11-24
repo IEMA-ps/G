@@ -11,7 +11,7 @@ const JWKS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken
 const CODE_TTL_SECONDS = 900; // كود الربط صالح 15 دقيقة
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_NOTIFY_KEYS = 10, MAX_TEXT = 3500;
-const KEY_PATTERN = /^(m:|a:)[A-Za-z0-9_\-]{1,40}$/;
+const KEY_PATTERN = /^(m:|a:)[A-Za-z0-9_\-]{1,64}$/;
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -24,6 +24,7 @@ function json(data, status = 200) {
 }
 
 // ---------- تليجرام ----------
+// بيرجع {ok, blocked}: blocked = البوت اتحظر من المستخدم (403) — لازم يتشال من القوائم.
 async function tgSend(env, chatId, text, fetchImpl = fetch) {
   const res = await fetchImpl(`${TG_API}/bot${env.BOT_TOKEN}/sendMessage`, {
     method: 'POST',
@@ -31,8 +32,12 @@ async function tgSend(env, chatId, text, fetchImpl = fetch) {
     body: JSON.stringify({chat_id: chatId, text: String(text).slice(0, 4000), disable_web_page_preview: true})
   });
   const data = await res.json().catch(() => ({}));
-  return res.ok && data.ok === true;
+  return {ok: res.ok && data.ok === true, blocked: res.status === 403};
 }
+
+function tgOk(r) { return r === true || (r && r.ok === true); }
+function tgBlocked(r) { return !!(r && r.blocked === true); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- توثيق ربط الحساب: توكن Firebase ID (RS256 من جوجل، بدون مكتبات) ----------
 function b64urlToBytes(s) {
@@ -87,16 +92,49 @@ async function authedUid(request, env) {
 // ---------- مفاتيح KV ----------
 const codeKey = code => 'code:' + code;
 const uidKey = uid => 'uid:' + uid;
+const chatKey = chatId => 'chat:' + chatId;
 const ADMIN_LIST_KEY = 'role:ADMIN';
+const ROLES = ['CUSTOMER', 'MERCHANT', 'DELIVERY', 'MARKETER', 'ADMIN'];
+const roleListKey = role => 'role:' + role;
 
 function newCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(8));
   return Array.from(bytes, b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
-async function adminChatIds(env) {
-  const raw = await env.TG_LINKS.get(ADMIN_LIST_KEY);
+async function roleChatIds(env, role) {
+  const raw = await env.TG_LINKS.get(roleListKey(role));
   try { return raw ? JSON.parse(raw) : []; } catch { return []; }
+}
+const adminChatIds = env => roleChatIds(env, 'ADMIN');
+
+async function addToRoleList(env, role, chatId) {
+  const ids = await roleChatIds(env, role);
+  if (!ids.includes(chatId)) { ids.push(chatId); await env.TG_LINKS.put(roleListKey(role), JSON.stringify(ids)); }
+}
+
+async function removeFromRoleList(env, role, chatId) {
+  const ids = (await roleChatIds(env, role)).filter(id => id !== chatId);
+  await env.TG_LINKS.put(roleListKey(role), JSON.stringify(ids));
+}
+
+// شطب شات من كل حتة: سجل المستخدم، مفاتيح التاجر/المندوب، قوائم الأدوار، والمفتاح العكسي.
+async function removeChatEverywhere(env, chatId) {
+  const uid = await env.TG_LINKS.get(chatKey(chatId));
+  const ops = [env.TG_LINKS.delete(chatKey(chatId))];
+  if (uid) {
+    const raw = await env.TG_LINKS.get(uidKey(uid));
+    let link = {};
+    try { link = JSON.parse(raw || '{}'); } catch {}
+    ops.push(env.TG_LINKS.delete(uidKey(uid)));
+    if (link.merchantId) ops.push(env.TG_LINKS.delete('m:' + link.merchantId));
+    if (link.deliveryAgentId) ops.push(env.TG_LINKS.delete('a:' + link.deliveryAgentId));
+    const role = link.role || (link.admin ? 'ADMIN' : link.merchantId ? 'MERCHANT' : link.deliveryAgentId ? 'DELIVERY' : null);
+    if (role) ops.push(removeFromRoleList(env, role, chatId));
+  } else {
+    for (const role of ROLES) ops.push(removeFromRoleList(env, role, chatId));
+  }
+  await Promise.all(ops);
 }
 
 // ---------- المسارات ----------
@@ -106,10 +144,14 @@ async function handleLinkStart(request, env) {
   const body = await request.json().catch(() => ({}));
   const link = {
     uid,
-    merchantId: typeof body.merchantId === 'string' && /^[A-Za-z0-9_\-]{1,40}$/.test(body.merchantId) ? body.merchantId : null,
-    deliveryAgentId: typeof body.deliveryAgentId === 'string' && /^[A-Za-z0-9_\-]{1,40}$/.test(body.deliveryAgentId) ? body.deliveryAgentId : null,
-    admin: body.admin === true
+    merchantId: typeof body.merchantId === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(body.merchantId) ? body.merchantId : null,
+    deliveryAgentId: typeof body.deliveryAgentId === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(body.deliveryAgentId) ? body.deliveryAgentId : null,
+    admin: body.admin === true,
+    customer: body.customer === true,
+    marketer: body.marketer === true
   };
+  link.role = link.admin ? 'ADMIN' : link.merchantId ? 'MERCHANT' : link.deliveryAgentId ? 'DELIVERY' : link.customer ? 'CUSTOMER' : link.marketer ? 'MARKETER' : null;
+  if (!link.role) return json({error: 'bad request'}, 400);
   const code = newCode();
   await env.TG_LINKS.put(codeKey(code), JSON.stringify(link), {expirationTtl: CODE_TTL_SECONDS});
   return json({url: `https://t.me/${env.BOT_USERNAME}?start=${code}`});
@@ -129,14 +171,13 @@ async function handleLinkStop(request, env) {
   if (raw) {
     let link = {};
     try { link = JSON.parse(raw); } catch {}
-    const ops = [env.TG_LINKS.delete(uidKey(uid))];
-    if (link.merchantId) ops.push(env.TG_LINKS.delete('m:' + link.merchantId));
-    if (link.deliveryAgentId) ops.push(env.TG_LINKS.delete('a:' + link.deliveryAgentId));
-    if (link.admin) {
-      const admins = (await adminChatIds(env)).filter(id => id !== link.chatId);
-      ops.push(env.TG_LINKS.put(ADMIN_LIST_KEY, JSON.stringify(admins)));
+    if (link.chatId) await internals.removeChatEverywhere(env, link.chatId);
+    else {
+      const ops = [env.TG_LINKS.delete(uidKey(uid))];
+      if (link.merchantId) ops.push(env.TG_LINKS.delete('m:' + link.merchantId));
+      if (link.deliveryAgentId) ops.push(env.TG_LINKS.delete('a:' + link.deliveryAgentId));
+      await Promise.all(ops);
     }
-    await Promise.all(ops);
   }
   return json({linked: false});
 }
@@ -155,7 +196,11 @@ async function handleNotify(request, env) {
     if (chatId) chatIds.add(chatId);
   }
   let sent = 0;
-  for (const chatId of chatIds) { if (await internals.tgSend(env, chatId, text)) sent++; }
+  for (const chatId of chatIds) {
+    const r = await internals.tgSend(env, chatId, text);
+    if (tgOk(r)) sent++;
+    else if (tgBlocked(r)) await internals.removeChatEverywhere(env, chatId);
+  }
   return json({sent});
 }
 
@@ -166,6 +211,16 @@ async function handleWebhook(request, env) {
   if (!msg || !msg.chat || !msg.text) return json({ok: true});
   const chatId = String(msg.chat.id);
   const parts = msg.text.trim().split(/\s+/);
+  if (parts[0] === '/stop') {
+    const linkedUid = await env.TG_LINKS.get(chatKey(chatId));
+    if (linkedUid) {
+      await internals.removeChatEverywhere(env, chatId);
+      await internals.tgSend(env, chatId, 'اتلغى الاشتراك ✅\nمش هتوصلك إشعارات من «على بابك» هنا تاني. تقدر ترجع تربط حسابك من التطبيق في أي وقت.');
+    } else {
+      await internals.tgSend(env, chatId, 'حسابك مش مربوط أصلًا. لو حبيت تشترك، اربط حسابك من تطبيق «على بابك».');
+    }
+    return json({ok: true});
+  }
   if (parts[0] !== '/start') return json({ok: true});
   const code = parts[1] || '';
   if (!code) {
@@ -179,19 +234,17 @@ async function handleWebhook(request, env) {
   }
   let link;
   try { link = JSON.parse(raw); } catch { return json({ok: true}); }
-  const record = {chatId, merchantId: link.merchantId, deliveryAgentId: link.deliveryAgentId, admin: link.admin === true};
+  const record = {chatId, merchantId: link.merchantId, deliveryAgentId: link.deliveryAgentId, admin: link.admin === true, role: link.role || null};
   const ops = [
     env.TG_LINKS.put(uidKey(link.uid), JSON.stringify(record)),
+    env.TG_LINKS.put(chatKey(chatId), link.uid),
     env.TG_LINKS.delete(codeKey(code))
   ];
   if (link.merchantId) ops.push(env.TG_LINKS.put('m:' + link.merchantId, chatId));
   if (link.deliveryAgentId) ops.push(env.TG_LINKS.put('a:' + link.deliveryAgentId, chatId));
-  if (record.admin) {
-    const admins = await adminChatIds(env);
-    if (!admins.includes(chatId)) { admins.push(chatId); ops.push(env.TG_LINKS.put(ADMIN_LIST_KEY, JSON.stringify(admins))); }
-  }
+  if (record.role) ops.push(addToRoleList(env, record.role, chatId));
   await Promise.all(ops);
-  await internals.tgSend(env, chatId, 'تم الربط ✅\nحسابك في «على بابك» اتربط بتليجرام، وهتوصلك إشعارات الطلبات الجديدة هنا فورًا.');
+  await internals.tgSend(env, chatId, 'تم الربط ✅\nحسابك في «على بابك» اتربط بتليجرام، وهتوصلك الإشعارات هنا فورًا.\nلو حبيت توقف الإشعارات في أي وقت، ابعت /stop هنا.');
   return json({ok: true});
 }
 
@@ -208,6 +261,35 @@ async function handleSetupWebhook(request, env) {
   return json({ok: res.ok && data.ok === true, telegram: data});
 }
 
+// بث رسالة من الأدمن لكل المربوطين أو لدور معيّن. محمي: لازم المتصل يكون أدمن مربوط.
+// تليجرام بيحدّ ~30 رسالة/ثانية — بنبعت بالتتابع مع مهلة 34ms بين كل رسالة.
+async function handleBroadcast(request, env) {
+  const uid = await authedUid(request, env);
+  if (!uid) return json({error: 'unauthorized'}, 401);
+  const rawLink = await env.TG_LINKS.get(uidKey(uid));
+  let link = {};
+  try { link = JSON.parse(rawLink || '{}'); } catch {}
+  if (link.role !== 'ADMIN' && link.admin !== true) return json({error: 'forbidden'}, 403);
+  const body = await request.json().catch(() => null);
+  if (!body) return json({error: 'bad request'}, 400);
+  const audience = String(body.audience || 'ALL').toUpperCase();
+  const roles = audience === 'ALL' ? ROLES : (ROLES.includes(audience) ? [audience] : null);
+  if (!roles) return json({error: 'bad request'}, 400);
+  const text = String(body.text || '').trim().slice(0, MAX_TEXT);
+  if (!text) return json({error: 'bad request'}, 400);
+  const chatIds = new Set();
+  for (const role of roles) (await roleChatIds(env, role)).forEach(id => chatIds.add(id));
+  let sent = 0, blocked = 0, failed = 0;
+  for (const chatId of chatIds) {
+    const r = await internals.tgSend(env, chatId, text);
+    if (tgOk(r)) sent++;
+    else if (tgBlocked(r)) { blocked++; await internals.removeChatEverywhere(env, chatId); }
+    else failed++;
+    if (chatIds.size > 1) await sleep(34);
+  }
+  return json({ok: true, total: chatIds.size, sent, blocked, failed});
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: cors});
@@ -218,11 +300,12 @@ async function route(request, env) {
   if (url.pathname === '/link/status' && request.method === 'GET') return handleLinkStatus(request, env);
   if (url.pathname === '/link/stop' && request.method === 'POST') return handleLinkStop(request, env);
   if (url.pathname === '/notify' && request.method === 'POST') return handleNotify(request, env);
+  if (url.pathname === '/broadcast' && request.method === 'POST') return handleBroadcast(request, env);
   return json({error: 'not found'}, 404);
 }
 
 // للاختبار المحلي: نقدر نستبدل التحقق والإرسال ببدائل وهمية.
-const internals = {verifyFirebaseIdToken, tgSend};
+const internals = {verifyFirebaseIdToken, tgSend, removeChatEverywhere};
 export const _internals = internals;
 
 export default {

@@ -1,6 +1,6 @@
 // اختبارات موديول إشعارات تليجرام (واجهة العميل) — بدون شبكة، fetch وهمي.
 import assert from 'node:assert/strict';
-import {WORKER_URL, APP_SECRET, ADMIN_KEY, merchantKey, agentKey, send, linkStart, linkStatus, linkStop, linkModalHTML} from './telegram-notify.js';
+import {WORKER_URL, APP_SECRET, ADMIN_KEY, merchantKey, agentKey, send, linkStart, linkStatus, linkStop, linkModalHTML, BROADCAST_AUDIENCES, audienceLabel, broadcast, broadcastPreviewHTML, broadcastResultHTML} from './telegram-notify.js';
 
 // مفاتيح الاستهداف
 assert.equal(ADMIN_KEY, 'role:ADMIN');
@@ -53,6 +53,13 @@ assert.equal(agentKey('xyz'), 'a:xyz');
   assert.equal(body.merchantId, 'm9');
   assert.equal(body.deliveryAgentId, null);
   assert.equal(body.admin, false);
+  assert.equal(body.customer, false);
+  assert.equal(body.marketer, false);
+  // أدوار العميل والمسوّق
+  await linkStart({token: 'tok123', customer: true}, fetchImpl);
+  assert.equal(JSON.parse(seen.opts.body).customer, true);
+  await linkStart({token: 'tok123', marketer: true}, fetchImpl);
+  assert.equal(JSON.parse(seen.opts.body).marketer, true);
 }
 
 // linkStatus / linkStop
@@ -75,3 +82,45 @@ assert.equal(agentKey('xyz'), 'a:xyz');
 }
 
 console.log('PASS telegram-notify: keys, send payload/guards/truncation, link calls, modal states.');
+
+// broadcast: بيبعت /broadcast بالتوكن والنص المقصوص
+{
+  let seen;
+  const fetchImpl = async (url, opts) => { seen = {url, opts}; return {ok: true, json: async () => ({ok: true, total: 5, sent: 4, blocked: 1, failed: 0})}; };
+  const r = await broadcast('ALL', '  خبر مهم  ', 'tok-admin', fetchImpl);
+  assert.equal(seen.url, WORKER_URL + '/broadcast');
+  assert.equal(seen.opts.headers['authorization'], 'Bearer tok-admin');
+  const body = JSON.parse(seen.opts.body);
+  assert.equal(body.audience, 'ALL');
+  assert.equal(body.text, '  خبر مهم  ');
+  assert.equal(r.sent, 4);
+  // قص النص الطويل
+  await broadcast('CUSTOMER', 'z'.repeat(5000), 'tok-admin', fetchImpl);
+  assert.equal(JSON.parse(seen.opts.body).text.length, 3000);
+}
+
+// audienceLabel + قوائم الجماهير
+{
+  assert.equal(BROADCAST_AUDIENCES.length, 6);
+  assert.equal(audienceLabel('ALL'), 'كل المربوطين');
+  assert.equal(audienceLabel('MERCHANT'), 'التجار');
+  assert.equal(audienceLabel('NOPE'), 'NOPE');
+}
+
+// معاينة البث: هروب HTML والنص بالظبط + زر الإرسال
+{
+  const html = broadcastPreviewHTML('ALL', 'سعر <b>جديد</b> & "عرض"');
+  assert.ok(html.includes('كل المربوطين'));
+  assert.ok(html.includes('&lt;b&gt;'));
+  assert.ok(!html.includes('<b>جديد</b>'));
+  assert.ok(html.includes('sendTelegramBroadcast()'));
+}
+
+// نتيجة البث: نجاح وفشل
+{
+  assert.ok(broadcastResultHTML({ok: true, total: 5, sent: 4, blocked: 1, failed: 0}).includes('4 من 5'));
+  assert.ok(broadcastResultHTML(null).includes('مشكلة'));
+  assert.ok(broadcastResultHTML({ok: false}).includes('مشكلة'));
+}
+
+console.log('PASS telegram-notify broadcast: send/truncate, audiences, preview escaping, result states.');

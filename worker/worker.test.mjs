@@ -13,6 +13,7 @@ class FakeKV {
 const sentMessages = [];
 _internals.verifyFirebaseIdToken = async token => {
   if (token === 'good-uid-1') return 'uid-1';
+  if (token === 'good-uid-2') return 'uid-2';
   if (token === 'good-uid-admin') return 'uid-admin';
   throw new Error('bad token');
 };
@@ -86,6 +87,25 @@ let linkUrl;
   assert.ok(sentMessages.at(-1).text.includes('ORD-1'));
 }
 
+// 3ب) رجعي: معرّفات التطبيق الحقيقية (merch_/agent_ + UUID = 42 حرف) لازم تتقبل في الربط والإشعار
+{
+  const merchId = 'merch_3f6b2a1c-9d4e-4f8a-b7c6-5d4e3f2a1b09'; // 42 حرف — الشكل الفعلي في الإنتاج
+  const agentId = 'agent_0a1b2c3d-4e5f-4678-89ab-cdef01234567';
+  assert.equal(merchId.length, 42);
+  const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-2'), body: {merchantId: merchId}});
+  assert.equal(res.status, 200);
+  const code = (await res.json()).url.split('start=')[1];
+  await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 556}, text: '/start ' + code}}});
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:' + merchId], title: 't', message: 'm'}});
+  assert.equal((await nres.json()).sent, 1);
+  assert.equal(sentMessages.at(-1).chatId, '556');
+  await call('/link/stop', {method: 'POST', headers: auth('good-uid-2')});
+  // ومندوب بنفس طول المعرّف
+  const ares = await call('/link/start', {method: 'POST', headers: auth('good-uid-2'), body: {deliveryAgentId: agentId}});
+  assert.equal(ares.status, 200);
+  await call('/link/stop', {method: 'POST', headers: auth('good-uid-2')});
+}
+
 // 4) /notify بدون السر مترفض، وبمفاتيح غير معروفة يرجع 0
 {
   assert.equal((await call('/notify', {method: 'POST', headers: {'content-type': 'application/json'}, body: {keys: ['m:m1'], title: 't', message: 'm'}})).status, 401);
@@ -124,4 +144,44 @@ let linkUrl;
   assert.equal(sentMessages.length, before + 1);
 }
 
-console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. messages sent:', sentMessages.length);
+// 8) /broadcast: ممنوع لغير الأدمن، وبيبعت للأدوار المطلوبة فقط
+{
+  // غير مربوط أصلًا
+  assert.equal((await call('/broadcast', {method: 'POST', headers: auth('good-uid-1'), body: {audience: 'ALL', text: 'خبر'}})).status, 403);
+  // الأدمن مربوط من اختبار 5 (شات 777)
+  const before = sentMessages.length;
+  const res = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'ADMIN', text: 'إعلان للأدمن'}});
+  const data = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(data.total, 1);
+  assert.equal(data.sent, 1);
+  assert.equal(sentMessages.at(-1).chatId, '777');
+  assert.ok(sentMessages.at(-1).text.includes('إعلان للأدمن'));
+  // audience غلط أو نص فاضي
+  assert.equal((await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'NOPE', text: 'x'}})).status, 400);
+  assert.equal((await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'ALL', text: '  '}})).status, 400);
+  // دور فاضي: total 0 من غير إرسال
+  const emptyRes = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'CUSTOMER', text: 'خبر'}});
+  assert.equal((await emptyRes.json()).total, 0);
+  assert.equal(sentMessages.length, before + 1);
+}
+
+// 9) المستخدم اللي حظر البوت بيتشال من القوائم أثناء البث
+{
+  // اربط عميل على شات 888
+  const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-1'), body: {customer: true}});
+  const code = (await res.json()).url.split('start=')[1];
+  await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 888}, text: '/start ' + code}}});
+  // خلّي الإرسال لـ 888 يرجع blocked
+  const origSend = _internals.tgSend;
+  _internals.tgSend = async (env, chatId, text) => chatId === '888' ? {ok: false, blocked: true} : (sentMessages.push({chatId, text}), {ok: true});
+  const bres = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'ALL', text: 'خبر للكل'}});
+  const bdata = await bres.json();
+  _internals.tgSend = origSend;
+  assert.equal(bdata.blocked, 1);
+  // الشات 888 اتشال: بث تاني ميوصلوش
+  const again = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'CUSTOMER', text: 'خبر'}});
+  assert.equal((await again.json()).total, 0);
+}
+
+console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. messages sent:', sentMessages.length);

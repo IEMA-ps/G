@@ -46,11 +46,13 @@ export function send(keys, title, message, fetchImpl) {
 }
 
 // بدء ربط تليجرام: يرجع رابط t.me فيه كود ربط مؤقت (15 دقيقة). يتطلب توكن Firebase ID للمستخدم الحالي.
-export function linkStart({token, merchantId, deliveryAgentId, admin}, fetchImpl) {
+export function linkStart({token, merchantId, deliveryAgentId, admin, customer, marketer}, fetchImpl) {
   return post('/link/start', {
     merchantId: merchantId || null,
     deliveryAgentId: deliveryAgentId || null,
-    admin: admin === true
+    admin: admin === true,
+    customer: customer === true,
+    marketer: marketer === true
   }, {token, fetchImpl});
 }
 
@@ -76,4 +78,39 @@ export function linkModalHTML(state) {
       <button class="btn btn-primary" onclick="checkTelegramLink()"><i class="fa-solid fa-rotate"></i> خلّصت الربط — تأكد</button>`;
   return `<p style="font-size:13px;line-height:1.9;margin:0 0 14px">اربط حسابك ببوت «على بابك» على تليجرام، وهيوصلك إشعار فوري بكل طلب جديد يخصك، في شات البوت.</p>
     <button class="btn btn-primary" onclick="startTelegramLink()"><i class="fa-brands fa-telegram"></i> ربط تليجرام</button>`;
+}
+
+// ---------- بث الأدمن ----------
+// الجماهير المتاحة للبث: الكل أو دور واحد. الإرسال بيتم من الـ Worker للمربوطين فقط (~30 رسالة/ثانية).
+export const BROADCAST_AUDIENCES = [
+  {id: 'ALL', label: 'كل المربوطين'},
+  {id: 'CUSTOMER', label: 'العملاء'},
+  {id: 'MERCHANT', label: 'التجار'},
+  {id: 'DELIVERY', label: 'مناديب التوصيل'},
+  {id: 'MARKETER', label: 'المسوّقين'},
+  {id: 'ADMIN', label: 'الأدمن'}
+];
+
+export function audienceLabel(id) {
+  const a = BROADCAST_AUDIENCES.find(x => x.id === id);
+  return a ? a.label : String(id || '');
+}
+
+const escHtml = v => String(v).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+// إرسال البث. يتطلب توكن Firebase ID لأدمن مربوط تليجرام. بيرجع {ok,total,sent,blocked,failed}.
+export function broadcast(audience, text, token, fetchImpl) {
+  return post('/broadcast', {audience, text: String(text || '').slice(0, MAX_MESSAGE)}, {token, fetchImpl});
+}
+
+// معاينة النص بالظبط قبل الإرسال — موافقة الأدمن على النص النهائي شرط للبث.
+export function broadcastPreviewHTML(audience, text) {
+  return `<p style="font-size:13px;line-height:1.9;margin:0 0 10px">الرسالة دي هتتبعت كما هي بالظبط لـ: <b>${escHtml(audienceLabel(audience))}</b> (المربوطين على تليجرام فقط)</p>
+    <div class="hint-box" style="padding:12px;margin:0 0 14px;white-space:pre-wrap;line-height:1.9">${escHtml(text)}</div>
+    <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="sendTelegramBroadcast()"><i class="fa-solid fa-paper-plane"></i> إرسال البث</button><button class="btn btn-ghost" onclick="UI.closeModal()">إلغاء</button></div>`;
+}
+
+export function broadcastResultHTML(r) {
+  if (!r || r.ok !== true) return '<p class="hint-box" style="padding:12px;margin:0">حصلت مشكلة أثناء الإرسال. جرّب تاني بعد شوية.</p>';
+  return `<p class="hint-box" style="padding:12px;margin:0">تم البث ✅ — وصلت لـ ${r.sent || 0} من ${r.total || 0}${r.blocked ? `، واتشال ${r.blocked} كانوا وقفين البوت` : ''}${r.failed ? `، وتعذر الإرسال لـ ${r.failed}` : ''}.</p>`;
 }
