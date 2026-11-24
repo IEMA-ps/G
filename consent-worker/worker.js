@@ -7,8 +7,8 @@
 
 const JWKS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 const METHODS = new Set(['email', 'google']);
-const VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const TERMS_VERSION_IN_PAGE = /الإصدار\s*(\d{4}-\d{2}-\d{2})/;
+const VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}(\.\d+)?$/;
+const TERMS_VERSION_IN_PAGE = /الإصدار\s*(\d{4}-\d{2}-\d{2}(?:\.\d+)?)/;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {status, headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'}});
