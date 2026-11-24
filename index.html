@@ -536,7 +536,7 @@ import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
-import { requestMessage, requestForm } from '/support-requests.js?v=marketer-join-1';
+import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
 import * as MerchantPlans from '/merchant-plans.js?v=offer2-1';
@@ -3507,10 +3507,10 @@ function renderOrderDetail(){
 
 /* ================= CUSTOMER: PROFILE / ADDRESSES / NOTIFICATIONS ================= */
 window.openJoinRequest = (kind)=>{
-  if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery','marketer'].includes(kind)) return;
+  if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery','marketer','service'].includes(kind)) return;
   const available=!!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
   const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
-  UI.openModal(requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc,Services.servicesEnabled(S.settings)):''));
+  UI.openModal(requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc,Services.servicesEnabled(S.settings)):kind==='service'?typePicker('rqActivity','',esc,true,Services.SERVICE_TYPES):''));
 };
 window.prepareSupportRequest = (ev,kind)=>{
   ev.preventDefault();
@@ -3518,7 +3518,7 @@ window.prepareSupportRequest = (ev,kind)=>{
   const preview=document.getElementById('requestPreview'), error=document.getElementById('requestError');
   preview.classList.add('hidden'); error.textContent='';
   try{
-    const data=Object.fromEntries(new FormData(ev.target));if(kind==='merchant')data.activity=StoreTypes.read('rqActivity');data.area=EgyptLocations.address('rqLoc',data.area);
+    const data=Object.fromEntries(new FormData(ev.target));if(kind==='merchant'||kind==='service')data.activity=StoreTypes.read('rqActivity');data.area=EgyptLocations.address('rqLoc',data.area);
     const message=requestMessage(kind,data,{uid:auth.currentUser.uid,email:auth.currentUser.email});
     const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,message);
     if(!href) throw new Error('الدعم غير متاح حاليًا. حاول لاحقًا بعد ضبط رقم الدعم.');
@@ -3550,7 +3550,7 @@ function renderProfile(){
         <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
       </div>
     </div>`:''}
-    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3><p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
+    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3><p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('service')">طلب الانضمام كمقدم خدمة</button>`:''}<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
     <div class="section-head"><h3>الحساب</h3></div>
     <div class="list-gap">
       <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('addresses')"><span><i class="fa-solid fa-location-dot" style="color:var(--teal);margin-left:8px"></i> عناويني</span><i class="fa-solid fa-chevron-left"></i></div>
