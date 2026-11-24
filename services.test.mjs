@@ -34,3 +34,19 @@ assert.match(card,/setBookingStatus\('x_1','ACCEPTED'\)/);assert.doesNotMatch(ca
 const c2=S.bookingCardHTML({id:'x_1',status:'CANCELLED',date:'2026-11-24',time:'13:00',merchantName:'د'},esc,'customer');assert.doesNotMatch(c2,/cancelMyBooking/);
 assert.equal(S.fmtTime('13:00'),'1:00 م');assert.equal(S.fmtTime('00:30'),'12:30 ص');
 console.log('services tests passed');
+{
+  const sch=S.normalizeSchedule({slotMinutes:60,closedDates:[],days:{...Object.fromEntries([0,1,2,3,4,5,6].map(i=>[String(i),{on:false,from:'10:00',to:'12:00'}])),oneOffs:[{date:'2026-11-27',from:'15:00',to:'17:00'},{date:'bad',from:'1',to:'2'}]}});
+  assert.deepEqual(sch.oneOffs,[{date:'2026-11-27',from:'15:00',to:'17:00'}]);
+  const ms=Date.parse('2026-11-25T10:00:00+02:00');
+  assert.deepEqual(S.slotsFor(sch,'2026-11-27',new Set(),ms),['15:00','16:00']);
+  assert.deepEqual(S.slotsFor(sch,'2026-11-28',new Set(),ms),[]);
+  assert.deepEqual(S.slotsFor(sch,'2026-11-27',new Set(['15:00']),ms),['16:00']);
+  const w=S.normalizeSchedule({slotMinutes:60,days:{'5':{on:true,from:'10:00',to:'12:00'},oneOffs:[{date:'2026-11-27',from:'11:00',to:'14:00'}]}});
+  assert.deepEqual(S.slotsFor(w,'2026-11-27',new Set(),ms),['10:00','11:00','12:00','13:00']);
+  assert.deepEqual(S.slotsFor({...w,closedDates:['2026-11-27']},'2026-11-27',new Set(),ms),[]);
+  assert.deepEqual(S.scheduleForSave(sch).days.oneOffs,sch.oneOffs);
+  assert.equal(S.normalizeSchedule(S.scheduleForSave(sch)).oneOffs.length,1);
+  assert.throws(()=>S.makeOneOff({date:'2026-11-24',from:'10:00',to:'11:00'},ms));
+  assert.throws(()=>S.makeOneOff({date:'2026-11-27',from:'12:00',to:'11:00'},ms));
+  console.log('one-off tests passed');
+}

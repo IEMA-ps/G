@@ -531,7 +531,7 @@ document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{requir
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
-import * as Services from '/services.js?v=svc-1';
+import * as Services from '/services.js?v=svc-2';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
@@ -2953,16 +2953,20 @@ window.cancelMyBooking = async (sid)=>{
 window.setBookingStatus = async (sid,status)=>{
   try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status,updatedAt:t}); if(status==='REJECTED') b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('تم'); }catch(e){ UI.toast('تعذر التحديث'); }
 };
-let _closedDraft=null;
+let _closedDraft=null,_ooDraft=null,_schMode='weekly';
+const ooNow=()=>_ooDraft||Services.normalizeSchedule(S.mySchedule).oneOffs;
+window.setSchMode=m=>{ _schMode=m; document.getElementById('schWeekly').classList.toggle('hidden',m==='once'); document.getElementById('schOnce').classList.toggle('hidden',m!=='once'); };
+window.addOneOff=()=>{ try{ const o=Services.makeOneOff({date:document.getElementById('schOoDate').value,from:document.getElementById('schOoFrom').value,to:document.getElementById('schOoTo').value}); _ooDraft=Services.normalizeSchedule({oneOffs:[...ooNow(),o]}).oneOffs; _schMode='once'; const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:closedNow(),oneOffs:_ooDraft}; renderMain(); }catch(e){ UI.toast(e.message||'تعذر الإضافة'); } };
+window.removeOneOff=i=>{ _ooDraft=ooNow().filter((_,j)=>j!==i); _schMode='once'; const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:closedNow(),oneOffs:_ooDraft}; renderMain(); };
 const closedNow=()=>_closedDraft||Services.normalizeSchedule(S.mySchedule).closedDates;
 window.addClosedDate=()=>{ const v=document.getElementById('schClosedAdd').value; if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; _closedDraft=[...new Set([...closedNow(),v])].sort(); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
 window.removeClosedDate=d=>{ _closedDraft=closedNow().filter(x=>x!==d); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
-function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow()); }catch(e){ return S.mySchedule; } }
+function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow(),ooNow()); }catch(e){ return S.mySchedule; } }
 window.saveProviderSchedule = async ()=>{
   const mId=S.profile.merchantId; if(!mId) return;
   try{
-    const sch=Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow());
-    await setDoc(doc(db,'serviceSchedules',mId),{merchantId:mId,...sch,updatedAt:nowMs()}); _closedDraft=null; UI.toast('تم حفظ المواعيد ✅');
+    const sch=Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow(),ooNow());
+    await setDoc(doc(db,'serviceSchedules',mId),{merchantId:mId,...Services.scheduleForSave(sch),updatedAt:nowMs()}); _closedDraft=null; _ooDraft=null; UI.toast('تم حفظ المواعيد ✅');
   }catch(e){ UI.toast(e.message||'تعذر الحفظ'); }
 };
 window.setServiceType=t=>{ S.serviceType=t; renderMain(); };
@@ -2996,7 +3000,7 @@ function providerBookingsView(){
 }
 function renderProviderSchedule(){
   if(S.role!=='merchant'||!Services.isServiceProvider(S.myMerchant)) return '';
-  return `<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}`;
+  return `<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc,_schMode)}`;
 }
 window.openMerchant = (mid)=>{ S.activeMerchantId=mid; const mm=getMerchant(mid); if(Services.isServiceProvider(mm)){ if(MerchantPlans.canOrder(mm,S.settings.subsEnforced)) loadBookingData(mid); } else if(MerchantPlans.canOrder(mm,S.settings.subsEnforced)) loadProductsFor('merchant',mid); go('merchantPage'); };
 
