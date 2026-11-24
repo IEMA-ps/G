@@ -4045,7 +4045,6 @@ function renderAdminDashboard(){
     <button class="btn btn-ghost a-shortcut" style="margin-top:10px" onclick="go('a_audit')"><i class="fa-solid fa-clock-rotate-left"></i> سجل نشاط الإدارة</button>
     ` : `<div class="hint-box" style="margin-top:10px"><i class="fa-solid fa-lock"></i> حسابك «أدمن مساعد» — الإعدادات الحساسة وسجل النشاط متاحين لإدارة الموقع فقط.</div>`}
     <button class="btn btn-ghost" style="margin-top:10px" onclick="syncCategories()"><i class="fa-solid fa-wand-magic-sparkles"></i> إضافة/تحديث الأقسام المقترحة (${CATEGORY_SEED.length} قسم)</button>
-    <button class="btn btn-ghost" style="margin-top:10px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
   `;
 }
 /* أقسام شاملة مبنية على دراسة تطبيقات التوصيل المصرية الشهيرة (طلبات، أكلني، بريدفاست، إنستاشوب، يوداوي، روكيت) */
@@ -4213,7 +4212,7 @@ function renderAdminMerchants(){
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openAssignMarketer('${m.id}')"><i class="fa-solid fa-pen"></i> تغيير</button>
         </div>
         <div class="row-between" style="margin-bottom:8px">
-          <span style="font-size:12px;color:var(--ink-soft)"><i class="fa-solid fa-percent"></i> عمولة المنصة: <b style="color:var(--ink)">${MerchantPlans.isNewMerchant(m)?(m.subPlanType==='ORDERING'?2:0):(m.commissionPercent!=null?m.commissionPercent:S.settings.platformCommissionPercent)}%</b>${MerchantPlans.isNewMerchant(m)?' (الباقة الجديدة، شهريًا)':m.commissionPercent!=null?'':' (افتراضية)'}</span>
+          <span style="font-size:12px;color:var(--ink-soft)"><i class="fa-solid fa-percent"></i> عمولة المنصة: <b style="color:var(--ink)">${MerchantPlans.isNewMerchant(m)?(m.subPlanType==='ORDERING'?2:0):(m.commissionPercent!=null?m.commissionPercent:S.settings.platformCommissionPercent)}%</b>${MerchantPlans.isNewMerchant(m)?' (الباقة الجديدة، شهريًا)':m.commissionPercent!=null?'':' (باقة قديمة، النسبة الافتراضية)'}</span>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMerchantCommission('${m.id}')"><i class="fa-solid fa-pen"></i> تعديل</button>
         </div>
         ${m.status==='REJECTED' && m.rejectionReason?`<p class="hint-box" style="margin-top:10px">سبب الرفض: ${esc(m.rejectionReason)}</p>`:''}
@@ -4538,7 +4537,6 @@ function renderAdminProducts(){
     </div>
     <button class="btn btn-primary" style="margin-bottom:10px" onclick="openAdminProductForm()"><i class="fa-solid fa-plus"></i> إضافة منتج جديد</button>
     ${isSuperAdmin()?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="SharedCatalog.open()">إدارة كتالوج المنتجات المشترك</button>`:''}
-    <button class="btn btn-ghost" style="margin-bottom:16px" onclick="seedDemoProducts()"><i class="fa-solid fa-wand-magic-sparkles"></i> تحميل منتجات تجريبية لكل الأقسام</button>
     ${list.length? `<div class="list-gap">${visible.map(p=>{
       const m = getMerchant(p.merchantId);
       return `<div class="card admin-catalog-row" style="${p.isActive===false?'opacity:.55':''}">
@@ -4950,7 +4948,7 @@ function renderAdminSettings(){
   return `
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 14px;font-size:15px">إعدادات عامة للمنصة</h3>
-      <div class="field"><label>نسبة عمولة المنصة الافتراضية (%)</label><input id="setCommission" type="number" step="0.1" min="0" max="100" value="${s.platformCommissionPercent}"></div>
+      <div class="field"><label>نسبة عمولة المنصة الافتراضية (%) — للتجار القدامى فقط، الباقات الجديدة 2%</label><input id="setCommission" type="number" step="0.1" min="0" max="100" value="${s.platformCommissionPercent}"></div>
       <div class="field"><label>نسبة المسوّق من عمولة الطلبات (%) — لو المصدر يشمل الطلبات</label><input id="setMkPct" type="number" step="0.1" min="0" max="100" value="${s.marketerCommissionPercent!=null?s.marketerCommissionPercent:20}"></div>
       <div class="field"><label>مدة احتساب نسبة الطلبات بالأشهر (0 = بدون حد)</label><input id="setMkMonths" type="number" step="1" min="0" max="120" value="${s.marketerCommissionMonths||0}"></div>
       <div class="field"><label>رسوم التوصيل لكل تاجر في الطلب (جنيه)</label><input id="setDeliveryFee" type="number" step="1" min="0" value="${s.defaultDeliveryFee}"></div>
