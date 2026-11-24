@@ -7,8 +7,6 @@ CREATE TABLE IF NOT EXISTS terms_consents (
   method TEXT NOT NULL CHECK (method IN ('email', 'google')),
   accepted_at TEXT NOT NULL,
   ip TEXT,
-  country TEXT,
-  user_agent TEXT,
   UNIQUE (uid, terms_version)
 );
 CREATE TRIGGER IF NOT EXISTS terms_consents_no_update BEFORE UPDATE ON terms_consents
