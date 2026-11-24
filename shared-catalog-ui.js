@@ -1,4 +1,4 @@
-import {catalogEntry,parseCSV,mapCatalogRows,offerId,offerData,escapeHTML as e} from './shared-catalog.js';
+import {catalogEntry,parseCSV,mapCatalogRows,offerId,offerData,escapeHTML as e} from './shared-catalog.js?v=shared-2';
 export function installCatalog(ctx){
  const {S,db,collection,query,where,orderBy,documentId,limit,startAfter,getDocs,doc,runTransaction,writeBatch,UI,renderMain,canEdit,isSuper,now}=ctx;
  let items=[],cursor=null,more=false,loading=false,error='',mode='',pending=[],filter='',rawImport=[];
