@@ -1,4 +1,4 @@
-export const TERMS_VERSION = '2026-11-24';
+export const TERMS_VERSION = '2026-11-24.2';
 export const TERMS_URL = '/terms.html';
 
 export function requireSignupConsent(document) {
@@ -25,4 +25,26 @@ export function askGoogleConsent() {
     dialog.showModal();
     checkbox.focus();
   });
+}
+
+
+// Server-side proof of consent (append-only log in Cloudflare D1, see consent-worker/).
+// Best effort: a failure never blocks signup. The server decides the time, IP and terms hash.
+export const CONSENT_ENDPOINT = '/api/consent';
+
+export async function recordServerConsent(user, method) {
+  try {
+    if (!user) return false;
+    const token = await user.getIdToken();
+    const res = await fetch(CONSENT_ENDPOINT, {
+      method: 'POST',
+      headers: {'content-type': 'application/json', authorization: 'Bearer ' + token},
+      body: JSON.stringify({version: TERMS_VERSION, method}),
+      keepalive: true
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('Server consent record not saved');
+    return false;
+  }
 }

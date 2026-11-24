@@ -528,7 +528,7 @@ import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
-import * as TermsConsent from '/terms-consent.js?v=terms-1';
+import * as TermsConsent from '/terms-consent.js?v=terms-2';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=marketer-join-1';
@@ -1057,6 +1057,8 @@ async function bootAuthUser(user) {
 // Separate self-update preserves the exact create-user schema in deployed Firestore rules.
 // This is a UI acceptance record, not an immutable legal audit trail.
 async function saveTermsConsent(uid, method){
+  // Independent server-side proof (time, IP, terms hash). Not awaited: never delays or blocks signup.
+  TermsConsent.recordServerConsent(auth.currentUser?.uid===uid?auth.currentUser:null,method);
   try{
     await updateDoc(doc(db,'users',uid), {termsConsent:{version:TermsConsent.TERMS_VERSION,acceptedAt:serverTimestamp(),method}});
   }catch(e){

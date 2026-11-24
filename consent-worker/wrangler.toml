@@ -1,0 +1,24 @@
+name = "ala-babk-consent"
+main = "worker.js"
+compatibility_date = "2026-11-23"
+workers_dev = false
+
+# الـ Worker شغال على نفس دومين الموقع (من غير CORS): /api/consent بس.
+routes = [
+  { pattern = "3alababk.com/api/consent", zone_name = "3alababk.com" },
+  { pattern = "www.3alababk.com/api/consent", zone_name = "3alababk.com" }
+]
+
+[vars]
+FIREBASE_PROJECT_ID = "ala-babk"
+TERMS_URL = "https://3alababk.com/terms.html"
+ALLOWED_ORIGINS = "https://3alababk.com,https://www.3alababk.com"
+
+# قبل النشر (مرة واحدة): wrangler d1 create ala-babk-consent ثم حط الـ database_id هنا.
+# بعدها: wrangler d1 execute ala-babk-consent --remote --file=schema.sql
+[[d1_databases]]
+binding = "DB"
+database_name = "ala-babk-consent"
+database_id = "REPLACE_WITH_D1_ID"
+
+# مفيش أسرار في الـ Worker ده.
