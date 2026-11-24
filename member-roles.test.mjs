@@ -47,6 +47,6 @@ vm.runInContext(html.slice(html.indexOf('window.fillMemberRecordFromRequest ='),
 elements.get('memberRequestPaste').value='اسم المتجر: متجر من الرسالة\nالهاتف: 01098765432\nمعرّف الحساب: wrong';base.window.fillMemberRecordFromRequest('MERCHANT');assert.equal(elements.get('memberRecordName').value,'متجر من الرسالة');assert.match(elements.get('memberPasteNotice').textContent,/مختلف/);elements.get('memberRecordName').value='تعديل يدوي';assert.equal(elements.get('memberRecordName').value,'تعديل يدوي');
 console.log('PASS actual paste handler fills editable values, warns account mismatch, never submits');
 {base.S.allUsers=[{_id:'p',firstName:'دكتورة',lastName:'منى',role:'MERCHANT',merchantId:'pm'},{_id:'s',firstName:'صاحب',lastName:'سوبر',role:'MERCHANT',merchantId:'sm'}];base.S.allMerchants=[{id:'pm',activityType:'عيادات'},{id:'sm',activityType:'سوبر ماركت'}];
-base.S.aUserFilter='SERVICE';let h=base.renderAdminUsers();assert.match(h,/مقدمو خدمة/);assert.match(h,/دكتورة/);assert.doesNotMatch(h,/صاحب/);
-base.S.aUserFilter='MERCHANT';h=base.renderAdminUsers();assert.match(h,/صاحب/);assert.doesNotMatch(h,/دكتورة/);
+base.S.aUserFilter='SERVICE';let h=base.renderAdminUsers();assert.match(h,/مقدمو خدمة/);assert.match(h,/دكتورة/);assert.doesNotMatch(h,/صاحب/);assert.match(h,/badge-chip">مقدم خدمة/);assert.doesNotMatch(h,/badge-chip">تاجر/);
+base.S.aUserFilter='MERCHANT';h=base.renderAdminUsers();assert.match(h,/badge-chip">تاجر/);assert.match(h,/صاحب/);assert.doesNotMatch(h,/دكتورة/);
 base.S.aUserFilter='ALL';h=base.renderAdminUsers();assert.match(h,/دكتورة/);assert.match(h,/صاحب/);console.log('PASS service providers tab splits merchants and providers');}
