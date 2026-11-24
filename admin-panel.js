@@ -1,7 +1,7 @@
 // Read-only presentation for the existing admin role. Never grants permissions.
 export const ADMIN_PAGES=[
  ['a_dashboard','fa-chart-simple','نظرة عامة','تشغيل'],['a_new_orders','fa-bell','طلبات جديدة','تشغيل'],['a_orders','fa-receipt','كل الطلبات','تشغيل'],['a_recurring','fa-repeat','الطلبات الأسبوعية','تشغيل'],
- ['a_merchants','fa-shop','التجار','المنصة'],['a_products','fa-box','المنتجات','المنصة'],['a_categories','fa-tags','الأقسام','المنصة'],['a_agents','fa-motorcycle','مناديب التوصيل','المنصة'],
+ ['a_merchants','fa-shop','التجار','المنصة'],['a_providers','fa-user-doctor','مقدمو الخدمة','المنصة'],['a_products','fa-box','المنتجات','المنصة'],['a_categories','fa-tags','الأقسام','المنصة'],['a_agents','fa-motorcycle','مناديب التوصيل','المنصة'],
  ['a_users','fa-users','الأعضاء والأكواد','النمو'],['a_marketers','fa-bullhorn','المسوقون','النمو'],['a_subscriptions','fa-gem','الاشتراكات والباقات','النمو'],['a_coupons','fa-ticket','أكواد الخصم','النمو'],
  ['a_settlements','fa-sack-dollar','الكشوف والتسويات','المتابعة'],['a_reports','fa-chart-pie','التقارير','المتابعة'],
  ['a_settings','fa-gear','الإعدادات','إدارة',true],['a_dbsetup','fa-database','قاعدة البيانات','إدارة',true],['a_audit','fa-clock-rotate-left','سجل النشاط','إدارة',true]
