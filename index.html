@@ -2921,12 +2921,19 @@ window.submitBooking = async (mid,date,time)=>{
     batch.set(doc(db,'bookedSlots',sid),{merchantId:mid,date,time,active:true,customerId:S.user.uid});
     batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date,time,slotMinutes:sch.slotMinutes,note:v.note,status:'PENDING',createdAt:t,updatedAt:t});
     await batch.commit();
+    notifyProvider(mid,'طلب حجز جديد 📅',`${v.name} (${v.phone}) طلب ميعاد ${date} الساعة ${Services.fmtTime(time)}${v.note?'\nملاحظة: '+v.note:''}\nادخل على الحجوزات للقبول أو الرفض.`);
     UI.toast('اتبعت طلب الحجز للمزود ✅'); go('myBookings'); loadBookingData(mid);
   }catch(e){ UI.toast(e.code==='permission-denied'?'الميعاد ده اتحجز، اختار ميعاد تاني':(e.message||'تعذر الحجز')); loadBookingData(mid); }
 };
+// إشعار المزود بحجز جديد: داخل التطبيق + تليجرام (لو ربط البوت). الفشل ما بيوقفش الحجز.
+function notifyProvider(mid,title,message){
+  try{ pushNotification('MERCHANT',mid,title,message).catch(()=>{}); }catch(e){}
+  try{ TelegramNotify.send([TelegramNotify.merchantKey(mid)],title,message); }catch(e){}
+}
 window.cancelMyBooking = async (sid)=>{
   if(!confirm('تلغي الحجز؟')) return;
-  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status:'CANCELLED',updatedAt:t}); b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('اتلغى الحجز'); }catch(e){ UI.toast('تعذر الإلغاء'); }
+  const bk=(S.myBookings||[]).find(x=>x.id===sid);
+  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status:'CANCELLED',updatedAt:t}); b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('اتلغى الحجز'); if(bk) notifyProvider(bk.merchantId,'حجز اتلغى ❌',`${bk.customerName||'العميل'} لغى ميعاد ${bk.date} الساعة ${Services.fmtTime(bk.time)}.`); }catch(e){ UI.toast('تعذر الإلغاء'); }
 };
 window.setBookingStatus = async (sid,status)=>{
   try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status,updatedAt:t}); if(status==='REJECTED') b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('تم'); }catch(e){ UI.toast('تعذر التحديث'); }
