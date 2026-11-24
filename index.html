@@ -2866,8 +2866,6 @@ function renderHome(){
   ];
   const reminders = todaysRecurringReminders();
   const nearbyGroups = groupBuysNearMe();
-  const popular = activeProducts().filter(p=>p.isPopular).slice(0,6);
-  const flashDeals = activeProducts().filter(flashActive).sort((a,b)=>a.flashEndsAt-b.flashEndsAt).slice(0,6);
   return `
     ${servicesHomeCard()}
     ${renderCustomerStores()}
@@ -2884,14 +2882,11 @@ function renderHome(){
       </div>`).join('')}</div>` : ''}
     <div class="banner-strip">${banners.map(b=>`<div class="banner"><i class="fa-solid ${b.i}"></i><h4>${b.t}</h4><p>${b.s}</p></div>`).join('')}</div>
 
-    <p class="location-note">المنتجات والعروض التالية من كل المتاجر المتاحة، مش تصفية حسب منطقتك.</p><div class="section-head"><h3>الأقسام</h3><span class="more" onclick="go('browse')">عرض الكل</span></div>
+    <p class="location-note">اختار متجر علشان تشوف منتجاته وتطلب منه.</p><div class="section-head"><h3>الأقسام</h3><span class="more" onclick="go('browse')">عرض الكل</span></div>
     <div class="cat-scroll">${displayCategories().map(c=>`
       <div class="cat-chip" onclick="openCategory('${c.id}')"><span class="em">${c.iconEmoji||'🛍️'}</span><span>${esc(c.name)}</span></div>
     `).join('') || ''}</div>
 
-    ${flashDeals.length? `<div class="section-head"><h3>⏰ عروض لفترة محدودة</h3></div><div class="product-grid pl-list">${flashDeals.map(productCard).join('')}</div>` : ''}
-
-    ${popular.length? `<div class="section-head"><h3>الأكثر طلبًا</h3></div><div class="product-grid pl-list">${popular.map(productCard).join('')}</div>` : ''}
   `;
 }
 function merchantCard(m){
@@ -3012,8 +3007,9 @@ function renderBrowse(){
       <div class="cat-chip ${S.selectedCategory===c.id?'active':''}" onclick="S.selectedCategory=${c.id?`'${c.id}'`:null};${c.id?`loadProductsFor('category','${c.id}');`:''}S.browsePageSize=12;renderMain()">
         <span class="em">${c.iconEmoji||'🛍️'}</span><span>${esc(c.name)}</span></div>
     `).join('')}</div>
+    ${(!bq && !S.selectedCategory) ? `<div class="hint-box" role="status"><i class="fa-solid fa-shop"></i> اختار متجر من القايمة فوق علشان تشوف منتجاته. تقدر كمان تدوّر على منتج بالاسم أو تختار قسم.</div>` : `
     <div class="row-between" style="margin-bottom:12px">
-      <h3 style="margin:0;font-size:15.5px">منتجات كل المتاجر (${filteredAll.length})</h3>
+      <h3 style="margin:0;font-size:15.5px">${bq?'نتائج البحث':'منتجات القسم'} (${filteredAll.length})</h3>
       <select class="sort-select" onchange="setBrowseSort(this.value)">
         <option value="DEFAULT" ${S.browseSort==='DEFAULT'?'selected':''}>الأحدث</option>
         <option value="PRICE_ASC" ${S.browseSort==='PRICE_ASC'?'selected':''}>السعر: من الأقل للأعلى</option>
@@ -3021,7 +3017,7 @@ function renderBrowse(){
       </select>
     </div>
     ${visible.length? `<div class="product-grid pl-list">${visible.map(productCard).join('')}</div>` : emptyState('fa-box-open', bq?'مفيش نتائج للبحث ده':'لا توجد منتجات في هذا القسم بعد', bq?'جرّب كلمة تانية أو اختار «الكل»':'')}
-    ${sorted.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreProducts()">عرض المزيد (${sorted.length-visible.length} منتج آخر)</button>` : ''}
+    ${sorted.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreProducts()">عرض المزيد (${sorted.length-visible.length} منتج آخر)</button>` : ''}`}
   `;
 }
 
