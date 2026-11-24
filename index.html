@@ -5183,7 +5183,7 @@ function renderAdminUsers(){
   return head+`
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${seg===k?'active':''}" onclick="S.aUserFilter='${k}';S.aUserPageSize=20;renderMain()">${l}</button>`).join('')}</div>
     ${list.length? `<div class="list-gap">${visible.map(u=>{
-      const roleLabel = u.role==='ADMIN' ? (u.adminRole==='STAFF'?'أدمن مساعد':'إدارة الموقع') : u.role==='MERCHANT'?'تاجر':u.role==='DELIVERY'?'مندوب توصيل':u.role==='MARKETER'?'مسوّق':'عميل';
+      const roleLabel = u.role==='ADMIN' ? (u.adminRole==='STAFF'?'أدمن مساعد':'إدارة الموقع') : u.role==='MERCHANT'?(isProv(u)?'مقدم خدمة':'تاجر'):u.role==='DELIVERY'?'مندوب توصيل':u.role==='MARKETER'?'مسوّق':'عميل';
       return `<div class="card">
         <div class="row-between">
           <div><b style="font-size:13.5px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b>
