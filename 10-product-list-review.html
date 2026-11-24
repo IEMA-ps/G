@@ -1,0 +1,8 @@
+<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>معاينة قائمة المنتجات</title><link rel="stylesheet" href="/brand.css"><link rel="stylesheet" href="/product-list.css"><style>body{font-family:system-ui,sans-serif;margin:0;padding:14px;background:var(--bg,#f6f8f8)}h3{margin:0 0 10px}</style><body><h3>سوبر ماركت الأمل</h3><div id="app" class="product-grid pl-list"></div><script type="module">
+import {productRow} from './product-list.js';
+const fmt=n=>n+' ج.م';const price=p=>`<span class="price">${fmt(p.price)}</span>${p.oldPrice?`<span class="old-price">${fmt(p.oldPrice)}</span>`:''}`;
+const cats={g:{iconEmoji:'🛒'},v:{iconEmoji:'🥬'},d:{iconEmoji:'🥛'},c:{iconEmoji:'🧴'}};
+const ps=[['أرز أبيض','كيس 1 كجم',32.5,'g',0],['طماطم بلدي','1 كجم',20,'v',2],['لبن كامل الدسم','علبة 1 لتر',48,'d',0],['سائل غسيل أطباق','عبوة 1 لتر',55,'c',0,60],['زيت طعام','زجاجة 1 لتر',95,'g',0,0,1],['مكرونة','كيس 400 جم',14,'g',1]];
+window.addToCart=()=>{};window.setCartQty=()=>{};window.openProduct=()=>{};
+app.innerHTML=ps.map(([title,unit,price_,c,qty,old,out],i)=>productRow({p:{id:'p'+i,title,unit,price:price_,oldPrice:old,isActive:true,stock:out?0:9},category:cats[c],qty,priceHtml:price({price:price_,oldPrice:old})})).join('');
+</script></html>
