@@ -36,9 +36,10 @@ test('records uid, version, server hash, server time, ip', async () => {
   const res = await handle(await req(good), e, deps);
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), {ok: true, recorded: true});
-  const [uid, ver, sha, method, at, ip, country, ua] = e.DB.rows[0];
+  const [uid, ver, sha, method, at, ip, ...extra] = e.DB.rows[0];
   const expected = Buffer.from(await crypto.subtle.digest('SHA-256', enc.encode(TERMS))).toString('hex');
-  assert.deepEqual([uid, ver, sha, method, at, ip, country, ua], ['uid1', '2026-11-24.2', expected, 'email', '2026-11-24T10:00:00.000Z', '203.0.113.9', 'EG', 'UA']);
+  assert.deepEqual([uid, ver, sha, method, at, ip], ['uid1', '2026-11-24.2', expected, 'email', '2026-11-24T10:00:00.000Z', '203.0.113.9']);
+  assert.deepEqual(extra, []);
 });
 test('retry is idempotent', async () => {
   const e = env();
