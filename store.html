@@ -19,7 +19,7 @@
 <section class="hero"><div class="hero-top"><div id="logoFallback" class="logo" aria-hidden="true">⌂</div><img id="logo" class="logo hidden" alt=""><div><span class="eyebrow">محل قريب منك</span><h1 id="name"></h1><div id="activity" class="muted"></div></div></div><div class="about"><span id="kind" class="badge"></span><p id="description"></p><p id="hours" class="muted"></p></div></section>
 <div class="grid">
 <section class="card"><h2>العنوان واللوكيشن</h2><p id="address"></p><a id="map" class="btn primary hidden" target="_blank" rel="noopener noreferrer">افتح اللوكيشن على الخريطة</a><p class="muted">راجع العنوان مع المتجر قبل الزيارة.</p></section>
-<section class="card"><h2>تواصل مع المتجر</h2><a id="phone" class="btn hidden"></a><a id="whatsapp" class="btn primary hidden" target="_blank" rel="noopener noreferrer">تواصل على واتساب</a><p id="noContact" class="muted hidden">المتجر لسه ما أضافش أرقام للتواصل.</p></section>
+<section class="card"><h2 id="contactH">تواصل مع المتجر</h2><a id="phone" class="btn hidden"></a><a id="whatsapp" class="btn primary hidden" target="_blank" rel="noopener noreferrer">تواصل على واتساب</a><p id="noContact" class="muted hidden">المتجر لسه ما أضافش أرقام للتواصل.</p></section>
 </div>
 <div id="profileNote" class="note">دي صفحة تعرفك بالمتجر. لو عندك سؤال، كلّمه مباشرة. الباقة دي مش بتوفر طلب أو دفع أو توصيل من التطبيق.</div>
 <a id="order" class="btn primary hidden">اعرض المنتجات واطلب من التطبيق</a>
@@ -50,7 +50,10 @@ async function load(){
   if(m.status!=='ACTIVE'||!(m.subEndsAt>Date.now())||!['PROFILE','ORDERING'].includes(m.subPlanType)){unavailable();return;}
   shareUrl=publicStoreUrl({...m,id});
   document.title=(m.businessName||'صفحة المتجر')+' | على بابك';
-  for(const [key,value] of Object.entries({name:m.businessName||'متجر',activity:m.activityType||'غير محدد',description:m.description||'أهلًا بيك في صفحة متجرنا على بابك.',address:m.address||'تواصل مع المتجر لمعرفة العنوان.',hours:m.openTime&&m.closeTime?'ساعات العمل: '+m.openTime+' إلى '+m.closeTime:''})) $(key).textContent=value;
+  const W=({'مدرسين':{own:'الأستاذ',with:'الأستاذ'},'عيادات':{own:'العيادة',with:'العيادة'},'صيانة منزلية':{own:'الفني',with:'الفني'}})[String(m.activityType||'').trim()]||{own:'متجرنا',with:'المتجر'};
+  $('contactH').textContent='تواصل مع '+W.with;
+  if(m.subPlanType==='PROFILE')$('profileNote').textContent='دي صفحة تعرفك بـ'+W.own+'. لو عندك سؤال، كلّمه مباشرة. الباقة دي مش بتوفر طلب أو دفع أو توصيل من التطبيق.';
+  for(const [key,value] of Object.entries({name:m.businessName||'متجر',activity:m.activityType||'غير محدد',description:m.description||('أهلًا بيك في صفحة '+W.own+' على بابك.'),address:m.address||('تواصل مع '+W.with+' لمعرفة العنوان.'),hours:m.openTime&&m.closeTime?'ساعات العمل: '+m.openTime+' إلى '+m.closeTime:''})) $(key).textContent=value;
   $('kind').textContent=m.subPlanType==='PROFILE'?'صفحة تعريفية':'منتجات وطلبات';
   const phone=phoneHref(m.phone),wa=phoneHref(m.whatsappNumber),map=mapHref(m);
   if(phone){$('phone').href=phone;$('phone').textContent='اتصل: '+m.phone;$('phone').classList.remove('hidden');}
