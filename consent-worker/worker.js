@@ -1,6 +1,6 @@
 // Cloudflare Worker: سجل موافقة الشروط (إثبات) لـ«على بابك».
 // بيسجل في D1 صف واحد لا يتعدل ولا يتمسح: المستخدم، إصدار الشروط، بصمة SHA-256 لنص الشروط
-// اللي كان معروض فعلًا، وقت السيرفر، وعنوان الـ IP. مفيش أسرار: التوثيق بتوكن Firebase ID العام (RS256).
+// اللي كان معروض فعلًا، وقت السيرفر، وعنوان الـ IP. (مفيش بيانات تانية، عشان تطابق نص الشروط.) مفيش أسرار: التوثيق بتوكن Firebase ID العام (RS256).
 //
 // المتغيرات (wrangler.toml [vars]): FIREBASE_PROJECT_ID, TERMS_URL, ALLOWED_ORIGINS
 // D1 binding: DB (انظر schema.sql)
@@ -90,12 +90,10 @@ export async function handle(request, env, deps = {}) {
 
   const h = request.headers;
   const ip = h.get('cf-connecting-ip') || null;
-  const country = h.get('cf-ipcountry') || null;
-  const userAgent = (h.get('user-agent') || '').slice(0, 300) || null;
   // INSERT OR IGNORE + UNIQUE(uid, terms_version): إعادة المحاولة آمنة ومفيش تكرار.
   const result = await env.DB.prepare(
-    'INSERT OR IGNORE INTO terms_consents (uid, terms_version, terms_sha256, method, accepted_at, ip, country, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(uid, terms.version, terms.sha256, method, now().toISOString(), ip, country, userAgent).run();
+    'INSERT OR IGNORE INTO terms_consents (uid, terms_version, terms_sha256, method, accepted_at, ip) VALUES (?, ?, ?, ?, ?, ?)'
+  ).bind(uid, terms.version, terms.sha256, method, now().toISOString(), ip).run();
   return json({ok: true, recorded: (result?.meta?.changes ?? 0) > 0});
 }
 
