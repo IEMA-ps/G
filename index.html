@@ -1434,9 +1434,10 @@ const addMonths = MerchantPlans.addCalendarMonths;
 const fmtDay = ms => new Date(ms).toLocaleDateString('ar-EG');
 const subOk = m => !!m && (m.subEndsAt||0) > Date.now();
 // Used only when the admin has not supplied payment instructions. No database write.
-const DEFAULT_SUB_PAYMENT_INSTRUCTIONS = 'فودافون كاش على رقم 01067666047';
+/* رقم التحويل مبقاش مكتوب فى الموقع ولا فى الإعدادات العامة: التاجر بيطلبه من الدعم على واتساب. */
 function subscriptionPaymentInstructions(){
-  return String(S.settings.subPaymentInstructions||'').trim() || DEFAULT_SUB_PAYMENT_INSTRUCTIONS;
+  const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، عايز رقم التحويل لدفع اشتراك متجري');
+  return href?`اطلب رقم التحويل من الدعم على واتساب: <a href="${esc(href)}" target="_blank" rel="noopener" style="font-weight:700">تواصل مع الدعم</a>`:'اطلب رقم التحويل من الدعم (واتساب الدعم لسه متضافش).';
 }
 function availableMerchantPlans(){
   return (S.plans||[]).filter(p=>p.active!==false && (!S.settings.merchantPlansV2 || MerchantPlans.isNewPlan(p)));
@@ -1501,7 +1502,7 @@ function renderMerchantSubscription(){
     </div>
     ${S.settings.merchantPlansV2?`<div class="hint-box" style="margin-bottom:14px">الباقة التعريفية بتعرض مكان متجرك وأرقامك بس. باقة الطلبات بتضيف المنتجات واستقبال الطلبات وتجهيزها للمندوب. فيها عمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، من غير رسوم التوصيل، والدفع كاش بس. لو باقتك لسه سارية، تغيير نوعها بيكون بعد نهاية المدة.</div>`:''}
     ${pending?`<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-clock"></i> طلب «${esc(pending.planName)}» قيد المراجعة${pending.reference?` (مرجع: ${esc(pending.reference)})`:''}.</div>`:''}
-    <div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة دفع الاشتراك</b><div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></div>
+    <div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة دفع الاشتراك</b><div class="sub-payment-destination">${subscriptionPaymentInstructions()}</div></div>
     ${renderFoundingOffer({settings:S.settings,plans,merchant:m},esc,fmtMoney)}
     <div class="section-head"><h3>الباقات المتاحة</h3></div>
     ${plans.some(MerchantPlans.isNewPlan)?renderNewPlanCatalog(plans,pending):plans.length? `<div class="list-gap">${plans.map(p=>`<div class="card">
@@ -1525,7 +1526,7 @@ window.openSubscribe = (planId)=>{
     <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: ${offer.months||6} ${(offer.months||6)>10?'شهرًا':'شهور'} بـ ${fmtMoney(offer.price)}${offer.offerId===MarketerOffer.OFFER2_ID?' (رسوم التعاقد). عمولة الطلبات 2% مستمرة خلال فترة العرض، وبعدها الأسعار العادية':''}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
     ${upg?`<div class="hint-box" style="margin-bottom:12px">أنت بتطلب تنقل من الباقة التعريفية لباقة الطلبات. الباقة الجديدة هتبدأ يوم ما الإدارة تعتمد الطلب بعد تأكيد الدفع. باقي مدة باقتك التعريفية مش بيتخصم من سعر الترقية. الطلب هيروح للإدارة تراجعه.</div>`:''}
     <div class="sub-payment-guide"><b>إزاي تدفع وتفعّل الاشتراك؟</b>
-      <ol><li>راجع الباقة والمبلغ والمدة اللي فوق.</li><li>حوّل المبلغ الموضّح بالطريقة دي:<div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></li><li>اكتب رقم عملية التحويل في الخانة تحت، واضغط «إرسال طلب الاشتراك».</li><li>استنى مراجعة الإدارة وتأكيد استلام المبلغ. إرسال الطلب مش تفعيل تلقائي.</li></ol>
+      <ol><li>راجع الباقة والمبلغ والمدة اللي فوق.</li><li>حوّل المبلغ الموضّح على الرقم اللي الدعم هيبعته لك:<div class="sub-payment-destination">${subscriptionPaymentInstructions()}</div></li><li>اكتب رقم عملية التحويل في الخانة تحت، واضغط «إرسال طلب الاشتراك».</li><li>استنى مراجعة الإدارة وتأكيد استلام المبلغ. إرسال الطلب مش تفعيل تلقائي.</li></ol>
       ${S.myMerchant?.status!=='ACTIVE'?'<div class="hint-box">متجرك لسه محتاج موافقة الإدارة على الانضمام. استنى الموافقة قبل التحويل.</div>':''}
       <p class="welcome-note">احتفظ بإيصال التحويل. متشاركش الرقم السري أو كود تأكيد المحفظة.</p>
     </div>
@@ -1740,7 +1741,7 @@ function renderAdminSubscriptions(){
         <div style="display:flex;gap:8px"><input id="ssT2" type="number" min="1" value="${mkTiers()[1].min}" placeholder="فضي"><input id="ssT3" type="number" min="2" value="${mkTiers()[2].min}" placeholder="ذهبي"></div></div>
       <div class="field"><label>نقاط النسبة الإضافية (%) — برونزي / فضي / ذهبي</label>
         <div style="display:flex;gap:8px"><input id="ssB1" type="number" step="0.1" min="0" value="${mkTiers()[0].bonus}"><input id="ssB2" type="number" step="0.1" min="0" value="${mkTiers()[1].bonus}"><input id="ssB3" type="number" step="0.1" min="0" value="${mkTiers()[2].bonus}"></div></div>
-      <div class="field"><label>تعليمات الدفع (تظهر للتاجر: رقم فودافون كاش / انستاباي ...)</label><textarea id="ssPay">${esc(subscriptionPaymentInstructions())}</textarea></div>
+      <div class="hint-box" style="margin-bottom:12px">رقم التحويل مبقاش بيظهر فى الموقع. التاجر بيطلبه من الدعم على واتساب (رقم واتساب الدعم من الإعدادات العامة).</div>
       <button class="btn btn-primary" onclick="saveSubSettings()">حفظ</button></div>`:''}
     <div class="section-head"><h3>المشتركون الحاليون (${activeMerchants.length})</h3></div>
     ${activeMerchants.length?`<div class="list-gap">${activeMerchants.map(m=>`<div class="card row-between"><div><b style="font-size:13px">${esc(m.businessName)}</b><div style="font-size:11.5px;color:var(--ink-soft)">${esc(m.subPlanName||'')} · حتى ${fmtDay(m.subEndsAt)}</div></div></div>`).join('')}</div>`:emptyState('fa-store','لا يوجد مشتركون حاليًا','')}`;
@@ -1751,7 +1752,7 @@ window.saveSubSettings = async ()=>{
   const useBackendSel = document.getElementById('ssBackend').value==='1';
   const marketerCommissionSource = document.getElementById('ssSource').value;
   const marketerSubPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('ssPct').value)||0));
-  const subPaymentInstructions = document.getElementById('ssPay').value.trim();
+  const subPaymentInstructions = ''; // بيمسح أى رقم قديم متخزن فى الإعدادات العامة
   const offerSel = document.getElementById('ssOffer').value, marketerOfferEnabled = offerSel==='1', marketerOffer2Enabled = offerSel==='2';
   const gv = id => Math.max(0, parseFloat(document.getElementById(id).value)||0);
   const offer2Fee=gv('ssO2Fee'), offer2Months=parseInt(document.getElementById('ssO2Months').value)||3, marketerFlatAmount=gv('ssO2Flat'), marketerBonusAmount=gv('ssO2Bonus'), marketerBonusTarget=Math.max(1,Math.round(gv('ssO2Target'))||10);
