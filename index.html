@@ -14,6 +14,7 @@
 <meta property="og:image" content="https://3alababk.com/icon-512.png">
 <meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="/shared-catalog.css?v=shared-1">
+<link rel="stylesheet" href="/product-list.css?v=list-1">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -498,6 +499,7 @@ img{max-width:100%; display:block;}
 <script type="module">
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-1';
+import {productRow} from '/product-list.js?v=list-1';
 import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-2';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
@@ -2767,25 +2769,8 @@ window.clearCart = ()=>{ S.cart=[]; saveCart(); renderMain(); renderShell(); };
 function qtyInCart(pid){ const c = S.cart.find(c=>c.productId===pid); return c?c.quantity:0; }
 
 function productCard(p){
-  const disc = flashActive(p) ? `<div class="disc" style="background:var(--danger)">⏰ خصم ${flashPct(p)}%</div>` : (p.discountPercent>0 ? `<div class="disc">خصم ${p.discountPercent}%</div>` : '');
-  const qty = qtyInCart(p.id);
-  const liked = isWishlisted(p.id);
-  const btn = !p.isActive || p.stock<=0
-    ? `<button class="add-btn stockout" disabled>غير متوفر</button>`
-    : qty>0
-      ? `<div class="qty-stepper"><button onclick="setCartQty('${p.id}',${qty-1})">−</button><span>${qty}</span><button onclick="setCartQty('${p.id}',${qty+1})">+</button></div>`
-      : `<button class="add-btn" onclick="addToCart('${p.id}')"><i class="fa-solid fa-cart-plus"></i> أضف للسلة</button>`;
-  return `<div class="product-card">
-    <div class="thumb" style="background-image:url('${esc(p.imageUrl||'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500')}');position:relative" onclick="openProduct('${p.id}')">
-      ${disc}
-      <button onclick="event.stopPropagation();toggleWishlist('${p.id}')" style="position:absolute;top:8px;left:8px;width:30px;height:30px;border:none;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:${liked?'var(--danger)':'var(--ink-faint)'}"><i class="fa-solid fa-heart"></i></button>
-    </div>
-    <div class="body">
-      <h5 onclick="openProduct('${p.id}')">${esc(p.title)}</h5>
-      <div class="price-row">${priceRowHtml(p)}</div>
-      ${flashActive(p)?`<div style="font-size:11px;color:var(--danger);font-weight:700;margin:-4px 0 6px">⏰ ينتهي خلال ${flashLeft(p)}</div>`:''}
-      ${btn}
-    </div></div>`;
+  const badge = flashActive(p) ? ` <span class="pl-badge" style="color:var(--danger);font-size:11px">⏰ خصم ${flashPct(p)}%</span>` : (p.discountPercent>0 ? ` <span class="pl-badge" style="color:var(--danger);font-size:11px">خصم ${p.discountPercent}%</span>` : '');
+  return productRow({p, category:getCategory(p.categoryId), qty:qtyInCart(p.id), priceHtml:priceRowHtml(p), badge});
 }
 window.openProduct = (pid)=>{
   const p = getProduct(pid); if(!p) return;
@@ -2794,7 +2779,7 @@ window.openProduct = (pid)=>{
   UI.openModal(`
     <div class="modal-head"><h3>تفاصيل المنتج</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div style="position:relative">
-      <img src="${esc(p.imageUrl||'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500')}" style="width:100%;border-radius:14px;aspect-ratio:1.3;object-fit:cover;margin-bottom:14px;">
+      ${p.imageUrl?`<img src="${esc(p.imageUrl)}" style="width:100%;border-radius:14px;aspect-ratio:1.3;object-fit:cover;margin-bottom:14px;">`:`<div style="font-size:56px;text-align:center;background:var(--teal-tint);border-radius:14px;padding:22px;margin-bottom:14px">${esc((getCategory(p.categoryId)||{}).iconEmoji||'🛒')}</div>`}
       <button onclick="toggleWishlist('${p.id}');UI.closeModal();openProduct('${p.id}')" style="position:absolute;top:10px;left:10px;width:34px;height:34px;border:none;border-radius:50%;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:${liked?'var(--danger)':'var(--ink-faint)'}"><i class="fa-solid fa-heart"></i></button>
     </div>
     <h3 style="margin:0 0 6px">${esc(p.title)}</h3>
@@ -2831,7 +2816,7 @@ function renderHome(){
   if(q){
     const results = activeProducts().filter(p=>p.title.toLowerCase().includes(q));
     return `<div class="section-head"><h3>نتائج البحث عن "${esc(q)}"</h3></div>
-      ${results.length? `<div class="product-grid">${results.map(productCard).join('')}</div>` : emptyState('fa-magnifying-glass','لا توجد نتائج','جرّب كلمات بحث مختلفة')}`;
+      ${results.length? `<div class="product-grid pl-list">${results.map(productCard).join('')}</div>` : emptyState('fa-magnifying-glass','لا توجد نتائج','جرّب كلمات بحث مختلفة')}`;
   }
   const banners = [
     {t:'توصيل سريع خلال دقائق', s:'من أقرب تجار حيّك مباشرة', i:'fa-truck-fast'},
@@ -2861,9 +2846,9 @@ function renderHome(){
       <div class="cat-chip" onclick="openCategory('${c.id}')"><span class="em">${c.iconEmoji||'🛍️'}</span><span>${esc(c.name)}</span></div>
     `).join('') || ''}</div>
 
-    ${flashDeals.length? `<div class="section-head"><h3>⏰ عروض لفترة محدودة</h3></div><div class="product-grid">${flashDeals.map(productCard).join('')}</div>` : ''}
+    ${flashDeals.length? `<div class="section-head"><h3>⏰ عروض لفترة محدودة</h3></div><div class="product-grid pl-list">${flashDeals.map(productCard).join('')}</div>` : ''}
 
-    ${popular.length? `<div class="section-head"><h3>الأكثر طلبًا</h3></div><div class="product-grid">${popular.map(productCard).join('')}</div>` : ''}
+    ${popular.length? `<div class="section-head"><h3>الأكثر طلبًا</h3></div><div class="product-grid pl-list">${popular.map(productCard).join('')}</div>` : ''}
   `;
 }
 function merchantCard(m){
@@ -2908,7 +2893,7 @@ function renderBrowse(){
         <option value="PRICE_DESC" ${S.browseSort==='PRICE_DESC'?'selected':''}>السعر: من الأعلى للأقل</option>
       </select>
     </div>
-    ${visible.length? `<div class="product-grid">${visible.map(productCard).join('')}</div>` : emptyState('fa-box-open', bq?'مفيش نتائج للبحث ده':'لا توجد منتجات في هذا القسم بعد', bq?'جرّب كلمة تانية أو اختار «الكل»':'')}
+    ${visible.length? `<div class="product-grid pl-list">${visible.map(productCard).join('')}</div>` : emptyState('fa-box-open', bq?'مفيش نتائج للبحث ده':'لا توجد منتجات في هذا القسم بعد', bq?'جرّب كلمة تانية أو اختار «الكل»':'')}
     ${sorted.length>visible.length ? `<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreProducts()">عرض المزيد (${sorted.length-visible.length} منتج آخر)</button>` : ''}
   `;
 }
@@ -2939,7 +2924,7 @@ function renderMerchantPage(){
     ${merchantContactCard(m)}
     ${!canOrder?`<div class="hint-box">دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.</div>`:''}
     ${canOrder?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
-    ${canOrder?(prods.length? `<div class="product-grid">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
+    ${canOrder?(prods.length? `<div class="product-grid pl-list">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
     ${canOrder && S.storePages?.[m.id]?.more?`<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreStoreProducts('${m.id}')" ${S.storePages[m.id].busy?'disabled':''}>${S.storePages[m.id].busy?'جاري التحميل...':'عرض باقي منتجات المتجر'}</button>`:''}
   `;
 }
@@ -3465,7 +3450,7 @@ function renderWishlist(){
   if(!prods.length) return emptyState('fa-heart','قائمة المفضلة فاضية','اضغط على أيقونة القلب في أي منتج عشان تضيفه هنا');
   return `
     <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
-    <div class="product-grid">${prods.map(productCard).join('')}</div>
+    <div class="product-grid pl-list">${prods.map(productCard).join('')}</div>
   `;
 }
 function renderNotifications(){
@@ -3676,7 +3661,7 @@ window.openProductForm = (pid)=>{
       <div class="field" style="flex:1"><label>سعر العرض</label><input id="pfFlashPrice" type="number" step="0.01" min="0" value="${p&&flashActive(p)?p.flashPrice:''}" placeholder="أقل من السعر"></div>
       <div class="field" style="flex:1"><label>مدة العرض (ساعات)</label><input id="pfFlashHours" type="number" min="0" max="168" placeholder="مثلًا 6"></div>
     </div>
-    <div class="field"><label>رابط صورة المنتج</label><input id="pfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
+    <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="pfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
     <div class="divider"></div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px"><i class="fa-solid fa-people-group"></i> تجميعة الجيران (اختياري): خلّي العملاء يجمعوا طلبات مع جيرانهم ويكسبوا خصم أكبر</p>
     <div style="display:flex;gap:10px">
@@ -3703,7 +3688,7 @@ window.saveProduct = async (pid)=>{
     stock: parseInt(document.getElementById('pfStock').value)||0,
     groupDiscountPercent: parseInt(document.getElementById('pfGroupDiscount').value)||0,
     groupMinParticipants: parseInt(document.getElementById('pfGroupMin').value)||3,
-    imageUrl: document.getElementById('pfImg').value.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500'
+    imageUrl: document.getElementById('pfImg').value.trim()
   };
   // العرض المحدود
   const fPrice = parseFloat(document.getElementById('pfFlashPrice').value);
@@ -4567,7 +4552,7 @@ window.openAdminProductForm = (pid)=>{
       <div class="field" style="flex:1"><label>السعر قبل الخصم</label><input id="apfOldPrice" type="number" step="0.01" value="${p&&p.oldPrice?p.oldPrice:''}"></div>
     </div>
     <div class="field"><label>الكمية بالمخزون</label><input id="apfStock" type="number" value="${p?p.stock:50}"></div>
-    <div class="field"><label>رابط صورة المنتج</label><input id="apfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
+    <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="apfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
     <div class="divider"></div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px"><i class="fa-solid fa-people-group"></i> تجميعة الجيران (اختياري)</p>
     <div style="display:flex;gap:10px">
@@ -4589,7 +4574,7 @@ window.saveAdminProduct = async (pid)=>{
     stock: parseInt(document.getElementById('apfStock').value)||0,
     groupDiscountPercent: parseInt(document.getElementById('apfGroupDiscount').value)||0,
     groupMinParticipants: parseInt(document.getElementById('apfGroupMin').value)||3,
-    imageUrl: document.getElementById('apfImg').value.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500'
+    imageUrl: document.getElementById('apfImg').value.trim()
   };
   if(pid){
     await updateDoc(doc(db,'products',pid), data);
