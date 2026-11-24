@@ -3485,7 +3485,8 @@ function renderMerchantDashboard(){
   return `
     ${_sb}
     ${onboardingCard()}
-    <div class="stat-grid">
+    ${storePageCard(m)}
+    <div class="stat-grid" style="margin-top:14px">
       <div class="stat-card"><div class="num">${pending}</div><div class="lbl">طلبات جديدة</div></div>
       <div class="stat-card"><div class="num">${delivered}</div><div class="lbl">طلبات مكتملة</div></div>
       <div class="stat-card"><div class="num">${myProds.length}</div><div class="lbl">منتجاتي</div></div>
@@ -3770,6 +3771,10 @@ function renderMerchantReports(){
   `;
 }
 
+function storePageCard(m){
+  const note = MerchantPlans.isNewMerchant(m) ? '<p style="font-size:12px;line-height:1.7;margin:6px 0 10px">بعد اعتماد الاشتراك وتجهيز صلاحيات العرض، الزوار يقدروا يشوفوا أرقامك وعنوانك واللوكيشن من غير تسجيل دخول.</p>' : '<p style="font-size:12px;line-height:1.7;margin:6px 0 10px">اطبع كود QR وحطه فى المحل، والعميل يمسحه بالموبايل ويفتح صفحة متجرك على طول.</p>';
+  return `<div class="card store-page-card" style="margin-top:14px"><b><i class="fa-solid fa-qrcode"></i> صفحة متجرك للعملاء</b>${note}<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn btn-ghost" style="flex:1;min-width:140px;text-align:center" href="${esc(publicStoreUrl(m.id))}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> شوف صفحة متجرك</a><button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openStoreShare('${m.id}')"><i class="fa-solid fa-download"></i> تحميل QR وطباعته</button></div></div>`;
+}
 function renderMerchantProfile(){
   const m = S.myMerchant; if(!m) return emptyState('fa-hourglass-half','جاري التحميل','');
   const st = MERCHANT_STATUS[m.status]||{};
@@ -3787,7 +3792,7 @@ function renderMerchantProfile(){
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-briefcase"></i> النشاط</span><b style="font-size:13px">${esc(typeLabel(m))}</b></div>
       <div class="row-between"><span class="info-lbl"><i class="fa-solid fa-location-dot"></i> العنوان</span><b style="font-size:13px">${esc(m.address)}</b></div>
     </div>
-    ${MerchantPlans.isNewMerchant(m)?`<div class="card" style="margin-top:14px"><b>رابط صفحتك للعملاء</b><p style="font-size:12px;line-height:1.7">بعد اعتماد الاشتراك وتجهيز صلاحيات العرض، الزوار يقدروا يشوفوا أرقامك وعنوانك واللوكيشن من غير تسجيل دخول.</p><a class="btn btn-ghost" href="${esc(publicStoreUrl(m.id))}">معاينة الصفحة</a><button class="btn btn-primary" onclick="openStoreShare('${m.id}')">رابط المتجر وQR · تحميل وطباعة</button></div>`:''}
+    ${storePageCard(m)}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openTelegramLink('merchant')"><i class="fa-brands fa-telegram"></i> إشعارات الطلبات على تليجرام</button>
