@@ -124,4 +124,44 @@ let linkUrl;
   assert.equal(sentMessages.length, before + 1);
 }
 
-console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. messages sent:', sentMessages.length);
+// 8) /broadcast: ممنوع لغير الأدمن، وبيبعت للأدوار المطلوبة فقط
+{
+  // غير مربوط أصلًا
+  assert.equal((await call('/broadcast', {method: 'POST', headers: auth('good-uid-1'), body: {audience: 'ALL', text: 'خبر'}})).status, 403);
+  // الأدمن مربوط من اختبار 5 (شات 777)
+  const before = sentMessages.length;
+  const res = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'ADMIN', text: 'إعلان للأدمن'}});
+  const data = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(data.total, 1);
+  assert.equal(data.sent, 1);
+  assert.equal(sentMessages.at(-1).chatId, '777');
+  assert.ok(sentMessages.at(-1).text.includes('إعلان للأدمن'));
+  // audience غلط أو نص فاضي
+  assert.equal((await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'NOPE', text: 'x'}})).status, 400);
+  assert.equal((await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'ALL', text: '  '}})).status, 400);
+  // دور فاضي: total 0 من غير إرسال
+  const emptyRes = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'CUSTOMER', text: 'خبر'}});
+  assert.equal((await emptyRes.json()).total, 0);
+  assert.equal(sentMessages.length, before + 1);
+}
+
+// 9) المستخدم اللي حظر البوت بيتشال من القوائم أثناء البث
+{
+  // اربط عميل على شات 888
+  const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-1'), body: {customer: true}});
+  const code = (await res.json()).url.split('start=')[1];
+  await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 888}, text: '/start ' + code}}});
+  // خلّي الإرسال لـ 888 يرجع blocked
+  const origSend = _internals.tgSend;
+  _internals.tgSend = async (env, chatId, text) => chatId === '888' ? {ok: false, blocked: true} : (sentMessages.push({chatId, text}), {ok: true});
+  const bres = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'ALL', text: 'خبر للكل'}});
+  const bdata = await bres.json();
+  _internals.tgSend = origSend;
+  assert.equal(bdata.blocked, 1);
+  // الشات 888 اتشال: بث تاني ميوصلوش
+  const again = await call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body: {audience: 'CUSTOMER', text: 'خبر'}});
+  assert.equal((await again.json()).total, 0);
+}
+
+console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. messages sent:', sentMessages.length);
