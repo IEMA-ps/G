@@ -25,6 +25,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="/terms-consent.css?v=terms-1">
 <style>
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -441,6 +442,8 @@ img{max-width:100%; display:block;}
         <p class="location-note">اختار منطقتك لعرض المتاجر المسجلة في نفس المنطقة، مش حسب مسافة فعلية. عنوان التوصيل بالتفصيل تضيفه بعد الدخول.</p><div id="regLocation"></div>
         <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase"></div>
 
+        <div class="terms-check"><input type="checkbox" id="regTerms" required aria-describedby="regTermsHint"><label for="regTerms">أوافق على <a href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a></label></div>
+        <p id="regTermsHint" class="terms-hint">افتح الشروط وراجعها قبل الموافقة. الصفحة بتفتح في تبويب جديد من غير ما تضيع بيانات التسجيل.</p>
         <button class="btn btn-primary" type="submit" id="registerBtn"><i class="fa-solid fa-user-plus"></i> إنشاء الحساب</button>
       </form>
 
@@ -449,11 +452,18 @@ img{max-width:100%; display:block;}
         <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin-top:8px">حتى لو سجلت بجوجل، حسابك بيبدأ كعميل. لو مهتم بالتسويق، هتلاقي التفاصيل في «حسابي»، والتعيين بعد مراجعة إدارة الموقع.</p>
       </div>
       <div class="auth-switch">
-        على بابك — اطلب اللي محتاجه، وإحنا نوصلّه لحد بابك
+        <a href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a><br>على بابك — اطلب اللي محتاجه، وإحنا نوصلّه لحد بابك
       </div>
     </div>
   </div>
 
+  <dialog id="googleTermsDialog" class="terms-dialog" aria-labelledby="googleTermsTitle" aria-describedby="googleTermsHint">
+    <h2 id="googleTermsTitle">قبل ما نكمل حسابك الجديد</h2>
+    <p id="googleTermsHint">راجع شروط استخدام على بابك ووافق عليها لإكمال التسجيل باستخدام Google. لو مش موافق، تقدر تلغي وترجع من غير إنشاء ملف مستخدم في البرنامج.</p>
+    <div class="terms-check"><input type="checkbox" id="googleTerms"><label for="googleTerms">أوافق على <a href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a></label></div>
+    <button id="googleTermsAccept" class="btn btn-primary" type="button" disabled>موافق، كمّل التسجيل</button>
+    <button id="googleTermsCancel" class="btn btn-ghost" type="button">إلغاء والخروج</button>
+  </dialog>
   <div id="verifyScreen" class="hidden" dir="rtl" style="max-width:480px;margin:32px auto;padding:16px" role="region" aria-label="تأكيد البريد الإلكتروني">
     <div class="card" style="padding:24px">
       <h2 style="font-size:22px;margin-bottom:12px">أكّد بريدك الإلكتروني</h2>
@@ -470,6 +480,7 @@ img{max-width:100%; display:block;}
     <div id="topbar"></div>
     <div id="searchBar" class="hidden"></div>
     <div id="mainContent"></div>
+    <div class="app-terms-link"><a href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a></div>
     <div id="bottomNav"></div>
   </div>
 
@@ -517,6 +528,7 @@ import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
+import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=marketer-join-1';
@@ -854,6 +866,7 @@ const Auth = {
   },
   async register(ev){
     ev.preventDefault();
+    if(!TermsConsent.requireSignupConsent(document)){ Auth.showError('لازم توافق على شروط الاستخدام قبل إنشاء الحساب.'); document.getElementById('regTerms').focus(); return; }
     const btn = document.getElementById('registerBtn'); if(Auth.registering || Auth.googleBusy || Auth.loginBusy) return; btn.disabled = true; Auth.registering = true; document.getElementById('googleLoginBtn').disabled = true;
     try{
       const email = document.getElementById('regEmail').value.trim();
@@ -875,6 +888,8 @@ const Auth = {
         role: 'CUSTOMER',
         merchantId:null, deliveryAgentId:null, ...userDefaults(cred.user.uid), createdAt: nowMs()
       });
+
+      await saveTermsConsent(cred.user.uid, 'email');
 
       // Keep the exact create-user schema allowed by the owner's rules. Preference is a separate self-update.
       try{await updateDoc(doc(db,'users',cred.user.uid),{preferredLocation});}
@@ -992,12 +1007,16 @@ async function bootAuthUser(user) {
   if(!psnap.exists()){
     if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+    const consented = await TermsConsent.askGoogleConsent();
+    if(!consented){ await signOut(auth); resetSession(); showSignedOut(); return; }
+    if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
     // Create only when absent; preserve an existing UID, role and balances on Google login.
     bootStage='profile-create';
     await runTransaction(db, async tx=>{
       const ref = doc(db,'users',user.uid); const existing = await tx.get(ref);
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
+    await saveTermsConsent(user.uid, 'google');
     await window.Program?.recordSignup(googleSignupCode);
   }
   bootStage='profile-read-back';
@@ -1033,6 +1052,16 @@ async function bootAuthUser(user) {
   }catch(e){
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
     e.bootStage=bootStage; throw e;
+  }
+}
+// Separate self-update preserves the exact create-user schema in deployed Firestore rules.
+// This is a UI acceptance record, not an immutable legal audit trail.
+async function saveTermsConsent(uid, method){
+  try{
+    await updateDoc(doc(db,'users',uid), {termsConsent:{version:TermsConsent.TERMS_VERSION,acceptedAt:serverTimestamp(),method}});
+  }catch(e){
+    console.warn('Terms consent record not saved',e.code);
+    UI.toast('وافقت على الشروط، لكن تعذّر حفظ سجل الموافقة. تواصل مع الدعم لو المشكلة استمرت.');
   }
 }
 function showAccountLoadFailure(e){
