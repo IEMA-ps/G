@@ -83,3 +83,17 @@ check(P.supportPhone('+966501234567'),'966501234567');
 check(P.supportHref('01012345678','مرحبا'),'https://wa.me/201012345678?text='+encodeURIComponent('مرحبا'));
 check(P.supportHref('abc','x'),'');
 console.log(`PASS ${checks} merchant-plan checks`);
+{
+  const t=Date.UTC(2026,10,24,12),day=86400000;
+  const prof={id:'x',status:'ACTIVE',subscriptionModel:P.MODEL,subPlanType:'PROFILE',subEndsAt:t+90*day};
+  const ord=P.PLAN_TEMPLATES.find(p=>p.id==='ordering_6m_v2'),pro6=P.PLAN_TEMPLATES.find(p=>p.id==='profile_6m_v2');
+  assert.throws(()=>P.termFor(prof,ord,t));
+  check(P.needsReplace(prof,ord,t),true);
+  check(P.needsReplace(prof,pro6,t),false);
+  check(P.needsReplace({...prof,subEndsAt:t-1},ord,t),false);
+  check(P.needsReplace({status:'ACTIVE',subEndsAt:t+day},ord,t),true);
+  const r=P.replaceTermFor(prof,ord,t);
+  check([r.subPlanType,r.subPlanId,r.subOrderCommissionPercent,r.subEndsAt],['ORDERING','ordering_6m_v2',2,P.addCalendarMonths(t,6)]);
+  assert.throws(()=>P.replaceTermFor(prof,{kind:'ORDERING'},t));
+  console.log('replace checks ok');
+}

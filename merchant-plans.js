@@ -26,6 +26,13 @@ export function termFor(m,p,now=Date.now()){
   if(hasTerm(m,now) && (!isNewMerchant(m)||modeOf(m)!==p.kind)) throw new Error('تغيير نوع الباقة أو نقل اشتراك قديم متاح بعد انتهاء المدة الحالية، حفاظًا على حق التاجر.');
   return {subscriptionModel:MODEL,subPlanType:p.kind,subPlanId:p.id||p._id,subPlanName:p.name,subEndsAt:addCalendarMonths(Math.max(now,Number(m?.subEndsAt||0)),p.months),subOrderCommissionPercent:p.kind==='ORDERING'?2:0,subTermsVersion:1};
 }
+// Main-admin replace: ends the running term now and starts the chosen plan from now. The unused rest of the
+// old term is NOT credited (no proration). Only the admin grant path may use it, after an explicit confirmation.
+export function replaceTermFor(m,p,now=Date.now()){
+  if(!isNewPlan(p)) throw new Error('باقة غير صالحة');
+  return {subscriptionModel:MODEL,subPlanType:p.kind,subPlanId:p.id||p._id,subPlanName:p.name,subEndsAt:addCalendarMonths(now,p.months),subOrderCommissionPercent:p.kind==='ORDERING'?2:0,subTermsVersion:1};
+}
+export const needsReplace=(m,p,now=Date.now())=>isNewPlan(p)&&hasTerm(m,now)&&(!isNewMerchant(m)||modeOf(m)!==p.kind);
 export function feeSnapshot(m,subtotal){
   if(!isNewMerchant(m)) return {};
   if(modeOf(m)!=='ORDERING') throw new Error('الباقة التعريفية لا تستقبل طلبات');

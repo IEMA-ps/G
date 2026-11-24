@@ -1586,15 +1586,35 @@ window.openGrantSub = (mid)=>{
     <div class="field"><label>ملاحظة الدفع (مثال: استلمت كاش)</label><input id="gsNote"></div>
     <button class="btn btn-primary" onclick="saveGrantSub('${mid}')">تفعيل</button>`);
 };
-window.saveGrantSub = async (mid)=>{
+window.saveGrantSub = async (mid, replace=false)=>{
   if(!isSuperAdmin()){ UI.toast('لإدارة الموقع فقط'); return; }
   const p = (S.plans||[]).find(x=>x._id===document.getElementById('gsPlan').value); if(!p) return;
   const m = S.allMerchants.find(x=>x.id===mid);
+  const note = document.getElementById('gsNote').value.trim();
+  if(!replace && MerchantPlans.needsReplace(m,p)){
+    UI.openModal(`<div class="modal-head"><h3>استبدال الباقة الشغالة؟</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="hint-box" style="margin-bottom:14px;line-height:1.9">«${esc(m.businessName)}» عليه باقة شغالة: <b>${esc(m.subPlanName||'')}</b> حتى ${fmtDay(m.subEndsAt)}.<br>هتتلغي دلوقتي وتبدأ <b>${esc(p.name)}</b> (${p.months} شهر) من النهارده. المدة المتبقية من القديمة مش بتتعوّض.</div>
+      <div style="display:flex;gap:8px"><button class="btn btn-danger" style="flex:1" onclick="confirmReplaceSub('${mid}','${p._id}',this)">أيوه، استبدل الباقة</button><button class="btn btn-ghost" style="width:auto" onclick="openGrantSub('${mid}')">رجوع</button></div>`);
+    window._gsPending={planId:p._id,note};
+    return;
+  }
   const id = 'sub_'+uid();
   try{
-    await activateSubscription(id, { id, merchantId:mid, merchantName:m.businessName, planId:p._id, planName:p.name, price:p.price, months:p.months, reference:document.getElementById('gsNote').value.trim()||'تفعيل يدوي', ...(MerchantPlans.isNewPlan(p)?{model:p.model,kind:p.kind,termsVersion:p.termsVersion,orderCommissionPercent:p.orderCommissionPercent}:{}), status:'PENDING', createdAt:nowMs(), grantedByAdmin:true });
-    UI.closeModal(); UI.toast('تم تفعيل الاشتراك ✅');
+    await activateSubscription(id, { id, merchantId:mid, merchantName:m.businessName, planId:p._id, planName:p.name, price:p.price, months:p.months, reference:note||(replace?'استبدال باقة (إدارة)':'تفعيل يدوي'), ...(MerchantPlans.isNewPlan(p)?{model:p.model,kind:p.kind,termsVersion:p.termsVersion,orderCommissionPercent:p.orderCommissionPercent}:{}), ...(replace?{replace:true,replacedPlanName:m.subPlanName||null,replacedEndsAt:m.subEndsAt||null}:{}), status:'PENDING', createdAt:nowMs(), grantedByAdmin:true });
+    UI.closeModal(); UI.toast(replace?'تم استبدال الباقة ✅':'تم تفعيل الاشتراك ✅');
   }catch(e){ UI.toast('⚠️ '+(e.message||e)); }
+};
+window.confirmReplaceSub = async (mid,planId,btn)=>{
+  if(!isSuperAdmin()) return;
+  if(btn){btn.disabled=true;}
+  const pend=window._gsPending||{};
+  const p=(S.plans||[]).find(x=>x._id===planId); const m=S.allMerchants.find(x=>x.id===mid);
+  if(!p||!m||pend.planId!==planId){UI.toast('ابدأ من تاني');return;}
+  const id='sub_'+uid();
+  try{
+    await activateSubscription(id,{id,merchantId:mid,merchantName:m.businessName,planId:p._id,planName:p.name,price:p.price,months:p.months,reference:pend.note||'استبدال باقة (إدارة)',model:p.model,kind:p.kind,termsVersion:p.termsVersion,orderCommissionPercent:p.orderCommissionPercent,replace:true,replacedPlanName:m.subPlanName||null,replacedEndsAt:m.subEndsAt||null,status:'PENDING',createdAt:nowMs(),grantedByAdmin:true});
+    window._gsPending=null;UI.closeModal();UI.toast('تم استبدال الباقة ✅');
+  }catch(e){ if(btn)btn.disabled=false; UI.toast('⚠️ '+(e.message||e)); }
 };
 window.loadMoreStoreProducts=async mid=>{
   const state=S.storePages?.[mid],epoch=authEpoch;
@@ -1667,7 +1687,7 @@ async function activateNewSubscription(subId,input){
     const offer=sub.offerId?MerchantPlans.marketerOfferFor(m,p,settings):null;
     if(sub.offerId){ if(!offer||offer.offerId!==sub.offerId||sub.price!==offer.price) throw new Error('عرض كود المسوّق غير متاح لهذا المتجر أو استُخدم من قبل. ارفض الطلب واطلب اشتراكًا جديدًا.'); }
     else if(sub.price!==p.price) throw new Error('شروط الباقة تغيّرت أو غير متطابقة. اطلب اشتراكًا جديدًا بالشروط الحالية.');
-    const terms=sub.upgrade?MerchantPlans.upgradeTermFor(m,p):MerchantPlans.termFor(m,p),marketerId=m.marketerId||null;
+    const terms=(sub.replace&&input.grantedByAdmin)?MerchantPlans.replaceTermFor(m,p):sub.upgrade?MerchantPlans.upgradeTermFor(m,p):MerchantPlans.termFor(m,p),marketerId=m.marketerId||null;
     const basePct=p.marketerPercent!=null?p.marketerPercent:(settings.marketerSubPercent??10);
     const tierBonus=marketerId?mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId&&x.status==='ACTIVE').length).cur.bonus:0;
     const pct=marketerId?Math.min(100,basePct+tierBonus):0;
