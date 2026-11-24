@@ -66,11 +66,17 @@ export function bookedSetFor(booked,date){return new Set([...(booked||[])].filte
 export function bookingPanelHTML({m,schedule,booked,date,time,profile},esc,ms=Date.now()){
   const bf=d=>bookedSetFor(booked,d);
   const days=dateOptions(ms),sel=days.includes(date)?date:days.find(d=>slotsFor(schedule,d,bf(d),ms).length)||days[0],slots=slotsFor(schedule,sel,bf(sel),ms);
-  return `<div class="card" id="bookPanel" style="margin-bottom:16px"><h3 style="margin:0 0 10px">احجز ميعاد</h3>
-    <div class="cat-scroll" style="margin-bottom:10px">${days.map(d=>{const n=slotsFor(schedule,d,bf(d),ms).length;return `<div class="cat-chip ${d===sel?'active':''}" ${n?`onclick="pickBookDate('${esc(m.id)}','${d}')"`:'style="opacity:.45"'}><span>${fmtDay(d)}</span><span style="font-weight:400">${n?n+' ميعاد':'مقفول'}</span></div>`;}).join('')}</div>
-    ${slots.length?`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${slots.map(t=>`<button class="btn ${t===time?'btn-primary':'btn-ghost'} btn-sm" style="width:auto" onclick="pickBookTime('${esc(m.id)}','${sel}','${t}')">${fmtTime(t)}</button>`).join('')}</div>`:'<p class="hint-box">مفيش مواعيد فاضية فى اليوم ده.</p>'}
-    ${time&&slots.includes(time)?`<div class="field"><label>اسمك</label><input id="bkName" maxlength="80" value="${esc(profile?.firstName||'')} ${esc(profile?.lastName||'')}"></div>
-    <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(profile?.phone||'')}"></div>
+  const person=((profile?.firstName||'')+' '+(profile?.lastName||'')).trim(),ph=String(profile?.phone||'').trim(),known=!!person&&/^\+?[\d\s()-]{7,25}$/.test(ph),ready=!!(time&&slots.includes(time));
+  const dayChip=d=>{const n=slotsFor(schedule,d,bf(d),ms).length,f=fmtDay(d).split(' ');return `<button type="button" class="bk-day ${d===sel?'active':''} ${n?'':'off'}" ${n?`onclick="pickBookDate('${esc(m.id)}','${d}')"`:'disabled'}><strong>${f[0]}</strong><span>${f[1]}</span><small>${n?n+' ميعاد':'مقفول'}</small></button>`;};
+  return `<div class="card bk-panel" id="bookPanel" style="margin-bottom:16px"><h3 style="margin:0 0 14px">احجز ميعاد</h3>
+    <div class="bk-label">1. اختار اليوم</div>
+    <div class="bk-days">${days.map(dayChip).join('')}</div>
+    <div class="bk-label">2. اختار الميعاد ${fmtDay(sel)}</div>
+    ${slots.length?`<div class="bk-slots">${slots.map(t=>`<button type="button" class="bk-slot ${t===time?'active':''}" onclick="pickBookTime('${esc(m.id)}','${sel}','${t}')">${fmtTime(t)}</button>`).join('')}</div>`:'<p class="hint-box">مفيش مواعيد فاضية فى اليوم ده.</p>'}
+    ${ready?`<div class="bk-label">3. بياناتك</div>
+    ${known?`<div class="bk-known" id="bkKnown"><div><strong>${esc(person)}</strong><span>${esc(ph)}</span></div><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('bkKnown').classList.add('hidden');document.getElementById('bkEdit').classList.remove('hidden')">تعديل</button></div>`:''}
+    <div id="bkEdit" class="${known?'hidden':''}"><div class="field"><label>اسمك</label><input id="bkName" maxlength="80" value="${esc(person)}"></div>
+    <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(ph)}"></div></div>
     <div class="field"><label>ملاحظة (اختياري)</label><textarea id="bkNote" maxlength="300" placeholder="مثال: سبب الزيارة أو المادة أو العطل"></textarea></div>
     <button class="btn btn-primary" onclick="submitBooking('${esc(m.id)}','${sel}','${time}')">أرسل طلب الحجز: ${fmtDay(sel)} ${fmtTime(time)}</button>
     <p class="welcome-note">الطلب بيوصل للمزود وهو اللى بيأكد الميعاد. الدفع بينك وبينه مباشرة.</p>`:''}</div>`;

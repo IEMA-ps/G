@@ -156,6 +156,17 @@ img{max-width:100%; display:block;}
 
 /* ---------- categories ---------- */
 .cat-scroll{display:flex; gap:10px; overflow-x:auto; scrollbar-width:none; padding:2px 4px 4px;}
+.bk-label{font-size:13px;font-weight:800;margin:14px 0 8px;color:var(--ink)}
+.bk-days{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.bk-day{display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 4px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+.bk-day strong{font-size:12.5px}.bk-day span{font-size:15px;font-weight:800}.bk-day small{font-size:10.5px;color:var(--ink-soft)}
+.bk-day.active{background:var(--teal);border-color:var(--teal);color:#fff}.bk-day.active small{color:#fff}
+.bk-day.off{opacity:.45;cursor:default}
+.bk-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px}
+.bk-slot{padding:11px 4px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--surface);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+.bk-slot.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.bk-known{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--teal-tint);margin-bottom:12px}
+.bk-known div{display:flex;flex-direction:column;gap:2px}.bk-known span{font-size:12.5px;color:var(--ink-soft)}
 .cat-chip{flex-shrink:0;} .cat-chip span:not(.em){white-space:nowrap;}
 .cat-scroll::-webkit-scrollbar{display:none;}
 .cat-chip{min-width:74px; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px 8px;}
@@ -2937,6 +2948,8 @@ window.submitBooking = async (mid,date,time)=>{
     batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date,time,slotMinutes:sch.slotMinutes,note:v.note,status:'PENDING',createdAt:t,updatedAt:t});
     await batch.commit();
     notifyProvider(mid,'طلب حجز جديد 📅',`${v.name} (${v.phone}) طلب ميعاد ${date} الساعة ${Services.fmtTime(time)}${v.note?'\nملاحظة: '+v.note:''}\nادخل على الحجوزات للقبول أو الرفض.`);
+    try{localStorage.setItem('bk_phone_'+S.user.uid,v.phone);}catch(e){}
+    if(!String(S.profile?.phone||'').trim()) updateDoc(doc(db,'users',S.user.uid),{phone:v.phone}).catch(()=>{});
     UI.toast('اتبعت طلب الحجز للمزود ✅'); go('myBookings'); loadBookingData(mid);
   }catch(e){ UI.toast(e.code==='permission-denied'?'الميعاد ده اتحجز، اختار ميعاد تاني':(e.message||'تعذر الحجز')); loadBookingData(mid); }
 };
@@ -3060,7 +3073,7 @@ function renderMerchantPage(){
     </div>
     ${merchantContactCard(m)}
     ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم المزود مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
-    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,profile:S.profile},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
+    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
     ${canOrder&&!isSvc?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
     ${canOrder&&!isSvc?(prods.length? `<div class="product-grid pl-list">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
     ${canOrder && S.storePages?.[m.id]?.more?`<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreStoreProducts('${m.id}')" ${S.storePages[m.id].busy?'disabled':''}>${S.storePages[m.id].busy?'جاري التحميل...':'عرض باقي منتجات المتجر'}</button>`:''}
