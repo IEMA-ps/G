@@ -6,7 +6,7 @@ export const STATUS_LABEL={PENDING:'مستني رد المزود',ACCEPTED:'مق
 export const isServiceProvider=m=>!!m&&SERVICE_TYPES.includes(String(m.activityType||'').trim());
 export const servicesEnabled=s=>s?.servicesEnabled===true;
 const HM=/^([01]\d|2[0-3]):[0-5]\d$/,DATE=/^\d{4}-\d{2}-\d{2}$/;
-export const defaultSchedule=()=>({slotMinutes:30,closedDates:[],days:Object.fromEntries([0,1,2,3,4,5,6].map(d=>[String(d),{on:d!==5,from:'10:00',to:'18:00'}]))});
+export const defaultSchedule=()=>({slotMinutes:30,closedDates:[],oneOffs:[],days:Object.fromEntries([0,1,2,3,4,5,6].map(d=>[String(d),{on:d!==5,from:'10:00',to:'18:00'}]))});
 const toMin=t=>{const [h,m]=t.split(':').map(Number);return h*60+m;};
 const fromMin=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
 export function normalizeSchedule(raw){
@@ -15,8 +15,12 @@ export function normalizeSchedule(raw){
   const days={};
   for(const k of Object.keys(d.days)){const r=raw.days?.[k];const ok=r&&HM.test(r.from||'')&&HM.test(r.to||'')&&toMin(r.to)>toMin(r.from);days[k]=ok?{on:r.on===true,from:r.from,to:r.to}:d.days[k];}
   const closed=Array.isArray(raw.closedDates)?[...new Set(raw.closedDates.filter(x=>typeof x==='string'&&DATE.test(x)))].sort().slice(0,60):[];
-  return {slotMinutes:slot,closedDates:closed,days};
+  const rawOO=Array.isArray(raw.oneOffs)?raw.oneOffs:Array.isArray(raw.days?.oneOffs)?raw.days.oneOffs:[];
+  const seen=new Set(),oneOffs=rawOO.filter(o=>o&&typeof o.date==='string'&&DATE.test(o.date)&&HM.test(o.from||'')&&HM.test(o.to||'')&&toMin(o.to)>toMin(o.from)).map(o=>({date:o.date,from:o.from,to:o.to})).filter(o=>{const k=o.date+o.from+o.to;if(seen.has(k))return false;seen.add(k);return true;}).sort((x,y)=>(x.date+x.from).localeCompare(y.date+y.from)).slice(0,60);
+  return {slotMinutes:slot,closedDates:closed,days,oneOffs};
 }
+// stored shape: oneOffs lives inside the existing `days` map (days.oneOffs) so the published rules accept it unchanged.
+export const scheduleForSave=sch=>({slotMinutes:sch.slotMinutes,closedDates:sch.closedDates,days:{...sch.days,oneOffs:sch.oneOffs||[]}});
 export function cairoNow(ms=Date.now()){
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
   return {date:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`};
@@ -27,9 +31,11 @@ export function dateOptions(ms=Date.now(),n=14){const t=cairoNow(ms).date;return
 // times that can still be booked on `date`. booked: Set of 'HH:MM' that are active.
 export function slotsFor(schedule,date,booked=new Set(),ms=Date.now()){
   const s=normalizeSchedule(schedule),day=s.days[String(weekday(date))],now=cairoNow(ms);
-  if(!DATE.test(date)||!day.on||s.closedDates.includes(date)||date<now.date)return [];
-  const out=[];for(let t=toMin(day.from);t+s.slotMinutes<=toMin(day.to);t+=s.slotMinutes){const hm=fromMin(t);if(date===now.date&&hm<=now.time)continue;if(!booked.has(hm))out.push(hm);}
-  return out;
+  if(!DATE.test(date)||s.closedDates.includes(date)||date<now.date)return [];
+  const ranges=[];if(day.on)ranges.push(day);for(const o of s.oneOffs)if(o.date===date)ranges.push(o);
+  const all=new Set();
+  for(const r of ranges)for(let t=toMin(r.from);t+s.slotMinutes<=toMin(r.to);t+=s.slotMinutes)all.add(fromMin(t));
+  return [...all].sort().filter(hm=>!(date===now.date&&hm<=now.time)&&!booked.has(hm));
 }
 export const bookingId=(mid,date,time)=>`${mid}_${date}_${time.replace(':','')}`;
 export function validBookingInput({date,time,name,phone,note},schedule,booked,ms=Date.now()){
@@ -48,19 +54,26 @@ export function providerStats(bookings,ms=Date.now()){
 }
 // ---- HTML ----
 const field=(id,label,v,esc)=>`<div class="field"><label>${label}</label>${v}</div>`;
-export function scheduleEditorHTML(schedule,esc){
-  const s=normalizeSchedule(schedule);
+export function scheduleEditorHTML(schedule,esc,mode='weekly'){
+  const s=normalizeSchedule(schedule),wk=mode!=='once';
+  const week=DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:8px;margin:8px 0;align-items:center"><label style="min-width:78px"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:110px"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:110px"></div>`;}).join('');
+  const once=`<div class="field"><label>التاريخ</label><input type="date" id="schOoDate"></div>
+    <div class="row-between" style="gap:8px;margin:8px 0;align-items:center"><span>من</span><input type="time" id="schOoFrom" value="10:00" style="width:110px"><span>إلى</span><input type="time" id="schOoTo" value="14:00" style="width:110px"></div>
+    <button class="btn btn-ghost btn-sm" style="width:auto" onclick="addOneOff()">إضافة الميعاد</button>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">${s.oneOffs.length?s.oneOffs.map((o,i)=>`<div class="row-between" style="gap:8px"><span style="font-size:13px">${fmtDay(o.date)} · ${fmtTime(o.from)} إلى ${fmtTime(o.to)}</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="removeOneOff(${i})">حذف</button></div>`).join(''):'<span class="welcome-note" style="margin:0">مفيش مواعيد لمرة واحدة.</span>'}</div>`;
   return `<div class="card" style="margin-bottom:14px"><b>مواعيد الشغل</b>
     <div class="field" style="margin-top:10px"><label>مدة الحجز</label><select id="schSlot">${SLOT_OPTIONS.map(n=>`<option value="${n}" ${s.slotMinutes===n?'selected':''}>${n} دقيقة</option>`).join('')}</select></div>
-    ${DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:8px;margin:8px 0;align-items:center"><label style="min-width:78px"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:110px"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:110px"></div>`;}).join('')}
+    <div class="row-between" style="gap:14px;justify-content:flex-start;margin:6px 0 10px"><label><input type="radio" name="schMode" id="schModeW" ${wk?'checked':''} onchange="setSchMode('weekly')"> كل أسبوع في يوم محدد</label><label><input type="radio" name="schMode" id="schModeO" ${wk?'':'checked'} onchange="setSchMode('once')"> مرة واحدة</label></div>
+    <div id="schWeekly" class="${wk?'':'hidden'}">${week}</div>
+    <div id="schOnce" class="${wk?'hidden':''}">${once}</div>
     <div class="field"><label>أيام إجازة (اختياري)</label><div style="display:flex;gap:8px"><input type="date" id="schClosedAdd"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="addClosedDate()">إضافة</button></div>
     <div id="schClosedList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${s.closedDates.map(d=>`<span class="badge-chip" onclick="removeClosedDate('${d}')" style="cursor:pointer">${d} ✕</span>`).join('')}</div></div>
     <button class="btn btn-primary" onclick="saveProviderSchedule()">حفظ المواعيد</button></div>`;
 }
-export function readScheduleForm(get,closed){
+export function readScheduleForm(get,closed,oneOffs=[]){
   const days={};for(let i=0;i<7;i++)days[String(i)]={on:!!get('schOn'+i,'checked'),from:get('schFrom'+i,'value'),to:get('schTo'+i,'value')};
   for(const [k,d] of Object.entries(days))if(d.on&&!(HM.test(d.from)&&HM.test(d.to)&&toMin(d.to)>toMin(d.from)))throw Error(`ساعات ${DAY_NAMES[+k]} مش مظبوطة`);
-  return normalizeSchedule({slotMinutes:Number(get('schSlot','value')),days,closedDates:closed});
+  return normalizeSchedule({slotMinutes:Number(get('schSlot','value')),days,closedDates:closed,oneOffs});
 }
 export function bookedSetFor(booked,date){return new Set([...(booked||[])].filter(x=>x.startsWith(date+'|')).map(x=>x.split('|')[1]));}
 export function bookingPanelHTML({m,schedule,booked,date,time,profile},esc,ms=Date.now()){
@@ -92,4 +105,11 @@ export function serviceListHTML(providers,type,esc){
   const list=providers.filter(m=>!type||m.activityType===type);
   return `<div class="cat-scroll" style="margin-bottom:12px"><div class="cat-chip ${!type?'active':''}" onclick="setServiceType('')"><span>الكل</span></div>${SERVICE_TYPES.map(t=>`<div class="cat-chip ${type===t?'active':''}" onclick="setServiceType('${t}')"><span>${t}</span></div>`).join('')}</div>`
    +(list.length?`<div class="list-gap">${list.map(m=>`<div class="merchant-card" onclick="openMerchant('${esc(m.id)}')"><div class="logo">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-user-doctor"></i>'}</div><div class="info"><h4>${esc(m.businessName)}</h4><div class="meta">${esc(m.activityType)}${m.address?' · '+esc(m.address):''}</div></div></div>`).join('')}</div>`:'<p class="hint-box">مفيش مزودين فى القسم ده لسه.</p>');
+}
+
+export function makeOneOff({date,from,to},ms=Date.now()){
+  if(!DATE.test(date||''))throw Error('اختار التاريخ');
+  if(date<cairoNow(ms).date)throw Error('التاريخ ده عدّى');
+  if(!(HM.test(from||'')&&HM.test(to||'')&&toMin(to)>toMin(from)))throw Error('الساعات مش مظبوطة');
+  return {date,from,to};
 }
