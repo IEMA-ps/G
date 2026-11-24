@@ -13,7 +13,7 @@ async function token(over = {}, key = privateKey) {
   const s = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, enc.encode(h + '.' + p));
   return `${h}.${p}.${b64(s)}`;
 }
-const TERMS = '<p>نسخة · الإصدار 2026-11-24</p>';
+const TERMS = '<p>نسخة · الإصدار 2026-11-24.2</p>';
 const fetchMock = async url => String(url).includes('terms')
   ? new Response(TERMS) : new Response(JSON.stringify({keys: [jwk]}), {headers: {'cache-control': 'max-age=100'}});
 function db() {
@@ -29,7 +29,7 @@ const req = async (body, {tok, origin = 'https://3alababk.com', method = 'POST'}
   body: method === 'POST' ? JSON.stringify(body) : undefined
 });
 const deps = {fetch: fetchMock, now: () => new Date('2026-11-24T10:00:00Z')};
-const good = {version: '2026-11-24', method: 'email'};
+const good = {version: '2026-11-24.2', method: 'email'};
 
 test('records uid, version, server hash, server time, ip', async () => {
   const e = env();
@@ -38,7 +38,7 @@ test('records uid, version, server hash, server time, ip', async () => {
   assert.deepEqual(await res.json(), {ok: true, recorded: true});
   const [uid, ver, sha, method, at, ip, country, ua] = e.DB.rows[0];
   const expected = Buffer.from(await crypto.subtle.digest('SHA-256', enc.encode(TERMS))).toString('hex');
-  assert.deepEqual([uid, ver, sha, method, at, ip, country, ua], ['uid1', '2026-11-24', expected, 'email', '2026-11-24T10:00:00.000Z', '203.0.113.9', 'EG', 'UA']);
+  assert.deepEqual([uid, ver, sha, method, at, ip, country, ua], ['uid1', '2026-11-24.2', expected, 'email', '2026-11-24T10:00:00.000Z', '203.0.113.9', 'EG', 'UA']);
 });
 test('retry is idempotent', async () => {
   const e = env();
@@ -60,11 +60,16 @@ test('rejects foreign origin and non-POST', async () => {
   assert.equal((await handle(await req(null, {method: 'GET'}), env(), deps)).status, 405);
 });
 test('rejects bad body and version mismatch with server terms', async () => {
-  for (const b of [{}, {version: 'x', method: 'email'}, {version: '2026-11-24', method: 'sms'}]) {
+  for (const b of [{}, {version: 'x', method: 'email'}, {version: '2026-11-24.2', method: 'sms'}]) {
     assert.equal((await handle(await req(b), env(), deps)).status, 400);
   }
   const e = env();
   const res = await handle(await req({version: '2026-01-01', method: 'email'}), e, deps);
+  assert.equal(res.status, 409); assert.equal(e.DB.rows.length, 0);
+});
+test('old terms version (without .2) is rejected as mismatch', async () => {
+  const e = env();
+  const res = await handle(await req({version: '2026-11-24', method: 'email'}), e, deps);
   assert.equal(res.status, 409); assert.equal(e.DB.rows.length, 0);
 });
 test('terms page unavailable -> 502, nothing stored', async () => {
