@@ -5172,8 +5172,11 @@ function renderAdminUsers(){
   if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
 
   const seg = S.aUserFilter || 'ALL';
-  const tabs = [['ALL','الكل'],['CUSTOMER','عملاء'],['MERCHANT','تجار'],['DELIVERY','مناديب'],['MARKETER','مسوّقون'],['ADMIN','إدارة']];
-  const list = S.allUsers.filter(u=>(seg==='ALL'||(u.role||'').toUpperCase()===seg)&&(!q||[u.firstName,u.lastName,[u.firstName,u.lastName].filter(Boolean).join(' '),u.email,u.phone,u.referralCode].some(v=>String(v||'').toLocaleLowerCase().includes(q))));
+  const isProv=u=>(u.role||'').toUpperCase()==='MERCHANT'&&!!u.merchantId&&Services.isServiceProvider((S.allMerchants||[]).find(m=>m.id===u.merchantId));
+  const showProv=Services.servicesEnabled(S.settings)||S.allUsers.some(isProv);
+  const tabs = [['ALL','الكل'],['CUSTOMER','عملاء'],['MERCHANT','تجار'],...(showProv?[['SERVICE','مقدمو خدمة']]:[]),['DELIVERY','مناديب'],['MARKETER','مسوّقون'],['ADMIN','إدارة']];
+  const inSeg=u=>seg==='ALL'||(seg==='SERVICE'?isProv(u):seg==='MERCHANT'?((u.role||'').toUpperCase()==='MERCHANT'&&!isProv(u)):(u.role||'').toUpperCase()===seg);
+  const list = S.allUsers.filter(u=>inSeg(u)&&(!q||[u.firstName,u.lastName,[u.firstName,u.lastName].filter(Boolean).join(' '),u.email,u.phone,u.referralCode].some(v=>String(v||'').toLocaleLowerCase().includes(q))));
   const canManageAdmins = isSuperAdmin();
   const pageSize = S.aUserPageSize || 20;
   const visible = list.slice(0, pageSize);
