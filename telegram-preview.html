@@ -379,15 +379,19 @@ const emptyState = (icon,title,text)=>'<section class="empty-state"><i class="fa
 const MERCHANT_STATUS = {ACTIVE:{label:'مفعّل',cls:'status-active'}};
 const typeLabel = ()=>'عطارة';
 const publicStoreUrl = ()=>'#';
-const MerchantPlans = {isNewMerchant:()=>false, supportHref:()=>'https://wa.me/201000000000', modeOf:()=>'ORDERING'};
+const MerchantPlans = {isNewMerchant:()=>false, supportHref:()=>'https://wa.me/201000000000', supportPhone:p=>p, modeOf:()=>'ORDERING'};
+const Program = {joinButton:()=>'', candidate:()=>''};
+const groupBuysNearMe = ()=>[];
+const roundMoney = n=>Math.round(Number(n||0)*100)/100;
+const isSuperAdmin = ()=>true;
 const S = window.S = {
   role:'merchant', tab:'m_profile',
   user:{uid:'u1', getIdToken:async()=>'fake-token'},
-  profile:{merchantId:'m1', deliveryAgentId:'a1', firstName:'محمود', lastName:'سيد'},
+  profile:{merchantId:'m1', deliveryAgentId:'a1', firstName:'محمود', lastName:'سيد', referralCode:'ABC123', loyaltyPoints:0},
   myMerchant:{id:'m1', businessName:'عطارة البركة', managerName:'الحاج محمود', phone:'01012345678', whatsappNumber:'01012345678', address:'شارع الجمهورية — الجيزة', status:'ACTIVE', logoUrl:'', minOrderAmount:0, openTime:'09:00', closeTime:'23:00'},
   myAgent:{id:'a1', name:'كريم السيد', phone:'01098765432', vehicleType:'موتوسيكل', rating:4.8, ratingCount:23},
-  settings:{supportWhatsapp:'01000000000'},
-  mySubOrders:[], allSubOrders:[], activeAgents:[]
+  settings:{supportWhatsapp:'01000000000', platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, defaultDeliveryFee:15, loyaltyEnabled:true, loyaltyEarnRate:1, loyaltyRedeemValue:0.1, referralBonusPoints:50},
+  mySubOrders:[], allSubOrders:[], activeAgents:[], myRecurringOrders:[], wishlist:[]
 };
 window.UI = {
   openModal: html=>{document.getElementById('modalSheet').innerHTML=html;document.getElementById('modalRoot').classList.remove('hidden');},
@@ -463,7 +467,7 @@ window.startTelegramLink = async ()=>{
   try{
     const token = await S.user.getIdToken();
     const kind = S.tgLinkKind;
-    const ids = kind==='merchant' ? {merchantId:S.profile.merchantId} : kind==='delivery' ? {deliveryAgentId:S.profile.deliveryAgentId} : {admin:true};
+    const ids = kind==='merchant' ? {merchantId:S.profile.merchantId} : kind==='delivery' ? {deliveryAgentId:S.profile.deliveryAgentId} : kind==='customer' ? {customer:true} : kind==='marketer' ? {marketer:true} : {admin:true};
     const {url} = await TelegramNotify.linkStart({token, ...ids});
     window.open(url, '_blank');
     body.innerHTML = TelegramNotify.linkModalHTML('pending');
@@ -480,22 +484,180 @@ window.unlinkTelegram = async ()=>{
   }catch(e){ body.innerHTML = TelegramNotify.linkModalHTML('unavailable'); }
 };
 
+/* ---- بث الأدمن على تليجرام ---- */
+// خطوتين: معاينة النص النهائي أولًا، وبعدين تأكيد صريح قبل الإرسال — البث بيتم باسم المنصة فلازم موافقة على النص بالظبط.
+window.previewTelegramBroadcast = ()=>{
+  const aud = document.getElementById('tgBcAudience');
+  const txt = document.getElementById('tgBcText');
+  if(!aud || !txt) return;
+  const text = (txt.value||'').trim();
+  if(!text){ UI.toast('اكتب نص الرسالة الأول'); return; }
+  S.tgBroadcast = {audience: aud.value, text};
+  UI.openModal(`
+    <div class="modal-head"><h3><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> تأكيد البث على تليجرام</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="tgBcBody">${TelegramNotify.broadcastPreviewHTML(aud.value, text)}</div>
+  `);
+};
+window.sendTelegramBroadcast = async ()=>{
+  const body = document.getElementById('tgBcBody'); if(!body || !S.tgBroadcast) return;
+  body.innerHTML = TelegramNotify.linkModalHTML('loading');
+  try{
+    const token = await S.user.getIdToken();
+    const r = await TelegramNotify.broadcast(S.tgBroadcast.audience, S.tgBroadcast.text, token);
+    body.innerHTML = TelegramNotify.broadcastResultHTML(r);
+    if(r && r.ok){ const txt = document.getElementById('tgBcText'); if(txt) txt.value=''; }
+  }catch(e){ body.innerHTML = TelegramNotify.linkModalHTML('unavailable'); }
+};
+
+
+function renderProfile(){
+  const points = S.profile.loyaltyPoints || 0;
+  const redeemValue = S.settings.loyaltyRedeemValue || 0;
+  return `
+    <div class="card" style="margin-bottom:16px"><h3>اشتغل مسوّق مع على بابك</h3><p style="line-height:1.9;margin:10px 0">عرّف التجار بعلى بابك وساعدهم يبدأوا، وتابع شغلك ورصيدك من حسابك.</p><ul style="line-height:2;padding-inline-start:22px;margin:0 0 10px;font-size:13px"><li>كود ورابط خاصين بيك تشاركهم مع التجار.</li><li>عمولة عن كل اشتراك مدفوع تعتمده إدارة الموقع ويتسجل بكودك.</li><li>مستويات بتزود نسبتك كل ما محلاتك النشطة تكتر.</li><li>حافز إضافي في أول مهلة بعد تعيينك لو حققت هدفها.</li></ul><p style="font-size:12px;line-height:1.8;color:var(--ink-soft);margin-bottom:12px">الشغل بالعمولة حسب المعتمد، مش مرتب ثابت ولا ضمان دخل معين. التعيين بيتم بعد مراجعة إدارة الموقع.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">قدّم طلب انضمام كمسوّق</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="go('marketerBenefits')">التفاصيل والشروط</button></div></div>
+    ${Program.joinButton()}${Program.candidate()}
+    <div class="card" style="text-align:center;padding:24px">
+      <div style="width:64px;height:64px;border-radius:50%;background:var(--teal-tint);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 10px"><i class="fa-solid fa-user"></i></div>
+      <h3 style="margin:0">${esc((S.profile.firstName||'')+' '+(S.profile.lastName||''))}</h3>
+      <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0">${esc(S.profile.email||'')}</p>
+      ${S.settings.loyaltyEnabled!==false?`<div class="badge-chip" style="margin-top:10px;display:inline-flex;gap:6px"><i class="fa-solid fa-gift" style="color:var(--gold)"></i> ${points} نقطة ولاء${redeemValue?' (تساوي '+fmtMoney(roundMoney(points*redeemValue))+')':''}</div>`:''}
+    </div>
+    ${S.profile.referralCode?`<div class="card" style="margin-top:12px;text-align:center">
+      <p style="font-size:13px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-user-group" style="color:var(--teal)"></i> ادعُ صديقك وخدوا نقاط مع بعض</p>
+      <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(S.profile.referralCode)}</div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" style="width:auto" onclick="shareReferral()"><i class="fa-brands fa-whatsapp"></i> شارك كودك</button>
+        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
+      </div>
+    </div>`:''}
+    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3><p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
+    <div class="section-head"><h3>الحساب</h3></div>
+    <div class="list-gap">
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('addresses')"><span><i class="fa-solid fa-location-dot" style="color:var(--teal);margin-left:8px"></i> عناويني</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('wishlist')"><span><i class="fa-solid fa-heart" style="color:var(--danger);margin-left:8px"></i> المفضلة${(S.wishlist||[]).length?' ('+S.wishlist.length+')':''}</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('recurringOrders')"><span><i class="fa-solid fa-repeat" style="color:var(--teal);margin-left:8px"></i> طلباتي الثابتة${(S.myRecurringOrders||[]).filter(r=>r.status==='ACTIVE').length?' ('+S.myRecurringOrders.filter(r=>r.status==='ACTIVE').length+')':''}</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('groupBuys')"><span><i class="fa-solid fa-people-group" style="color:var(--teal);margin-left:8px"></i> تجميعات الجيران${groupBuysNearMe().length?' ('+groupBuysNearMe().length+' قريبة منك)':''}</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('orders')"><span><i class="fa-solid fa-receipt" style="color:var(--teal);margin-left:8px"></i> طلباتي</span><i class="fa-solid fa-chevron-left"></i></div>
+      <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openTelegramLink('customer')"><span><i class="fa-brands fa-telegram" style="color:var(--teal);margin-left:8px"></i> إشعارات الطلبات على تليجرام</span><i class="fa-solid fa-chevron-left"></i></div>
+      ${MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، أحتاج مساعدة بخصوص طلب')?`<div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSupport('مرحبًا، أحتاج مساعدة بخصوص طلب')"><span><i class="fa-brands fa-whatsapp" style="color:var(--teal);margin-left:8px"></i> الدعم الفني</span><i class="fa-solid fa-chevron-left"></i></div>`:''}
+      <button class="btn btn-danger" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
+    </div>
+  `;
+}
+
+function renderAdminSettings(){
+  if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات دي لإدارة الموقع بس.</p></div>`;
+  const s = S.settings;
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 14px;font-size:15px">إعدادات عامة للمنصة</h3>
+      <div class="field"><label>نسبة عمولة المنصة الافتراضية (%)</label><input id="setCommission" type="number" step="0.1" min="0" max="100" value="${s.platformCommissionPercent}"></div>
+      <div class="field"><label>نسبة المسوّق من عمولة الطلبات (%) — لو المصدر يشمل الطلبات</label><input id="setMkPct" type="number" step="0.1" min="0" max="100" value="${s.marketerCommissionPercent!=null?s.marketerCommissionPercent:20}"></div>
+      <div class="field"><label>مدة احتساب نسبة الطلبات بالأشهر (0 = بدون حد)</label><input id="setMkMonths" type="number" step="1" min="0" max="120" value="${s.marketerCommissionMonths||0}"></div>
+      <div class="field"><label>رسوم التوصيل لكل تاجر في الطلب (جنيه)</label><input id="setDeliveryFee" type="number" step="1" min="0" value="${s.defaultDeliveryFee}"></div>
+      <button class="btn btn-primary" onclick="saveAppSettings()">حفظ الإعدادات</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> إشعارات الطلبات على تليجرام</h3>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">اربط حسابك ببوت «على بابك» على تليجرام عشان يوصلك إشعار فوري بأي طلب جديد على المنصة.</p>
+      <button class="btn btn-primary" onclick="openTelegramLink('admin')"><i class="fa-brands fa-telegram"></i> ربط تليجرام</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> بث رسالة على تليجرام</h3>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">ابعت رسالة لكل اللي ربطوا تليجرام بالبوت، أو لدور معيّن بس. الرسالة بتوصل للمربوطين فقط، واللي وقف الاشتراك مش بيوصله حاجة.</p>
+      <div class="field"><label>الجمهور</label><select id="tgBcAudience">${TelegramNotify.BROADCAST_AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
+      <div class="field"><label>نص الرسالة</label><textarea id="tgBcText" rows="4" maxlength="3500" placeholder="اكتب الرسالة اللي هتوصل على تليجرام..."></textarea></div>
+      <button class="btn btn-primary" onclick="previewTelegramBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 14px;font-size:15px"><i class="fa-brands fa-whatsapp" style="color:var(--teal)"></i> الدعم الفني</h3>
+      <div class="field"><label>رقم واتساب الدعم الفني</label><input id="setSupport" type="tel" inputmode="tel" dir="ltr" placeholder="مثال: 01012345678" value="${esc(s.supportWhatsapp||'')}"></div>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">${MerchantPlans.supportPhone(s.supportWhatsapp)?`الرقم الحالي: <b dir="ltr">+${MerchantPlans.supportPhone(s.supportWhatsapp)}</b>. زرار «دعم فني» ظاهر لكل المستخدمين بعد تسجيل الدخول.`:'مفيش رقم دعم محفوظ. زرار «دعم فني» مخفي لحد ما تحفظ رقم صحيح.'}</p>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="saveSupportPhone()">حفظ رقم الدعم</button>${MerchantPlans.supportPhone(s.supportWhatsapp)?`<button class="btn btn-ghost" style="width:auto" onclick="openSupport('تجربة رقم الدعم')">تجربة الرابط</button>`:''}</div>
+    </div>
+    <div class="hint-box"><i class="fa-solid fa-circle-info"></i> نسبة العمولة دي هي الافتراضية اللي بتتطبق على أي تاجر ملوش نسبة مخصصة. لتحديد نسبة مختلفة لتاجر معيّن، ادخل صفحة «التجار» واضغط «تعديل» بجانب العمولة.</div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="row-between" style="margin-bottom:14px">
+        <h3 style="margin:0;font-size:15px">برنامج نقاط الولاء</h3>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
+          <input type="checkbox" id="setLoyaltyEnabled" ${s.loyaltyEnabled!==false?'checked':''}> مفعّل
+        </label>
+      </div>
+      <div class="field"><label>معدل الكسب (نقطة لكل 1 جنيه إنفاق)</label><input id="setLoyaltyEarn" type="number" step="0.01" min="0" value="${s.loyaltyEarnRate||0}"></div>
+      <div class="field"><label>قيمة النقطة عند الاستبدال (جنيه لكل نقطة)</label><input id="setLoyaltyRedeem" type="number" step="0.01" min="0" value="${s.loyaltyRedeemValue||0}"></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> مثال بالإعدادات الحالية: عميل يصرف ${fmtMoney(100)} هياخد ${Math.floor(100*(s.loyaltyEarnRate||0))} نقطة، وكل نقطة تساوي ${fmtMoney(s.loyaltyRedeemValue||0)} عند الاستخدام. النقاط بتتحسب من قيمة الطلب قبل أي خصومات، وبتضاف بعد التسليم الفعلي فقط.</p>
+      <button class="btn btn-primary" onclick="saveLoyaltySettings()">حفظ إعدادات النقاط</button>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3 style="margin:0 0 14px;font-size:15px">دعوة صديق</h3>
+      <div class="field"><label>عدد النقاط اللي ياخدها كل من الصديقين (الداعي والمدعو)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، الاتنين ياخدوا نفس عدد النقاط دي تلقائيًا.</p>
+      <button class="btn btn-primary" onclick="saveReferralSettings()">حفظ</button>
+    </div>
+  `;
+}
+window.saveReferralSettings = async ()=>{
+  const referralBonusPoints = Math.max(0, parseInt(document.getElementById('setReferralBonus').value)||0);
+  await setDoc(doc(db,'settings','app'), {referralBonusPoints}, {merge:true});
+  await logAudit('تعديل إعدادات دعوة الصديق', `نقاط المكافأة: ${referralBonusPoints}`);
+  UI.toast('تم حفظ إعدادات دعوة الصديق ✅');
+};
+window.saveLoyaltySettings = async ()=>{
+  const loyaltyEnabled = document.getElementById('setLoyaltyEnabled').checked;
+  const loyaltyEarnRate = Math.max(0, parseFloat(document.getElementById('setLoyaltyEarn').value)||0);
+  const loyaltyRedeemValue = Math.max(0, parseFloat(document.getElementById('setLoyaltyRedeem').value)||0);
+  await setDoc(doc(db,'settings','app'), {loyaltyEnabled, loyaltyEarnRate, loyaltyRedeemValue}, {merge:true});
+  await logAudit('تعديل إعدادات نقاط الولاء', `مفعّل: ${loyaltyEnabled} — كسب: ${loyaltyEarnRate} — استبدال: ${loyaltyRedeemValue}`);
+  UI.toast('تم حفظ إعدادات نقاط الولاء ✅');
+};
+window.saveSupportPhone = async ()=>{
+  if(!isSuperAdmin()){ UI.toast('تعديل رقم الدعم لإدارة الموقع فقط'); return; }
+  const raw=document.getElementById('setSupport').value.trim();
+  const clean=raw?MerchantPlans.supportPhone(raw):'';
+  if(raw && !clean){ UI.toast('رقم غير صحيح. اكتب رقم واتساب كامل، مثال 01012345678'); return; }
+  const before=MerchantPlans.supportPhone(S.settings.supportWhatsapp)||'—';
+  await setDoc(doc(db,'settings','app'), {supportWhatsapp:clean}, {merge:true});
+  await logAudit('تعديل رقم الدعم الفني', `من: ${before} — إلى: ${clean||'—'}`);
+  UI.toast('تم حفظ رقم الدعم ✅');
+};
+window.saveAppSettings = async ()=>{
+  const platformCommissionPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('setCommission').value)||0));
+  const defaultDeliveryFee = Math.max(0, parseFloat(document.getElementById('setDeliveryFee').value)||0);
+  const marketerCommissionPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('setMkPct').value)||0));
+  const marketerCommissionMonths = Math.max(0, Math.min(120, parseInt(document.getElementById('setMkMonths').value)||0));
+  await setDoc(doc(db,'settings','app'), {platformCommissionPercent, defaultDeliveryFee, marketerCommissionPercent, marketerCommissionMonths}, {merge:true});
+  await logAudit('تعديل الإعدادات العامة', `عمولة: ${platformCommissionPercent}% — توصيل: ${defaultDeliveryFee}`);
+  UI.toast('تم حفظ الإعدادات بنجاح ✅');
+};
+
+window.openAdminMenu=()=>{if(S.role==='admin')UI.openModal(adminMenu(isSuperAdmin()));};
+window.searchAdminMembers=value=>{
+ S.aUserSearch=value;S.aUserPageSize=20;renderMain();
+ const input=document.getElementById('adminMemberSearch');if(input){input.focus();input.setSelectionRange(value.length,value.length);}
+};
 
 window.renderMain = ()=>{
   const isDelivery = S.role==='delivery';
   document.body.dataset.role = S.role;
-  document.getElementById('mainContent').innerHTML = isDelivery ? renderDeliveryProfile() : renderMerchantProfile();
+  const main = S.role==='admin' ? renderAdminSettings() : S.role==='customer' ? renderProfile() : isDelivery ? renderDeliveryProfile() : renderMerchantProfile();
+  document.getElementById('mainContent').innerHTML = main;
   const nav = isDelivery
     ? [['d_dashboard','fa-motorcycle','مهامي'],['d_history','fa-clock-rotate-left','السجل'],['d_profile','fa-id-card','حسابي']]
+    : S.role==='customer'
+    ? [['home','fa-house','الرئيسية'],['orders','fa-receipt','طلباتي'],['profile','fa-user','حسابي']]
+    : S.role==='admin'
+    ? [['a_dashboard','fa-gauge-high','لوحة الإدارة'],['a_settings','fa-gear','إعدادات الموقع']]
     : [['m_dashboard','fa-chart-line','الرئيسية'],['m_products','fa-box','منتجاتي'],['m_orders','fa-receipt','الطلبات'],['m_reports','fa-chart-pie','الأداء'],['m_statement','fa-file-invoice','العمولة'],['m_profile','fa-store','متجري']];
-  const active = isDelivery ? 'd_profile' : 'm_profile';
+  const active = isDelivery ? 'd_profile' : S.role==='customer' ? 'profile' : S.role==='admin' ? 'a_settings' : 'm_profile';
   document.getElementById('bottomNav').innerHTML = nav.map(([tab,icon,label])=>'<button class="nav-btn '+(tab===active?'active':'')+'"><span style="position:relative"><i class="fa-solid '+icon+'"></i></span><span>'+label+'</span></button>').join('');
 };
 // Block real network actions in this review only.
 document.addEventListener('click', event=>{
   const b = event.target.closest('[onclick]'); if(!b) return;
   const action = b.getAttribute('onclick');
-  if(!['openTelegramLink(','UI.closeModal(','checkTelegramLink('].some(p=>action.startsWith(p))){
+  if(!['openTelegramLink(','UI.closeModal(','checkTelegramLink(','previewTelegramBroadcast(','sendTelegramBroadcast('].some(p=>action.startsWith(p))){
     event.preventDefault(); event.stopImmediatePropagation(); alert('معاينة فقط، بدون حفظ أو تغيير بيانات.');
   }
 }, true);
