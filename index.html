@@ -502,12 +502,12 @@ import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
 import {installSheet} from '/product-sheet-ui.js?v=sheet-1';
-import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-3';
+import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-4';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
 import { createMarketerTools, renderMarketerGrowth } from "/marketer-tools.js?v=growth-review-1";
 import { renderFoundingOffer } from '/founding-merchants.js?v=review-2';
-import { routeFromLocation, routeURL, authRoute, normalizeLegacy } from '/app-routes.js?v=clean-1';
+import { routeFromLocation, routeURL, authRoute, normalizeLegacy } from '/app-routes.js?v=clean-2';
 const legacyURL=normalizeLegacy(location);if(legacyURL)history.replaceState(null,'',legacyURL);
 import { MARKETING_CONFIG } from "/marketing-config.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check.js";
@@ -2030,6 +2030,13 @@ window.saveMarketerMerchant = async ()=>{
 };
 
 /* ---- إدارة (أدمن) ---- */
+window.resetMemberToCustomer = async id=>{
+  if(!isSuperAdmin()) return;
+  const u=(S.allUsers||[]).find(x=>x._id===id); if(!u||(u.role!=='MERCHANT'&&u.role!=='DELIVERY')) return;
+  if(!confirm('تغيير صفة العضو لعميل؟ سجل المتجر/المندوب هيفضل زى ما هو بس مش مربوط بالحساب ده، وتقدر تعين له صفة جديدة بعدها.')) return;
+  await updateDoc(doc(db,'users',id), { role:'CUSTOMER', merchantId:null, deliveryAgentId:null });
+  await logAudit('تغيير صفة عضو لعميل', id); UI.toast('تم تغيير الصفة لعميل ✅');
+};
 window.makeMarketer = async id=>{
   if(Program.enabled()) return Program.openAppointment(id);
   // Preserve the existing admin appointment flow while the new program is off.
@@ -2404,7 +2411,7 @@ function renderMain(){
     services: renderServices, myBookings: renderMyBookings, m_schedule: renderProviderSchedule,
     m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports, m_statement:()=>renderMonthlyCommissionStatements(S.mySubOrders||[]),
     d_dashboard: renderDeliveryDashboard, d_history: renderDeliveryHistory, d_profile: renderDeliveryProfile,
-    a_dashboard: renderAdminDashboard, a_new_orders: renderAdminNewOrders, a_merchants: renderAdminMerchants, a_categories: renderAdminCategories,
+    a_dashboard: renderAdminDashboard, a_new_orders: renderAdminNewOrders, a_merchants: renderAdminMerchants, a_providers: renderAdminProviders, a_categories: renderAdminCategories,
     a_products: renderAdminProducts, a_orders: renderAdminOrders, a_recurring: renderAdminRecurringOrders, a_users: renderAdminUsers,
     a_settlements: renderAdminSettlements, a_settings: renderAdminSettings, a_agents: renderAdminAgents, a_coupons: renderAdminCoupons,
     a_reports: renderAdminReports, a_audit: renderAdminAuditLog, a_marketers: renderAdminMarketers, a_dbsetup: renderAdminDbSetup, a_subscriptions: renderAdminSubscriptions, m_subscription: renderMerchantSubscription,
@@ -4319,12 +4326,14 @@ window.adminSendToMerchant = async (subId)=>{
   }
 };
 
-function renderAdminMerchants(){
+function renderAdminProviders(){ return renderAdminMerchants(true); }
+function renderAdminMerchants(providersOnly){
   const filter = S.aMerchFilter || 'ALL';
-  const list = filter==='ALL' ? S.allMerchants : S.allMerchants.filter(m=>m.status===filter);
+  const base = providersOnly===true ? S.allMerchants.filter(m=>Services.isServiceProvider(m)) : S.allMerchants;
+  const list = filter==='ALL' ? base : base.filter(m=>m.status===filter);
   const tabs = [['ALL','الكل'],['PENDING','قيد المراجعة'],['ACTIVE','نشط'],['REJECTED','مرفوض'],['SUSPENDED','معلّق']];
   return `
-    <button class="btn btn-primary" style="margin-bottom:14px" onclick="openAdminMerchantForm()"><i class="fa-solid fa-plus"></i> إضافة تاجر جديد</button>
+    ${providersOnly===true?'':`<button class="btn btn-primary" style="margin-bottom:14px" onclick="openAdminMerchantForm()"><i class="fa-solid fa-plus"></i> إضافة تاجر جديد</button>`}
     <div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${filter===k?'active':''}" onclick="S.aMerchFilter='${k}';renderMain()">${l}</button>`).join('')}</div>
     ${list.length? `<div class="list-gap">${list.map(m=>{
       const st = MERCHANT_STATUS[m.status]||{};
@@ -5196,6 +5205,7 @@ function renderAdminUsers(){
           ${u.role==='CUSTOMER' && !u.merchantId && !u.deliveryAgentId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT')"><i class="fa-solid fa-store"></i> تعيين تاجر</button><button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','DELIVERY')"><i class="fa-solid fa-motorcycle"></i> تعيين مندوب</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT','service')"><i class="fa-solid fa-calendar-check"></i> مقدم خدمة</button>`:''}` : ''}
           ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
           ${u.role==='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openMarketerRate('${u._id}')"><i class="fa-solid fa-percent"></i> نسبته ${mkRate(u)}%</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="removeMarketer('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء المسوّق</button>` : ''}
+          ${(u.role==='MERCHANT'||u.role==='DELIVERY') ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="resetMemberToCustomer('${u._id}')"><i class="fa-solid fa-rotate-left"></i> تغيير الصفة لعميل</button>` : ''}
           ${u.role!=='ADMIN' && u.role!=='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToAdmin('${u._id}')"><i class="fa-solid fa-user-shield"></i> أدمن مساعد</button>` : ''}
           ${u.role==='ADMIN' && u.adminRole==='STAFF' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToSuperAdmin('${u._id}')"><i class="fa-solid fa-crown"></i> ترقية لإدارة الموقع</button>` : ''}
           ${u.role==='ADMIN' && u._id!==S.user.uid ? `<button class="btn btn-danger btn-sm" style="width:auto" onclick="demoteAdmin('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء صلاحية الإدارة</button>` : ''}
