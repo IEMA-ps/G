@@ -39,7 +39,7 @@ const bootCode=html.slice(html.indexOf('async function bootAuthUser(user)'),html
 let stored, writes=0;
 const snap=()=>({exists:()=>!!stored,data:()=>stored});
 const bootCtx={...ctx,URLSearchParams,authEpoch:0,clearSubs(){},resetSession(){},showSignedOut(){},S:{},needsEmailVerification:()=>false,
- db:{},doc:()=>({}),getDoc:async()=>snap(),runTransaction:async(db,fn)=>fn({get:async()=>snap(),set:(ref,p)=>{stored=p;writes++}}),
+ TermsConsent:{askGoogleConsent:async()=>true,TERMS_VERSION:'2026-11-24'},serverTimestamp:()=>123,UI:{toast(){}},db:{},doc:()=>({}),getDoc:async()=>snap(),runTransaction:async(db,fn)=>fn({get:async()=>snap(),set:(ref,p)=>{stored=p;writes++}}),
  googleProfile:g,userDefaults:()=>({}),nowMs:()=>123,updateDoc:async()=>{},loadCart(){},loadWishlist(){},
  location:{pathname:'/',search:''},routeFromLocation:()=>null,routeURL:()=>'/customer/home',defaultTabForRole:()=> 'home',history:{replaceState(){}},subscribeShared(){},subscribeAdmin(){},renderShell(){},Auth:A};
 vm.createContext(bootCtx);vm.runInContext(bootCode,bootCtx);
@@ -61,4 +61,12 @@ bootCtx.auth.currentUser=googleUser;bootCtx.getDoc=async()=>{throw {code:'permis
 await assert.rejects(bootCtx.bootAuthUser(googleUser),x=>x.bootStage==='profile-read' && x.code==='permission-denied');
 bootCtx.getDoc=async()=>snap();stored=null;bootCtx.runTransaction=async()=>{throw {code:'unavailable'}};
 await assert.rejects(bootCtx.bootAuthUser(googleUser),x=>x.bootStage==='profile-create' && x.code==='unavailable');
+// Canceling terms for a new Google profile must never write a profile or attribution.
+let consentAsked=0,signouts=0;
+bootCtx.getDoc=async()=>snap();stored=null;
+bootCtx.TermsConsent.askGoogleConsent=async()=>{consentAsked++;return false;};
+bootCtx.signOut=async()=>{signouts++;};
+await bootCtx.bootAuthUser(googleUser);assert.equal(consentAsked,1);assert.equal(signouts,1);assert.equal(writes,1);
+// Existing users must not be prompted or have consent backfilled silently.
+stored={id:'u',role:'CUSTOMER'};await bootCtx.bootAuthUser(googleUser);assert.equal(consentAsked,1);
 console.log('PASS: Auth policy/UI, profile preservation and stage diagnostics, no external requests');
