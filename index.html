@@ -512,12 +512,12 @@ import { MARKETING_CONFIG } from "/marketing-config.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
+  getAuth, connectAuthEmulator, onAuthStateChanged, createUserWithEmailAndPassword,
   signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail, sendEmailVerification, reload,
   updatePassword, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider, signInWithPopup
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
-  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  getFirestore, connectFirestoreEmulator, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   collection, query, where, orderBy, onSnapshot, serverTimestamp,
   writeBatch, runTransaction, increment, limit, startAfter, documentId
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
@@ -552,7 +552,11 @@ const fbApp = initializeApp(firebaseConfig);
 if(MARKETING_CONFIG.backendEnabled && MARKETING_CONFIG.appCheckSiteKey){
   initializeAppCheck(fbApp, {provider:new ReCaptchaV3Provider(MARKETING_CONFIG.appCheckSiteKey),isTokenAutoRefreshEnabled:true});
 }
+// وضع الاختبار: يشتغل فقط على localhost مع ?emulator=1، ومستحيل يشتغل على الدومين الحقيقي
+const EMU_Q = new URLSearchParams(location.search);
+const EMULATOR = ['localhost','127.0.0.1'].includes(location.hostname) && EMU_Q.get('emulator')==='1';
 const auth = getAuth(fbApp);
+if(EMULATOR) connectAuthEmulator(auth, 'http://127.0.0.1:'+(Number(EMU_Q.get('authPort'))||9099), {disableWarnings:true});
 auth.languageCode = 'ar';
 const BACKEND_REGION = 'europe-west1';   // لازم تطابق REGION في functions/index.js
 const fns = getFunctions(fbApp, BACKEND_REGION);
@@ -564,8 +568,11 @@ async function callFn(name, data){
 }
 // كاش دائم في المتصفح: الزيارات التالية بتقرأ من الجهاز وتحسب بس اللي اتغيّر (توفير كبير في القراءات)
 let db;
+if(EMULATOR){ db = getFirestore(fbApp); connectFirestoreEmulator(db, '127.0.0.1', Number(EMU_Q.get('fsPort'))||8080); }
+else {
 try{ db = initializeFirestore(fbApp, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); }
 catch(e){ db = getFirestore(fbApp); }
+}
 
 const uid = () => crypto.randomUUID();
 // 12 uniform base32 characters provide 60 random bits without I, O, 0 or 1.
