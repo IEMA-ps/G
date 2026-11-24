@@ -1,4 +1,4 @@
-export const TERMS_VERSION = '2026-11-24';
+export const TERMS_VERSION = '2026-11-24.2';
 export const TERMS_URL = '/terms.html';
 
 export function requireSignupConsent(document) {
