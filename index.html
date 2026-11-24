@@ -497,6 +497,7 @@ img{max-width:100%; display:block;}
 
 <script src="/qrcode.js"></script>
 <script type="module">
+import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -537,7 +538,7 @@ import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPasswor
 import { requestMessage, requestForm } from '/support-requests.js?v=marketer-join-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
-import * as MerchantPlans from '/merchant-plans.js?v=map-link-1';
+import * as MerchantPlans from '/merchant-plans.js?v=offer2-1';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE",
@@ -1521,7 +1522,7 @@ window.openSubscribe = (planId)=>{
   const offer=MerchantPlans.marketerOfferFor(S.myMerchant,p,S.settings),shownPrice=offer?offer.price:p.price;
   UI.openModal(`
     <div class="modal-head"><h3>${upg?'طلب ترقية إلى':'الاشتراك في'} «${esc(p.name)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: 6 شهور بـ ${fmtMoney(offer.price)}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
+    <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: ${offer.months||6} ${(offer.months||6)>10?'شهرًا':'شهور'} بـ ${fmtMoney(offer.price)}${offer.offerId===MarketerOffer.OFFER2_ID?' (رسوم التعاقد). عمولة الطلبات 2% مستمرة خلال فترة العرض، وبعدها الأسعار العادية':''}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
     ${upg?`<div class="hint-box" style="margin-bottom:12px">أنت بتطلب تنقل من الباقة التعريفية لباقة الطلبات. الباقة الجديدة هتبدأ يوم ما الإدارة تعتمد الطلب بعد تأكيد الدفع. باقي مدة باقتك التعريفية مش بيتخصم من سعر الترقية. الطلب هيروح للإدارة تراجعه.</div>`:''}
     <div class="sub-payment-guide"><b>إزاي تدفع وتفعّل الاشتراك؟</b>
       <ol><li>راجع الباقة والمبلغ والمدة اللي فوق.</li><li>حوّل المبلغ الموضّح بالطريقة دي:<div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></li><li>اكتب رقم عملية التحويل في الخانة تحت، واضغط «إرسال طلب الاشتراك».</li><li>استنى مراجعة الإدارة وتأكيد استلام المبلغ. إرسال الطلب مش تفعيل تلقائي.</li></ol>
@@ -1690,9 +1691,10 @@ async function activateNewSubscription(subId,input){
     const terms=(sub.replace&&input.grantedByAdmin)?MerchantPlans.replaceTermFor(m,p):sub.upgrade?MerchantPlans.upgradeTermFor(m,p):MerchantPlans.termFor(m,p),marketerId=m.marketerId||null;
     const basePct=p.marketerPercent!=null?p.marketerPercent:(settings.marketerSubPercent??10);
     const tierBonus=marketerId?mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId&&x.status==='ACTIVE').length).cur.bonus:0;
-    const pct=marketerId?Math.min(100,basePct+tierBonus):0;
+    const flat=MarketerOffer.approvalAmounts({offerId:sub.offerId,marketerId,merchantId:m.id,subs:S.allSubs||[],settings});
+    const pct=flat?0:marketerId?Math.min(100,basePct+tierBonus):0;
     const paid=offer?offer.price:p.price; // marketer share is computed on what the merchant actually paid
-    tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:paid,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:roundMoney(paid*pct/100),...(Program.enabled()?{marketerBasePercent:marketerId?basePct:0,marketerBaseAmount:marketerId?roundMoney(paid*basePct/100):0}:{})},{merge:true});
+    tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:paid,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:flat?flat.marketerAmount:roundMoney(paid*pct/100),...(flat?{marketerBonus:flat.marketerBonus}:{}),...(Program.enabled()?{marketerBasePercent:marketerId&&!flat?basePct:0,marketerBaseAmount:marketerId&&!flat?roundMoney(paid*basePct/100):0}:{})},{merge:true});
     tx.update(mr,{...terms,...(offer?{marketerOfferUsed:true,marketerOfferUsedAt:nowMs()}:{})});
     tx.set(doc(db,'publicMerchantProfiles',m.id),publicMerchantData({...m,...terms}));
   });
@@ -1731,7 +1733,8 @@ function renderAdminSubscriptions(){
       <div class="field"><label>مصدر نسبة المسوّق</label><select id="ssSource"><option value="SUBSCRIPTIONS" ${mkSource()==='SUBSCRIPTIONS'?'selected':''}>من الاشتراكات فقط</option><option value="ORDERS" ${mkSource()==='ORDERS'?'selected':''}>من عمولة الطلبات فقط</option><option value="BOTH" ${mkSource()==='BOTH'?'selected':''}>الاثنين</option></select></div>
       <div class="field"><label>نسبة المسوّق الافتراضية من الاشتراك (%) — لو الباقة ماحددتش نسبتها</label><input id="ssPct" type="number" step="0.1" min="0" max="100" value="${st.marketerSubPercent!=null?st.marketerSubPercent:10}"></div>
       <div class="field"><label>الباك إند (Cloud Functions)</label><select id="ssBackend"><option value="0" ${!st.useBackend?'selected':''}>غير مفعّل (الواجهة تكتب مباشرة)</option><option value="1" ${st.useBackend?'selected':''}>مفعّل (اعتماد الاشتراكات والسحب وكلمات المرور من السيرفر)</option></select><div style="font-size:11.5px;color:var(--ink-soft);margin-top:4px">فعّله بعد نشر الدوال (deploy) بس، وإلا العمليات هتفشل.</div></div>
-      <div class="field"><label>عرض كود المسوّق: 6 شهور بـ 300 جنيه (الباقة التعريفية فقط)</label><select id="ssOffer"><option value="0" ${st.marketerOfferEnabled!==true?'selected':''}>متوقف</option><option value="1" ${st.marketerOfferEnabled===true?'selected':''}>مفعّل (للتاجر المسجّل بكود مسوّق، مرة واحدة)</option></select></div>
+      <div class="field"><label>عرض كود المسوّق (واحد فقط يعمل في نفس الوقت)</label><select id="ssOffer"><option value="0" ${!(st.marketerOfferEnabled===true||st.marketerOffer2Enabled===true)?'selected':''}>متوقف</option><option value="2" ${st.marketerOffer2Enabled===true?'selected':''}>العرض الجديد: رسوم تعاقد + باقة الطلبات (للتاجر المسجّل بكود مسوّق، مرة واحدة)</option><option value="1" ${st.marketerOffer2Enabled!==true&&st.marketerOfferEnabled===true?'selected':''}>العرض القديم: 6 شهور بـ 300 جنيه (الباقة التعريفية فقط)</option></select></div>
+      ${(()=>{const c=MarketerOffer.offer2Config(st),f=(id,l,v)=>`<div class="field"><label>${l}</label><input id="${id}" type="number" min="0" step="1" value="${v}"></div>`;return `<div class="card" style="margin-bottom:12px"><b>إعدادات العرض الجديد</b>${f('ssO2Fee','رسوم التعاقد (ج)',c.fee)}<div class="field"><label>مدة باقة الطلبات (شهور)</label><select id="ssO2Months">${[3,6,12].map(n=>`<option value="${n}" ${c.months===n?'selected':''}>${n}</option>`).join('')}</select></div>${f('ssO2Flat','مبلغ المسوّق عن كل متجر دفع (ج)',c.flat)}${f('ssO2Bonus','المكافأة (ج)',c.bonus)}${f('ssO2Target','عدد المتاجر المطلوب للمكافأة',c.target)}</div>`;})()}
       <div class="field"><label>الحد الأدنى لسحب المسوّق (جنيه)</label><input id="ssMinW" type="number" min="0" step="1" value="${st.marketerMinWithdraw!=null?st.marketerMinWithdraw:100}"></div>
       <div class="field"><label>مستويات المسوّق — عدد المحلات النشطة للفضي / الذهبي</label>
         <div style="display:flex;gap:8px"><input id="ssT2" type="number" min="1" value="${mkTiers()[1].min}" placeholder="فضي"><input id="ssT3" type="number" min="2" value="${mkTiers()[2].min}" placeholder="ذهبي"></div></div>
@@ -1749,13 +1752,15 @@ window.saveSubSettings = async ()=>{
   const marketerCommissionSource = document.getElementById('ssSource').value;
   const marketerSubPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('ssPct').value)||0));
   const subPaymentInstructions = document.getElementById('ssPay').value.trim();
-  const marketerOfferEnabled = document.getElementById('ssOffer').value==='1';
+  const offerSel = document.getElementById('ssOffer').value, marketerOfferEnabled = offerSel==='1', marketerOffer2Enabled = offerSel==='2';
+  const gv = id => Math.max(0, parseFloat(document.getElementById(id).value)||0);
+  const offer2Fee=gv('ssO2Fee'), offer2Months=parseInt(document.getElementById('ssO2Months').value)||3, marketerFlatAmount=gv('ssO2Flat'), marketerBonusAmount=gv('ssO2Bonus'), marketerBonusTarget=Math.max(1,Math.round(gv('ssO2Target'))||10);
   const marketerMinWithdraw = Math.max(0, parseFloat(document.getElementById('ssMinW').value)||0);
   const t2 = Math.max(1, parseInt(document.getElementById('ssT2').value)||10), t3 = Math.max(t2+1, parseInt(document.getElementById('ssT3').value)||30);
   const nb = id => Math.max(0, parseFloat(document.getElementById(id).value)||0);
   const marketerTiers = [{name:'برونزي',min:0,bonus:nb('ssB1')},{name:'فضي',min:t2,bonus:nb('ssB2')},{name:'ذهبي',min:t3,bonus:nb('ssB3')}];
   if(subsEnforced && !confirm('تفعيل الإلزام هيخفي كل المتاجر اللي مالهاش اشتراك ساري عن العملاء فورًا. متأكد؟')) return;
-  await setDoc(doc(db,'settings','app'), {subsEnforced, useBackend:useBackendSel, marketerCommissionSource, marketerSubPercent, subPaymentInstructions, marketerTiers, marketerMinWithdraw, marketerOfferEnabled}, {merge:true});
+  await setDoc(doc(db,'settings','app'), {subsEnforced, useBackend:useBackendSel, marketerCommissionSource, marketerSubPercent, subPaymentInstructions, marketerTiers, marketerMinWithdraw, marketerOfferEnabled, marketerOffer2Enabled, offer2Fee, offer2Months, marketerFlatAmount, marketerBonusAmount, marketerBonusTarget}, {merge:true});
   await logAudit('تعديل إعدادات الاشتراكات', `إلزام: ${subsEnforced} — مصدر: ${marketerCommissionSource} — ${marketerSubPercent}%`);
   UI.toast('تم الحفظ ✅');
 };
@@ -1858,7 +1863,7 @@ function mkCalc(rate, merchants, subOrders, subs, marketerId){
     const earnOrders = useOrd ? roundMoney(platform*rate/100) : 0;
     const ss = (subs||[]).filter(x=>x.merchantId===m.id && x.status==='APPROVED' && (!marketerId || x.marketerId===marketerId));
     const subsTotal = roundMoney(ss.reduce((a,x)=>a+(x.price||0),0));
-    const earnSubs = useSub ? roundMoney(ss.reduce((a,x)=>a+(x.marketerAmount||0),0)) : 0;
+    const earnSubs = useSub ? roundMoney(ss.reduce((a,x)=>a+(x.marketerAmount||0)+(x.marketerBonus||0),0)) : 0;
     return { m, orders:os.length, gross, platform, earnOrders, subsCount:ss.length, subsTotal, earnSubs, earn: roundMoney(earnOrders+earnSubs), expired: useOrd && months>0 && Date.now()>until };
   });
   return { rows, gross:roundMoney(rows.reduce((a,r)=>a+r.gross,0)), earn:roundMoney(rows.reduce((a,r)=>a+r.earn,0)) };
@@ -1931,6 +1936,7 @@ function renderMarketerDashboard(){
   const t = mkMyTotals(); const ms = S.mkMerchants||[];
   const code = S.profile.referralCode || '';
   return `
+    ${(()=>{const bs=MarketerOffer.bonusState(S.mkSubs||[],S.user.uid,S.settings);return bs.cfg.on||bs.count>0?MarketerOffer.bonusCardHTML(bs,esc):'';})()}
     ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
     <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك بتتحسب من اشتراكات محلاتك اللي الإدارة اعتمدتها، حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
@@ -2179,7 +2185,7 @@ function renderAdminMarketers(){
     return `<div class="card">
       <div class="row-between"><b style="font-size:14px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b><span class="badge-chip">${esc(mkTier(ms.filter(m=>m.status==='ACTIVE').length).cur.name)}</span></div>
       <div style="font-size:12px;color:var(--ink-soft);margin:4px 0 8px">${esc(u.phone||'')} · كود: <b>${esc(u.referralCode||'')}</b> · محلات: ${ms.length} (${ms.filter(m=>m.status==='ACTIVE').length} نشط)</div>
-      <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>مبيعات محلاته المسلّمة</span><span>${fmtMoney(c.gross)}</span></div>
+      ${(()=>{const bs=MarketerOffer.bonusState(S.allSubs||[],u._id,S.settings);return bs.cfg.on||bs.count>0?`<div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>متاجر العرض الدافعة</span><span>${bs.count} من ${bs.target} · ${bs.credited?'المكافأة اتضافت':bs.reached?'المكافأة متحققة':'المكافأة مقفولة'}</span></div>`:'';})()}<div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>مبيعات محلاته المسلّمة</span><span>${fmtMoney(c.gross)}</span></div>
       <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>إجمالي نسبته</span><span>${fmtMoney(programEarn)}</span></div>
       <div class="summary-row" style="font-size:12.5px;display:flex;justify-content:space-between;margin-bottom:3px"><span>المصروف</span><span>-${fmtMoney(paid)}</span></div>
       <div class="summary-row" style="font-size:13.5px;display:flex;justify-content:space-between;font-weight:800;border-top:1px dashed var(--line);padding-top:6px"><span>الرصيد المستحق</span><span style="color:var(--success)">${fmtMoney(bal)}</span></div>

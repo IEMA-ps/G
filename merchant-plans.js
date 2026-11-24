@@ -1,5 +1,14 @@
 // Merchant plan v2. Pure helpers: no network, authentication, or database writes.
 export const MODEL = 'MERCHANT_V2';
+export const OFFER2_ID='MARKETER_ORDERING_TRIAL';
+export const OFFER2_DEFAULTS=Object.freeze({fee:250,months:3,flat:100,bonus:250,target:10});
+const num=(v,d)=>{const n=Number(v);return Number.isFinite(n)&&n>=0?Math.round(n*100)/100:d;};
+export function offer2Config(settings){
+  const s=settings||{},months=Number(s.offer2Months);
+  const target=Math.round(Number(s.marketerBonusTarget));
+  return {on:s.marketerOffer2Enabled===true,fee:num(s.offer2Fee,OFFER2_DEFAULTS.fee),months:[3,6,12].includes(months)?months:OFFER2_DEFAULTS.months,flat:num(s.marketerFlatAmount,OFFER2_DEFAULTS.flat),bonus:num(s.marketerBonusAmount,OFFER2_DEFAULTS.bonus),target:Number.isFinite(target)&&target>=1&&target<=1000?target:OFFER2_DEFAULTS.target};
+}
+
 export const PLAN_TYPES = { PROFILE:'PROFILE', ORDERING:'ORDERING' };
 export const PLAN_TEMPLATES = [
   ...[[3,200],[6,400],[12,600]].map(([months,price])=>({id:`profile_${months}m_v2`,name:'الصفحة التعريفية',kind:'PROFILE',months,price})),
@@ -54,7 +63,16 @@ export function upgradeTermFor(m,p,now=Date.now()){
 export const MARKETER_OFFER = { id:'MARKETER_PROFILE_6M', planId:'profile_6m_v2', kind:'PROFILE', months:6, price:300 };
 export const marketerOfferOn = settings => settings?.marketerOfferEnabled===true;
 export function marketerOfferFor(m,p,settings){
-  if(!marketerOfferOn(settings) || !m?.marketerId || m.marketerOfferUsed) return null;
+  if(!m?.marketerId || m.marketerOfferUsed) return null;
+  const o2=offer2Config(settings);
+  if(o2.on){
+    // New launch offer: ORDERING plan for the configured months at the contract fee. Replaces the old offer while on.
+    if(!isNewMerchant(m) || !isNewPlan(p) || p.active===false) return null;
+    if((p.id||p._id)!==`ordering_${o2.months}m_v2` || p.kind!=='ORDERING' || p.months!==o2.months) return null;
+    if(hasTerm(m) && modeOf(m)!=='ORDERING') return null;
+    return {offerId:OFFER2_ID,price:o2.fee,listPrice:p.price,months:o2.months};
+  }
+  if(!marketerOfferOn(settings)) return null;
   if(!isNewMerchant(m) || !isNewPlan(p) || p.active===false) return null;
   if((p.id||p._id)!==MARKETER_OFFER.planId || p.kind!==MARKETER_OFFER.kind || p.months!==MARKETER_OFFER.months) return null;
   if(hasTerm(m) && modeOf(m)!==MARKETER_OFFER.kind) return null;
