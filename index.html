@@ -1179,6 +1179,8 @@ function subscribeShared(){
 }
 
 function subscribeCustomer(){
+  S.myMemberRequest=null;
+  S.unsubs.push(onSnapshot(doc(db,'memberRequests',S.user.uid), d=>{ S.myMemberRequest=d.exists()?d.data():null; render(); }, ()=>{}));
   S.unsubs.push(onSnapshot(query(collection(db,'bookings'), where('customerId','==',S.user.uid)), snap=>{ S.myBookings = snap.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time)); render(); }, ()=>{}));
   S.unsubs.push(onSnapshot(doc(db,'users',S.user.uid), d=>{
     if(d.exists()) S.profile = {...S.profile, ...d.data()};
@@ -1259,6 +1261,8 @@ function subscribeDeliveryAgent(){
 }
 
 function subscribeAdmin(){
+  S.memberRequests=[];
+  if(isSuperAdmin()) S.unsubs.push(onSnapshot(collection(db,'memberRequests'),snap=>{S.memberRequests=snap.docs.map(d=>({...d.data(),id:d.id}));render();},()=>{S.memberRequests=[];}));
   S.allUsersReady=false;S.allUsersError='';
   S.adminAttributionStatus=isSuperAdmin()?'loading':'legacy';S.adminAttributions=[];
   if(isSuperAdmin()) S.unsubs.push(onSnapshot(collection(db,'signupAttributions'),snap=>{S.adminAttributions=snap.docs.map(d=>({...d.data(),id:d.id}));S.adminAttributionStatus='ready';render();},()=>{S.adminAttributions=[];S.adminAttributionStatus='error';render();}));
@@ -3507,6 +3511,43 @@ window.openJoinRequest = (kind)=>{
   const available=!!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
   const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
   UI.openModal(requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc,Services.servicesEnabled(S.settings)):kind==='service'?typePicker('rqActivity','',esc,true,Services.SERVICE_TYPES):''));
+  addInAppRequestButton(kind);
+};
+const MR_KINDS={merchant:'store',service:'service',delivery:'courier'};
+const MR_LABELS={store:'تسجيل متجر',service:'الانضمام كمقدم خدمة',courier:'الانضمام كمندوب'};
+function memberRequestStatusHTML(){
+  const r=S.myMemberRequest;if(!r) return '';
+  const st=r.status==='APPROVED'?['تمت الموافقة','var(--teal)']:r.status==='REJECTED'?['مرفوض','var(--danger)']:['قيد المراجعة','var(--ink-soft)'];
+  return `<div class="hint-box" role="status" style="margin-bottom:12px">طلبك (${esc(MR_LABELS[r.kind]||'')}): <b style="color:${st[1]}">${st[0]}</b>${r.status==='REJECTED'?' . تقدر تقدّم طلب جديد.':''}</div>`;
+}
+function addInAppRequestButton(kind){
+  if(!MR_KINDS[kind]||S.settings.memberRequestsEnabled!==true) return;
+  const form=document.querySelector('form[onsubmit^="prepareSupportRequest"]'),sub=form?.querySelector('button[type=submit]');if(!sub) return;
+  const note=[...form.querySelectorAll('p')].find(p=>/مش بيتحفظ في التطبيق/.test(p.textContent));
+  const intro=document.querySelector('#modalBody p, .modal p');
+  const pending=S.myMemberRequest&&S.myMemberRequest.status!=='REJECTED';
+  const b=document.createElement('button');b.type='button';b.className='btn btn-primary';b.style.marginBottom='8px';b.id='rqInApp';
+  b.textContent=pending?'عندك طلب قيد المراجعة أو تمت الموافقة عليه':'إرسال الطلب للإدارة داخل التطبيق';b.disabled=!!pending;b.setAttribute('onclick',`submitMemberRequest('${kind}')`);
+  sub.parentNode.insertBefore(b,sub);sub.className='btn btn-ghost';sub.textContent='أو أرسل نسخة على واتساب';
+  const msg=document.createElement('p');msg.id='rqInAppMsg';msg.setAttribute('role','status');msg.style.cssText='font-size:13px;line-height:1.8;margin-bottom:8px';b.parentNode.insertBefore(msg,b);
+}
+window.submitMemberRequest = async kind=>{
+  if(S.role!=='customer'||!auth.currentUser||!MR_KINDS[kind]||S.settings.memberRequestsEnabled!==true) return;
+  const btn=document.getElementById('rqInApp'),err=document.getElementById('requestError'),msg=document.getElementById('rqInAppMsg');if(!btn||btn.disabled) return;
+  err.textContent='';btn.disabled=true;
+  try{
+    const form=document.querySelector('form[onsubmit^="prepareSupportRequest"]');
+    if(!form.reportValidity()){btn.disabled=false;return;}
+    const data=Object.fromEntries(new FormData(form));if(kind==='merchant'||kind==='service')data.activity=StoreTypes.read('rqActivity');data.area=EgyptLocations.address('rqLoc',data.area);
+    requestMessage(kind,data,{});
+    const c=(k,max=120)=>String(data[k]||'').trim().replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,max);
+    const u=auth.currentUser.uid,doc_={id:u,userId:u,kind:MR_KINDS[kind],name:c('name'),phone:c('phone',30),address:c('area',200),status:'PENDING',createdAt:nowMs()};
+    if(kind!=='delivery'){doc_.business=c('business');doc_.activity=c('activity');const mc=c('marketerCode',64).toUpperCase();if(mc)doc_.marketerCode=mc;}else doc_.vehicle=c('vehicle',50);
+    const n=c('notes',400);if(n)doc_.notes=n;
+    if(S.myMemberRequest&&S.myMemberRequest.status==='REJECTED') await deleteDoc(doc(db,'memberRequests',u));
+    await setDoc(doc(db,'memberRequests',u),doc_);
+    msg.textContent='وصل طلبك للإدارة وهو قيد المراجعة. هتشوف حالته في صفحتك.';msg.style.color='var(--teal)';
+  }catch(e){ btn.disabled=false; err.textContent=e?.code==='permission-denied'?'تعذّر إرسال الطلب حاليًا. جرّب واتساب أو حاول لاحقًا.':(e?.message||'تعذّر إرسال الطلب'); }
 };
 window.prepareSupportRequest = (ev,kind)=>{
   ev.preventDefault();
@@ -3546,7 +3587,7 @@ function renderProfile(){
         <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
       </div>
     </div>`:''}
-    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3><p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('service')">طلب الانضمام كمقدم خدمة</button>`:''}<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
+    ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3>${memberRequestStatusHTML()}<p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('service')">طلب الانضمام كمقدم خدمة</button>`:''}<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
     <div class="section-head"><h3>الحساب</h3></div>
     <div class="list-gap">
       <div class="card menu-row" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="go('addresses')"><span><i class="fa-solid fa-location-dot" style="color:var(--teal);margin-left:8px"></i> عناويني</span><i class="fa-solid fa-chevron-left"></i></div>
@@ -5087,6 +5128,7 @@ function renderAdminSettings(){
   if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات دي لإدارة الموقع بس.</p></div>`;
   const s = S.settings;
   return `
+    <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام داخل التطبيق</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setMemberRequests" ${s.memberRequestsEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">طلبات التاجر ومقدم الخدمة والمندوب تظهر في قائمة الأعضاء وتستنى موافقتك. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveMemberRequestsSwitch()">حفظ</button></div>
     <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-calendar-check" style="color:var(--teal)"></i> قسم الخدمات (حجز مواعيد)</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setServices" ${s.servicesEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">عيادات ومدرسين وصيانة منزلية. المزود تاجر بنوع خدمات، بيشترك بنفس الباقات، وبيدير مواعيده وحجوزاته من لوحته. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveServicesSwitch()">حفظ</button></div>
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 14px;font-size:15px">إعدادات عامة للمنصة</h3>
@@ -5178,7 +5220,7 @@ window.searchAdminMembers=value=>{
 };
 function renderAdminUsers(){
   const search=S.aUserSearch||'',q=search.trim().toLocaleLowerCase();
-  const head=memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
+  const head=memberRequestsHTML()+memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
   if(S.allUsersError)return head+`<section class="card" role="alert">${esc(S.allUsersError)}</section>`;
   if(S.aUserView==='codes')return head+acquisitionHTML({users:S.allUsers,usersReady:S.allUsersReady===true,attributions:isSuperAdmin()?S.adminAttributions||[]:[],status:S.adminAttributionStatus||'loading',search},esc);
   if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
@@ -5219,6 +5261,43 @@ function renderAdminUsers(){
     ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> تغيير صلاحيات الأعضاء لإدارة الموقع بس.</div>` : ''}
   `;
 }
+function memberRequestsHTML(){
+  if(!isSuperAdmin()) return '';
+  const list=(S.memberRequests||[]).filter(r=>r.status==='PENDING').sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  if(!list.length&&S.settings.memberRequestsEnabled!==true) return '';
+  return `<section class="card" style="margin-bottom:16px"><h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام (${list.length})</h3>${list.length?list.map(r=>`<div class="hint-box" style="margin-bottom:10px;line-height:1.9"><b>${esc(MR_LABELS[r.kind]||'')}</b> . ${esc(r.name)} . ${esc(r.phone)}<br>${r.business?esc(r.business)+' . '+esc(r.activity||'')+'<br>':''}${r.vehicle?'وسيلة التوصيل: '+esc(r.vehicle)+'<br>':''}${esc(r.address||'')}${r.marketerCode?'<br>كود المسوّق: '+esc(r.marketerCode):''}${r.notes?'<br>ملاحظات: '+esc(r.notes):''}<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveMemberRequest('${esc(r.id)}')">موافقة</button><button class="btn btn-ghost btn-sm" style="flex:1" onclick="rejectMemberRequest('${esc(r.id)}')">رفض</button></div></div>`).join(''):'<p style="font-size:13px;color:var(--ink-soft);margin:0">مفيش طلبات جديدة.</p>'}</section>`;
+}
+window.approveMemberRequest = async rid=>{
+  if(!isSuperAdmin()) return;
+  const r=(S.memberRequests||[]).find(x=>x.id===rid);if(!r||r.status!=='PENDING') return;
+  const role=r.kind==='courier'?'DELIVERY':'MERCHANT';
+  if(!confirm('الموافقة هتنشئ السجل قيد المراجعة وتربطه بحساب العضو. تكمل؟')) return;
+  try{
+    const input={name:role==='MERCHANT'?r.business:r.name,manager:r.name,phone:r.phone,whatsapp:r.phone,activity:r.activity||'',vehicle:r.vehicle||'',address:r.address||'',description:'',marketerCode:r.marketerCode||''};
+    if(r.kind==='service'&&!Services.SERVICE_TYPES.includes(input.activity)) throw Error('missing-store-details');
+    if(input.marketerCode){
+      const matches=await getDocs(query(collection(db,'users'),where('referralCode','==',input.marketerCode),limit(2)));
+      if(matches.docs.length===1&&matches.docs[0].data().role==='MARKETER') input.marketerId=matches.docs[0].id; else input.marketerCode='';
+    }
+    const recordId=(role==='MERCHANT'?'merch_':'agent_')+uid();
+    await createMemberRecord({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId:rid,recordId,role,input,now:nowMs()});
+    try{await updateDoc(doc(db,'memberRequests',rid),{status:'APPROVED',reviewedAt:nowMs(),reviewedBy:auth.currentUser.uid});}catch(e){UI.toast('تم إنشاء السجل، لكن تعذّر تحديث حالة الطلب');return;}
+    UI.toast('تمت الموافقة وربط العضو');
+    try{await logAudit('موافقة على طلب انضمام',rid+' / '+recordId);}catch(e){}
+  }catch(e){ UI.toast(e?.message==='customer-required'?'العضو لم يعد عميلًا متاحًا للتعيين':e?.message==='record-already-exists'?'السجل موجود بالفعل':'تعذّرت الموافقة. حدّث الصفحة وحاول تاني'); }
+};
+window.rejectMemberRequest = async rid=>{
+  if(!isSuperAdmin()) return;
+  if(!confirm('رفض الطلب؟')) return;
+  try{await updateDoc(doc(db,'memberRequests',rid),{status:'REJECTED',reviewedAt:nowMs(),reviewedBy:auth.currentUser.uid});UI.toast('تم رفض الطلب');try{await logAudit('رفض طلب انضمام',rid);}catch(e){}}catch(e){UI.toast('تعذّر رفض الطلب');}
+};
+window.saveMemberRequestsSwitch = async ()=>{
+  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
+  const memberRequestsEnabled=document.getElementById('setMemberRequests').checked;
+  await setDoc(doc(db,'settings','app'),{memberRequestsEnabled},{merge:true});
+  await logAudit('تعديل طلبات الانضمام داخل التطبيق',memberRequestsEnabled?'تشغيل':'إيقاف');
+  UI.toast(memberRequestsEnabled?'تم تشغيل الطلبات داخل التطبيق ✅':'تم إيقاف الطلبات داخل التطبيق');
+};
 window.openAssignMemberRole = (userId,role,kind)=>{
   const svc=role==='MERCHANT'&&kind==='service';
   if(!isSuperAdmin()) return;
@@ -5260,7 +5339,7 @@ window.saveMemberRole = async (userId,role)=>{
   }catch(e){
     btn.disabled=false;
     const messages={'marketer-unavailable':'كود المسوّق غير صالح أو غير فريد. راجعه قبل إنشاء المتجر.','invalid-contact':'أدخل الاسم ورقم هاتف وواتساب صحيحين.','missing-store-details':'أدخل نوع النشاط وعنوان المتجر.','missing-courier-details':'أدخل وسيلة التوصيل ومنطقة العمل.','customer-required':'العضو لم يعد عميلًا غير مربوط. أغلق النافذة وراجع حسابه.','record-already-exists':'السجل موجود بالفعل. أغلق النافذة وحدّث قائمة الأعضاء قبل المحاولة.','super-required':'الإنشاء والتعيين متاحان لإدارة الموقع فقط.'};
-    error.textContent=(e?.message==='invalid-map-link'?'أدخل رابط Google Maps صحيح':messages[e?.message])||'تعذّر تأكيد الإنشاء. حدّث قائمة الأعضاء قبل المحاولة مجددًا. لا يتم حفظ ربط جزئي.';
+    error.textContent=(e?.message==='invalid-map-link'?'أدخل رابط Google Maps صحيح':messages[e?.message])||(/^اختار نوع/.test(e?.message||'')?(draft.svc?'اختار نوع الخدمة من القايمة.':e.message):'')||'تعذّر تأكيد الإنشاء. حدّث قائمة الأعضاء قبل المحاولة مجددًا. لا يتم حفظ ربط جزئي.';
   }
 };
 window.promoteToAdmin = async (uid_)=>{
