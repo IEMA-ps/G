@@ -2,7 +2,7 @@
 // Every slot is OFF until the main admin turns it on and gives it a valid https image.
 export const AD_SLOTS=[
   {id:'mkJoin',label:'أعلى نافذة طلب الانضمام كمسوّق'},
-  {id:'mkDash',label:'تحت الفيديو فى لوحة المسوق'},
+  {id:'mkDash',label:'أعلى لوحة المسوق'},
   {id:'custHome',label:'الصفحة الرئيسية للعميل'}
 ];
 export const AD_SLOT_IDS=AD_SLOTS.map(s=>s.id);

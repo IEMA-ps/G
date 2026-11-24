@@ -498,8 +498,7 @@ img{max-width:100%; display:block;}
 <script src="/qrcode.js"></script>
 <script type="module">
 import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
-import * as MarketerVideo from '/marketer-video.js?v=video-2';
-import * as AdSlots from '/ad-slots.js?v=ads-1';
+import * as AdSlots from '/ad-slots.js?v=ads-2';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -532,7 +531,7 @@ installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
-import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
+import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-2';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
@@ -1436,9 +1435,10 @@ const addMonths = MerchantPlans.addCalendarMonths;
 const fmtDay = ms => new Date(ms).toLocaleDateString('ar-EG');
 const subOk = m => !!m && (m.subEndsAt||0) > Date.now();
 // Used only when the admin has not supplied payment instructions. No database write.
-const DEFAULT_SUB_PAYMENT_INSTRUCTIONS = 'فودافون كاش على رقم 01067666047';
+/* رقم التحويل مبقاش مكتوب فى الموقع ولا فى الإعدادات العامة: التاجر بيطلبه من الدعم على واتساب. */
 function subscriptionPaymentInstructions(){
-  return String(S.settings.subPaymentInstructions||'').trim() || DEFAULT_SUB_PAYMENT_INSTRUCTIONS;
+  const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، عايز رقم التحويل لدفع اشتراك متجري');
+  return href?`اطلب رقم التحويل من الدعم على واتساب: <a href="${esc(href)}" target="_blank" rel="noopener" style="font-weight:700">تواصل مع الدعم</a>`:'اطلب رقم التحويل من الدعم (واتساب الدعم لسه متضافش).';
 }
 function availableMerchantPlans(){
   return (S.plans||[]).filter(p=>p.active!==false && (!S.settings.merchantPlansV2 || MerchantPlans.isNewPlan(p)));
@@ -1503,7 +1503,7 @@ function renderMerchantSubscription(){
     </div>
     ${S.settings.merchantPlansV2?`<div class="hint-box" style="margin-bottom:14px">الباقة التعريفية بتعرض مكان متجرك وأرقامك بس. باقة الطلبات بتضيف المنتجات واستقبال الطلبات وتجهيزها للمندوب. فيها عمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، من غير رسوم التوصيل، والدفع كاش بس. لو باقتك لسه سارية، تغيير نوعها بيكون بعد نهاية المدة.</div>`:''}
     ${pending?`<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-clock"></i> طلب «${esc(pending.planName)}» قيد المراجعة${pending.reference?` (مرجع: ${esc(pending.reference)})`:''}.</div>`:''}
-    <div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة دفع الاشتراك</b><div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></div>
+    <div class="card" style="margin-bottom:14px"><b style="font-size:13px"><i class="fa-solid fa-wallet"></i> طريقة دفع الاشتراك</b><div class="sub-payment-destination">${subscriptionPaymentInstructions()}</div></div>
     ${renderFoundingOffer({settings:S.settings,plans,merchant:m},esc,fmtMoney)}
     <div class="section-head"><h3>الباقات المتاحة</h3></div>
     ${plans.some(MerchantPlans.isNewPlan)?renderNewPlanCatalog(plans,pending):plans.length? `<div class="list-gap">${plans.map(p=>`<div class="card">
@@ -1527,7 +1527,7 @@ window.openSubscribe = (planId)=>{
     <div class="card" style="margin-bottom:12px"><div class="row-between"><span>المبلغ</span><b>${offer?`<s style="opacity:.55;font-weight:400">${fmtMoney(offer.listPrice)}</s> `:''}${fmtMoney(shownPrice)}</b></div>${offer?`<div class="hint-box" style="margin:8px 0">عرض كود المسوّق: ${offer.months||6} ${(offer.months||6)>10?'شهرًا':'شهور'} بـ ${fmtMoney(offer.price)}${offer.offerId===MarketerOffer.OFFER2_ID?' (رسوم التعاقد). عمولة الطلبات 2% مستمرة خلال فترة العرض، وبعدها الأسعار العادية':''}. مرة واحدة لكل تاجر.</div>`:''}<div class="row-between"><span>المدة</span><b>${p.months} ${p.months===1?'شهر':'أشهر'}</b></div></div>
     ${upg?`<div class="hint-box" style="margin-bottom:12px">أنت بتطلب تنقل من الباقة التعريفية لباقة الطلبات. الباقة الجديدة هتبدأ يوم ما الإدارة تعتمد الطلب بعد تأكيد الدفع. باقي مدة باقتك التعريفية مش بيتخصم من سعر الترقية. الطلب هيروح للإدارة تراجعه.</div>`:''}
     <div class="sub-payment-guide"><b>إزاي تدفع وتفعّل الاشتراك؟</b>
-      <ol><li>راجع الباقة والمبلغ والمدة اللي فوق.</li><li>حوّل المبلغ الموضّح بالطريقة دي:<div class="sub-payment-destination">${esc(subscriptionPaymentInstructions())}</div></li><li>اكتب رقم عملية التحويل في الخانة تحت، واضغط «إرسال طلب الاشتراك».</li><li>استنى مراجعة الإدارة وتأكيد استلام المبلغ. إرسال الطلب مش تفعيل تلقائي.</li></ol>
+      <ol><li>راجع الباقة والمبلغ والمدة اللي فوق.</li><li>حوّل المبلغ الموضّح على الرقم اللي الدعم هيبعته لك:<div class="sub-payment-destination">${subscriptionPaymentInstructions()}</div></li><li>اكتب رقم عملية التحويل في الخانة تحت، واضغط «إرسال طلب الاشتراك».</li><li>استنى مراجعة الإدارة وتأكيد استلام المبلغ. إرسال الطلب مش تفعيل تلقائي.</li></ol>
       ${S.myMerchant?.status!=='ACTIVE'?'<div class="hint-box">متجرك لسه محتاج موافقة الإدارة على الانضمام. استنى الموافقة قبل التحويل.</div>':''}
       <p class="welcome-note">احتفظ بإيصال التحويل. متشاركش الرقم السري أو كود تأكيد المحفظة.</p>
     </div>
@@ -1742,7 +1742,7 @@ function renderAdminSubscriptions(){
         <div style="display:flex;gap:8px"><input id="ssT2" type="number" min="1" value="${mkTiers()[1].min}" placeholder="فضي"><input id="ssT3" type="number" min="2" value="${mkTiers()[2].min}" placeholder="ذهبي"></div></div>
       <div class="field"><label>نقاط النسبة الإضافية (%) — برونزي / فضي / ذهبي</label>
         <div style="display:flex;gap:8px"><input id="ssB1" type="number" step="0.1" min="0" value="${mkTiers()[0].bonus}"><input id="ssB2" type="number" step="0.1" min="0" value="${mkTiers()[1].bonus}"><input id="ssB3" type="number" step="0.1" min="0" value="${mkTiers()[2].bonus}"></div></div>
-      <div class="field"><label>تعليمات الدفع (تظهر للتاجر: رقم فودافون كاش / انستاباي ...)</label><textarea id="ssPay">${esc(subscriptionPaymentInstructions())}</textarea></div>
+      <div class="hint-box" style="margin-bottom:12px">رقم التحويل مبقاش بيظهر فى الموقع. التاجر بيطلبه من الدعم على واتساب (رقم واتساب الدعم من الإعدادات العامة).</div>
       <button class="btn btn-primary" onclick="saveSubSettings()">حفظ</button></div>`:''}
     <div class="section-head"><h3>المشتركون الحاليون (${activeMerchants.length})</h3></div>
     ${activeMerchants.length?`<div class="list-gap">${activeMerchants.map(m=>`<div class="card row-between"><div><b style="font-size:13px">${esc(m.businessName)}</b><div style="font-size:11.5px;color:var(--ink-soft)">${esc(m.subPlanName||'')} · حتى ${fmtDay(m.subEndsAt)}</div></div></div>`).join('')}</div>`:emptyState('fa-store','لا يوجد مشتركون حاليًا','')}`;
@@ -1753,7 +1753,7 @@ window.saveSubSettings = async ()=>{
   const useBackendSel = document.getElementById('ssBackend').value==='1';
   const marketerCommissionSource = document.getElementById('ssSource').value;
   const marketerSubPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('ssPct').value)||0));
-  const subPaymentInstructions = document.getElementById('ssPay').value.trim();
+  const subPaymentInstructions = ''; // بيمسح أى رقم قديم متخزن فى الإعدادات العامة
   const offerSel = document.getElementById('ssOffer').value, marketerOfferEnabled = offerSel==='1', marketerOffer2Enabled = offerSel==='2';
   const gv = id => Math.max(0, parseFloat(document.getElementById(id).value)||0);
   const offer2Fee=gv('ssO2Fee'), offer2Months=parseInt(document.getElementById('ssO2Months').value)||3, marketerFlatAmount=gv('ssO2Flat'), marketerBonusAmount=gv('ssO2Bonus'), marketerBonusTarget=Math.max(1,Math.round(gv('ssO2Target'))||10);
@@ -1939,7 +1939,6 @@ function renderMarketerDashboard(){
   const code = S.profile.referralCode || '';
   return `
     ${(()=>{const bs=MarketerOffer.bonusState(S.mkSubs||[],S.user.uid,S.settings);return bs.cfg.on||bs.count>0?MarketerOffer.bonusCardHTML(bs,esc):'';})()}
-    ${MarketerVideo.videoCardHTML(S.settings,esc)}
     ${AdSlots.adSlotHTML(S.settings,'mkDash',esc)}
     ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
@@ -3414,7 +3413,7 @@ window.openJoinRequest = (kind)=>{
   if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery','marketer'].includes(kind)) return;
   const available=!!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
   const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
-  UI.openModal((kind==='marketer'?AdSlots.adSlotHTML(S.settings,'mkJoin',esc)+MarketerVideo.videoCardHTML(S.settings,esc):'')+requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc):''));
+  UI.openModal((kind==='marketer'?AdSlots.adSlotHTML(S.settings,'mkJoin',esc):'')+requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc):''));
 };
 window.prepareSupportRequest = (ev,kind)=>{
   ev.preventDefault();
@@ -4099,7 +4098,9 @@ const CATEGORY_SEED = [
   ['مستلزمات أطفال','ألعاب ومستلزمات ولوازم الأطفال والرضع','🧸'],
   ['مستلزمات منزلية','أدوات وتجهيزات ومستلزمات المنزل','🏠'],
   ['ورد وهدايا','باقات ورد وهدايا لكل المناسبات','💐'],
-  ['أدوات مكتبية','أدوات مكتبية وقرطاسية ومستلزمات دراسية','📚']
+  ['أدوات مكتبية','أدوات مكتبية وقرطاسية ومستلزمات دراسية','📚'],
+  ['مخابز وأفران','عيش وفطير ومخبوزات طازجة من الأفران','🥖'],
+  ['مغاسل ومكوجى','غسيل وكوي ملابس واستلام وتسليم لحد الباب','👔']
 ];
 window.seedCategories = async ()=>{
   const batch = writeBatch(db);
@@ -4995,14 +4996,6 @@ function renderAdminSettings(){
       <button class="btn btn-primary" onclick="saveAppSettings()">حفظ الإعدادات</button>
     </div>
     ${isSuperAdmin()?`<div class="card" style="margin-bottom:16px">
-      <div class="row-between" style="margin-bottom:10px">
-        <h3 style="margin:0;font-size:15px"><i class="fa-solid fa-circle-play" style="color:var(--teal)"></i> فيديو التحفيز للمسوقين</h3>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setMkVideo" ${s.marketerVideoEnabled===true?'checked':''}> ظاهر</label>
-      </div>
-      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">بيظهر فى لوحة المسوق وفى نافذة طلب الانضمام كمسوّق، بنسختين (مسوقين ومسوقات). مقفول لحد ما تفتحه.</p>
-      <button class="btn btn-primary" onclick="saveMarketerVideo()">حفظ</button>
-    </div>`:''}
-    ${isSuperAdmin()?`<div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-rectangle-ad" style="color:var(--teal)"></i> الإعلانات الثابتة</h3>
       <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">صورة ثابتة بنسبة 3:1 (مثلا 1080x360). حط رابط الصورة (لازم يبدأ بـ https)، ورابط اختيارى لو عايزها تفتح صفحة. كل مكان مقفول لحد ما تفتحه.</p>
       ${AdSlots.AD_SLOTS.map(sl=>{const v=AdSlots.normalizeSlot((s.adSlots||{})[sl.id]);return `<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">
@@ -5067,14 +5060,6 @@ window.saveLoyaltySettings = async ()=>{
   await setDoc(doc(db,'settings','app'), {loyaltyEnabled, loyaltyEarnRate, loyaltyRedeemValue}, {merge:true});
   await logAudit('تعديل إعدادات نقاط الولاء', `مفعّل: ${loyaltyEnabled} — كسب: ${loyaltyEarnRate} — استبدال: ${loyaltyRedeemValue}`);
   UI.toast('تم حفظ إعدادات نقاط الولاء ✅');
-};
-window.pickMarketerVideo = which=>MarketerVideo.setVersion(document,which);
-window.saveMarketerVideo = async ()=>{
-  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
-  const marketerVideoEnabled = document.getElementById('setMkVideo').checked;
-  await setDoc(doc(db,'settings','app'), {marketerVideoEnabled}, {merge:true});
-  await logAudit('تعديل فيديو المسوقين', marketerVideoEnabled?'تشغيل':'إيقاف');
-  UI.toast(marketerVideoEnabled?'تم تشغيل فيديو المسوقين ✅':'تم إيقاف فيديو المسوقين');
 };
 window.saveAdSlots = async ()=>{
   if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
