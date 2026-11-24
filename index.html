@@ -3475,7 +3475,7 @@ function renderMerchantDashboard(){
   if(m.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>الإدارة بتراجع بيانات متجرك. لما توافق وتفعّله هيوصلك إشعار.</p></div>`;
   if(m.status==='REJECTED') return `<div class="empty-state"><i class="fa-solid fa-circle-xmark"></i><h4>طلب انضمام المتجر مرفوض</h4><p>${esc(m.rejectionReason||'كلّم الإدارة عشان تعرف السبب وتطلب مراجعة تانية.')}</p></div>`;
   if(m.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>متجرك معلّق حاليًا</h4><p>كلّم الإدارة عشان تعرف السبب.</p></div>`;
-  if(MerchantPlans.modeOf(m)==='PROFILE') return `<div class="card"><h3>صفحتك التعريفية</h3><p style="line-height:1.8">العملاء يقدروا يشوفوا عنوانك واللوكيشن وأرقامك. لو عايز تعرض منتجات وتستقبل طلبات، اختار باقة الطلبات.</p>${merchantContactCard(m)}<button class="btn btn-primary" onclick="go('m_profile')">تعديل بيانات الصفحة</button><button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')">اشتراكي والباقات</button></div>`;
+  if(MerchantPlans.modeOf(m)==='PROFILE') return `<div class="card"><h3>صفحتك التعريفية</h3><p style="line-height:1.8">العملاء يقدروا يشوفوا عنوانك واللوكيشن وأرقامك. لو عايز تعرض منتجات وتستقبل طلبات، اختار باقة الطلبات.</p>${merchantContactCard(m)}<button class="btn btn-primary" onclick="go('m_profile')">تعديل بيانات الصفحة</button><button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')">اشتراكي والباقات</button></div>${storePageCard(m)}`;
   const subs = S.mySubOrders||[];
   const pending = subs.filter(s=>s.status==='SENT_TO_MERCHANT').length;
   const _sb = subBanner();
@@ -3772,7 +3772,7 @@ function renderMerchantReports(){
 }
 
 function storePageCard(m){
-  const note = MerchantPlans.isNewMerchant(m) ? '<p style="font-size:12px;line-height:1.7;margin:6px 0 10px">بعد اعتماد الاشتراك وتجهيز صلاحيات العرض، الزوار يقدروا يشوفوا أرقامك وعنوانك واللوكيشن من غير تسجيل دخول.</p>' : '<p style="font-size:12px;line-height:1.7;margin:6px 0 10px">اطبع كود QR وحطه فى المحل، والعميل يمسحه بالموبايل ويفتح صفحة متجرك على طول.</p>';
+  const note = (MerchantPlans.isNewMerchant(m) && !MerchantPlans.hasTerm(m)) ? '<p style="font-size:12px;line-height:1.7;margin:6px 0 10px">بعد اعتماد الاشتراك وتجهيز صلاحيات العرض، الزوار يقدروا يشوفوا أرقامك وعنوانك واللوكيشن من غير تسجيل دخول.</p>' : '<p style="font-size:12px;line-height:1.7;margin:6px 0 10px">اطبع كود QR وحطه فى المحل، والعميل يمسحه بالموبايل ويفتح صفحة متجرك على طول.</p>';
   return `<div class="card store-page-card" style="margin-top:14px"><b><i class="fa-solid fa-qrcode"></i> صفحة متجرك للعملاء</b>${note}<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn btn-ghost" style="flex:1;min-width:140px;text-align:center" href="${esc(publicStoreUrl(m.id))}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i> شوف صفحة متجرك</a><button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openStoreShare('${m.id}')"><i class="fa-solid fa-download"></i> تحميل QR وطباعته</button></div></div>`;
 }
 function renderMerchantProfile(){
