@@ -1159,7 +1159,7 @@ function subscribeShared(){
     S._rawMerchants = snap.docs.map(d=>d.data());
     recomputeMerchants();
     const requested=new URLSearchParams(location.search).get('store');
-    if(S.role==='customer' && !S.openedRequestedStore && /^[A-Za-z0-9_-]{1,100}$/.test(requested||'') && S.merchants.some(m=>m.id===requested)){S.openedRequestedStore=true;openMerchant(requested);}
+    if(S.role==='customer' && !S.openedRequestedStore && /^[A-Za-z0-9_-]{1,100}$/.test(requested||'') && (S.merchants.some(m=>m.id===requested)||(S.providers||[]).some(m=>m.id===requested))){S.openedRequestedStore=true;openMerchant(requested);}
     render();
   }));
   if(S.role==='admin'){
