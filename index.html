@@ -538,6 +538,7 @@ import { requestMessage, requestForm } from '/support-requests.js?v=marketer-joi
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
 import * as MerchantPlans from '/merchant-plans.js?v=map-link-1';
+import * as DeliveryBatch from '/delivery-batch.js?v=multistore-1';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE",
@@ -684,7 +685,7 @@ const S = {
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
   myAgent:null, myAgentSubOrders:[], agentNoLink:false, activeAgents:[], myRatings:[], appliedCoupon:null, appliedPoints:null,
   notifications:[],
-  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
+  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
   cart:[], // {productId, quantity}
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
   browseSort:'DEFAULT', browsePageSize:12,
@@ -2460,6 +2461,13 @@ function activeProducts(){ return S.products.filter(p=>p.isActive && MerchantPla
 function cartLines(){ return S.cart.map(c=>({...c, product:getProduct(c.productId)})).filter(l=>l.product); }
 function cartTotal(){ return cartLines().reduce((a,l)=>a+effPrice(l.product)*l.quantity,0); }
 function cartMerchantCount(){ return new Set(cartLines().map(l=>l.product.merchantId)).size; }
+function cartDeliveryQuote(count){ return DeliveryBatch.deliveryQuote(count==null?cartMerchantCount():count, S.settings.defaultDeliveryFee||0, S.settings.multiStoreDeliveryDiscountPercent); }
+function deliveryFeeRows(q){
+  if(q.storeCount<2) return `<div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(q.net)}</span></div>`;
+  return `<div class="summary-row"><span>رسوم التوصيل (${q.storeCount} متاجر × ${fmtMoney(q.baseFee)})</span><span>${fmtMoney(q.gross)}</span></div>
+      ${q.discount>0?`<div class="summary-row delivery-discount-row" style="color:var(--success)"><span>خصم توصيل متعدد المتاجر (${q.percent}%)</span><span>-${fmtMoney(q.discount)}</span></div>`:''}
+      <div class="summary-row"><span>رسوم التوصيل بعد الخصم (مندوب واحد)</span><span>${fmtMoney(q.net)}</span></div>`;
+}
 
 /* ================= RECURRING (WEEKLY) ORDERS ================= */
 const WEEKDAY_NAMES = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
@@ -2764,6 +2772,7 @@ function renderGroupBuys(){
 window.addToCart = (pid, qty=1)=>{
   const p = getProduct(pid);
   if(!p || !MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)){ UI.toast('هذا المتجر لا يستقبل طلبات حاليًا'); return; }
+  if(!DeliveryBatch.canAddStore(cartLines().map(l=>l.product.merchantId), p.merchantId)){ UI.toast(`تقدر تطلب من ${DeliveryBatch.MAX_STORES_PER_ORDER} متاجر كحد أقصى في الطلب الواحد. أكمل طلبك الحالي الأول.`); return; }
   const ex = S.cart.find(c=>c.productId===pid);
   const desired = (ex?ex.quantity:0) + qty;
   if(p && p.stock!=null && desired>p.stock){
@@ -2951,22 +2960,29 @@ function renderMerchantPage(){
 }
 
 /* ================= CUSTOMER: CART / CHECKOUT ================= */
+function cartStoreGroups(lines){
+  const m=new Map();
+  lines.forEach(l=>{const id=l.product.merchantId;const g=m.get(id)||{id,name:(getMerchant(id)&&getMerchant(id).businessName)||'متجر',lines:[],subtotal:0};g.lines.push(l);g.subtotal+=effPrice(l.product)*l.quantity;m.set(id,g);});
+  return [...m.values()];
+}
 function renderCart(){
   const lines = cartLines();
   if(!lines.length) return emptyState('fa-cart-shopping','سلتك فارغة','تصفح المنتجات وأضف ما يعجبك لسلتك');
-  const fee = S.settings.defaultDeliveryFee * cartMerchantCount();
+  const quote = cartDeliveryQuote(); const fee = quote.net;
   return `
-    <div class="card" style="margin-bottom:12px">
-      ${lines.map(l=>`<div class="cart-line">
+    ${cartStoreGroups(lines).map(g=>`<div class="card cart-store-group" style="margin-bottom:12px">
+      <div class="row-between cart-store-head" style="margin-bottom:6px"><b style="font-size:13.5px"><i class="fa-solid fa-store" style="color:var(--teal)"></i> ${esc(g.name)}</b><span style="font-size:12px;color:var(--ink-soft)">${fmtMoney(g.subtotal)}</span></div>
+      ${g.lines.map(l=>`<div class="cart-line">
         <div class="thumb" style="background-image:url('${esc(l.product.imageUrl||'')}')"></div>
         <div class="info"><h5>${esc(l.product.title)}</h5><div class="m">${fmtMoney(effPrice(l.product))}</div></div>
         <div class="qty-stepper"><button onclick="setCartQty('${l.productId}',${l.quantity-1})">−</button><span>${l.quantity}</span><button onclick="setCartQty('${l.productId}',${l.quantity+1})">+</button></div>
       </div>`).join('')}
-    </div>
+    </div>`).join('')}
+    ${quote.storeCount>1?`<div class="hint-box multi-store-hint" style="margin-bottom:12px"><i class="fa-solid fa-motorcycle"></i> طلبك من ${quote.storeCount} متاجر وبيوصلك مع مندوب واحد في توصيلة واحدة${quote.percent>0?` وبخصم ${quote.percent}% على رسوم التوصيل`:''}.</div>`:''}
     <div class="card">
       <h3 style="margin:0 0 6px;font-size:15.5px">ملخص الطلب</h3>
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
-      <div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(fee)}</span></div>
+      ${deliveryFeeRows(quote)}
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(cartTotal()+fee)}</span></div>
     </div>
     <button class="btn btn-primary" style="margin-top:14px" onclick="go('checkout')"><i class="fa-solid fa-arrow-left"></i> إتمام الطلب</button>
@@ -2977,7 +2993,7 @@ function renderCheckout(){
   const lines = cartLines();
   if(!lines.length){ setTimeout(()=>{ if(S.tab==='checkout') go('cart'); },0); return ''; }
   const groups = {}; lines.forEach(l=>{ (groups[l.product.merchantId]=groups[l.product.merchantId]||[]).push(l); });
-  const fee = S.settings.defaultDeliveryFee * Object.keys(groups).length;
+  const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
   const addr = S.myAddresses;
   const selected = addr.find(a=>a.isDefault) || addr[0];
   // تحقّق من الحد الأدنى للطلب لكل تاجر في السلة على حدة
@@ -3050,7 +3066,7 @@ function renderCheckout(){
 
     <div class="card" style="margin-top:16px">
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
-      <div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(fee)}</span></div>
+      ${deliveryFeeRows(quote)}
       ${couponDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم الكوبون</span><span>-${fmtMoney(couponDiscount)}</span></div>`:''}
       ${pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط الولاء</span><span>-${fmtMoney(pointsDiscount)}</span></div>`:''}
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(grandTotal)}</span></div>
@@ -3064,7 +3080,7 @@ window.applyLoyaltyPoints = ()=>{
   const rate = S.settings.loyaltyRedeemValue || 0;
   if(!available || !rate){ UI.toast('لا يوجد رصيد نقاط كافٍ'); return; }
   const groups = {}; cartLines().forEach(l=>{ (groups[l.product.merchantId]=groups[l.product.merchantId]||[]).push(l); });
-  const fee = S.settings.defaultDeliveryFee * Object.keys(groups).length;
+  const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
   const couponDiscount = S.appliedCoupon ? S.appliedCoupon.discount : 0;
   const remaining = Math.max(0, cartTotal()+fee-couponDiscount);
   const maxUsablePoints = Math.min(available, Math.floor(remaining/rate));
@@ -3160,8 +3176,9 @@ window.submitOrder = async ()=>{
         return;
       }
     }
+    if(Object.keys(groups).length>DeliveryBatch.MAX_STORES_PER_ORDER){ UI.toast(`الحد الأقصى ${DeliveryBatch.MAX_STORES_PER_ORDER} متاجر في الطلب الواحد`); return; }
     const notes = document.getElementById('orderNotes').value.trim();
-    const fee = S.settings.defaultDeliveryFee * Object.keys(groups).length;
+    const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
     const coupon = S.appliedCoupon;
     const couponDiscount = coupon ? coupon.discount : 0;
     const pts = S.appliedPoints;
@@ -3192,7 +3209,7 @@ window.submitOrder = async ()=>{
         id:orderId, customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(),
         customerPhone:S.profile.phone, deliveryAddress:address.fullAddressText, notes,
         subtotal:cartTotal(), deliveryFee:fee, discount:totalDiscount, couponCode: coupon?coupon.code:null, couponDiscount,
-        pointsRedeemed: pts?pts.points:0, pointsDiscount, total:Math.max(0, cartTotal()+fee-totalDiscount),
+        pointsRedeemed: pts?pts.points:0, pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, total:Math.max(0, cartTotal()+fee-totalDiscount),
         status:'PENDING_ADMIN', paymentMethod:paymentLabel(), paymentMethodId:(S.paymentMethod||'COD'), merchantCount:Object.keys(groups).length,
         subOrderIds: subIds, createdAt: nowMs()
       });
@@ -3208,6 +3225,8 @@ window.submitOrder = async ()=>{
           customerId:S.user.uid,
           customerName:(S.profile.firstName+' '+S.profile.lastName).trim(), customerPhone:S.profile.phone,
           deliveryAddress:address.fullAddressText, notes, createdAt: nowMs(),
+          batchFlow:true, orderStoreCount:Object.keys(groups).length, orderDeliveryFee:fee, orderDiscount:totalDiscount,
+          merchantAddress:m?(m.address||''):'', merchantMapUrl:m?(m.googleMapsUrl||''):'',
           items: items.map(l=>({productId:l.productId, productTitle:l.product.title, price:effPrice(l.product), quantity:l.quantity}))
         });
         // خصم الكمية المطلوبة من مخزون كل منتج فور تأكيد الطلب
@@ -3362,13 +3381,15 @@ function renderOrderDetail(){
   const o = S.myOrders.find(x=>x.id===S.viewOrderId);
   if(!o) return emptyState('fa-triangle-exclamation','الطلب غير موجود','');
   const subs = S.mySubOrders.filter(s=>s.parentOrderId===o.id);
+  const courierName = (subs.find(s=>s.deliveryAgentName)||{}).deliveryAgentName||'';
   return `
     <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
     <div class="card">
       <div class="top-row"><span class="oid">#${o.id}</span><span class="date">${fmtDate(o.createdAt)}</span></div>
       <p style="font-size:12.5px;color:var(--ink-soft);margin:8px 0"><i class="fa-solid fa-location-dot"></i> ${esc(o.deliveryAddress)}</p>
+      ${o.merchantCount>1?`<div class="hint-box multi-store-track" style="margin-top:8px"><i class="fa-solid fa-motorcycle"></i> طلبك من ${o.merchantCount} متاجر وبيوصلك مع مندوب واحد في توصيلة واحدة.${courierName?` المندوب: <b>${esc(courierName)}</b>`:''}<div style="margin-top:6px;font-size:12px">استلم المندوب ${subs.filter(x=>x.pickedUpAt||x.status==='DELIVERED').length} من ${subs.filter(x=>x.status!=='REJECTED'&&x.status!=='CANCELLED').length} أجزاء</div></div>`:''}
     </div>
-    ${subs.map(s=>{
+    ${subs.map((s,partIdx)=>{
       const stepIdx = CUSTOMER_TRACK_STEPS.findIndex(([k])=>k===s.status);
       const rejected = s.status==='REJECTED'||s.status==='CANCELLED';
       const myRating = (S.myRatings||[]).find(r=>r.subOrderId===(s._id||s.id));
@@ -3377,6 +3398,8 @@ function renderOrderDetail(){
         <div class="timeline">${CUSTOMER_TRACK_STEPS.map(([k,label],i)=>`
           <div class="step ${i<=stepIdx?'done':''}"><div class="dot">${i<=stepIdx?'<i class=\"fa-solid fa-check\"></i>':''}</div><div class="lbl">${label}</div></div>
         `).join('')}</div>`}
+        ${s.status==='OUT_FOR_DELIVERY'&&s.batchFlow?`<p class="part-pickup-line" style="font-size:12.5px;color:var(--teal);margin:8px 0 0"><i class="fa-solid ${s.pickedUpAt?'fa-box-open':'fa-hourglass-half'}"></i> ${s.pickedUpAt?'استلم المندوب هذا الجزء وفي الطريق إليك':'المندوب في الطريق لاستلام هذا الجزء'}</p>`:''}
+        ${o.merchantCount>1?`<p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0">الجزء ${partIdx+1} من ${subs.length}</p>`:''}
         <div class="divider"></div>
         ${(s.items||[]).map(it=>`<div class="row-between" style="font-size:13px;margin-bottom:6px"><span>${esc(it.productTitle)} × ${it.quantity}</span><span>${fmtMoney(it.price*it.quantity)}</span></div>`).join('')}
         <div class="summary-row total"><span>إجمالي هذا الجزء</span><span>${fmtMoney(s.subtotal)}</span></div>
@@ -3388,7 +3411,8 @@ function renderOrderDetail(){
     }).join('')}
     <div class="card" style="margin-top:12px">
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(o.subtotal)}</span></div>
-      <div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(o.deliveryFee)}</span></div>
+      ${o.deliveryDiscount>0?`<div class="summary-row"><span>رسوم التوصيل (${o.merchantCount} متاجر)</span><span>${fmtMoney(o.deliveryFeeGross)}</span></div><div class="summary-row" style="color:var(--success)"><span>خصم توصيل متعدد المتاجر (${o.deliveryDiscountPercent}%)</span><span>-${fmtMoney(o.deliveryDiscount)}</span></div>`:''}
+      <div class="summary-row"><span>${o.deliveryDiscount>0?'رسوم التوصيل بعد الخصم':'رسوم التوصيل'}</span><span>${fmtMoney(o.deliveryFee)}</span></div>
       ${o.couponDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم الكوبون${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.couponDiscount)}</span></div>`:''}
       ${o.pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط الولاء (${o.pointsRedeemed} نقطة)</span><span>-${fmtMoney(o.pointsDiscount)}</span></div>`:''}
       ${!o.couponDiscount && !o.pointsDiscount && o.discount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.discount)}</span></div>`:''}
@@ -3609,8 +3633,18 @@ window.confirmCancelSubOrder = async (subId, who)=>{
 };
 
 /* ---- إسناد الطلب لمندوب توصيل عند خروجه من المتجر ---- */
-window.openAssignAgent = (subId)=>{
-  const agents = S.activeAgents||[];
+window.openAssignAgent = async (subId)=>{
+  let agents = S.activeAgents||[];
+  // طلب من أكتر من متجر: كل الأجزاء لازم يوصّلها نفس المندوب في توصيلة واحدة
+  let lockedNote='';
+  try{
+    const cur=[...(S.mySubOrders||[]), ...(S.allSubOrders||[])].find(x=>(x._id||x.id)===subId);
+    if(cur&&cur.batchFlow&&cur.orderStoreCount>1){
+      const sib=await getDocs(query(collection(db,'subOrders'), where('parentOrderId','==',cur.parentOrderId)));
+      const lock=sib.docs.map(d=>d.data()).find(x=>x.id!==cur.id&&x.deliveryAgentId&&x.status!=='REJECTED'&&x.status!=='CANCELLED');
+      if(lock){ agents=agents.filter(a=>a.id===lock.deliveryAgentId); lockedNote=`<p class="hint-box" style="font-size:12px;margin-bottom:10px">الطلب من أكتر من متجر، وباقي أجزائه مسندة بالفعل للمندوب ${esc(lock.deliveryAgentName||'')}. لازم نفس المندوب يوصّله في توصيلة واحدة.</p>`; }
+    }
+  }catch(e){ console.error('sibling check failed',e); }
   if(!agents.length){
     UI.openModal(`
       <div class="modal-head"><h3>لا يوجد مناديب متاحين</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
@@ -3620,7 +3654,7 @@ window.openAssignAgent = (subId)=>{
   }
   UI.openModal(`
     <div class="modal-head"><h3>اختيار مندوب التوصيل</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
-    <div class="field"><label>المندوب</label><select id="assignAgentSelect">${agents.map(a=>`<option value="${a.id}">${esc(a.name)} — ${esc(a.phone)}</option>`).join('')}</select></div>
+    ${lockedNote}<div class="field"><label>المندوب</label><select id="assignAgentSelect">${agents.map(a=>`<option value="${a.id}">${esc(a.name)} — ${esc(a.phone)}</option>`).join('')}</select></div>
     <button class="btn btn-primary" onclick="confirmAssignAgent('${subId}')">تأكيد وإرسال الطلب للتوصيل</button>
   `);
 };
@@ -3872,17 +3906,72 @@ function renderDeliveryDashboard(){
   if(a.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>الإدارة بتراجع طلبك كمندوب. لما توافق وتفعّل حسابك هيوصلك إشعار.</p></div>`;
   if(a.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>حسابك معلّق حاليًا</h4><p>كلّم الإدارة عشان تعرف السبب.</p></div>`;
   const all = S.myAgentSubOrders||[];
-  const active = all.filter(s=>s.status==='OUT_FOR_DELIVERY');
+  const trip = DeliveryBatch.courierTrip(all);
   const delivered = all.filter(s=>s.status==='DELIVERED');
   return `
     <div class="stat-grid">
-      <div class="stat-card"><i class="stat-ic fa-solid fa-motorcycle"></i><div class="num">${active.length}</div><div class="lbl">جاري توصيلها الآن</div></div>
+      <div class="stat-card"><i class="stat-ic fa-solid fa-route"></i><div class="num">${trip.stopCount}</div><div class="lbl">محطات رحلتك</div></div>
       <div class="stat-card"><i class="stat-ic fa-solid fa-circle-check"></i><div class="num">${delivered.length}</div><div class="lbl">تم تسليمها</div></div>
     </div>
-    <div class="section-head"><h3>مهامك الحالية</h3></div>
-    ${active.length? `<div class="list-gap">${active.map(deliveryTaskCard).join('')}</div>` : emptyState('fa-motorcycle','لا توجد طلبات جاري توصيلها الآن','هتظهر هنا أول ما التاجر يسند لك طلب جديد')}
+    ${trip.stopCount? `
+    ${trip.pickups.length?`<div class="section-head"><h3>1) الاستلام من المتاجر</h3></div><div class="list-gap trip-pickups">${trip.pickups.map(pickupStopCard).join('')}</div>`:''}
+    <div class="section-head"><h3>${trip.pickups.length?'2) ':''}التسليم للعملاء</h3></div>
+    <div class="list-gap trip-deliveries">${trip.deliveries.map(deliveryStopCard).join('')}</div>`
+    : emptyState('fa-motorcycle','لا توجد رحلة حالية','هتظهر هنا أول ما يتسند لك طلب جديد')}
   `;
 }
+function pickupStopCard(g){
+  const ids=g.parts.map(x=>x._id||x.id).join(',');
+  return `<div class="order-card pickup-stop">
+    <div class="top-row"><span class="oid"><i class="fa-solid fa-shop"></i> ${esc(g.merchantName)}</span><span class="status-pill status-pending"><i class="fa-solid fa-box-open"></i> استلام</span></div>
+    ${g.merchantAddress?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-location-dot"></i> ${esc(g.merchantAddress)}</p>`:''}
+    <p style="font-size:12.5px;margin:6px 0 0">${g.parts.length} ${g.parts.length>1?'طلبات':'طلب'}: ${g.parts.map(x=>'<bdi>#'+esc(x.parentOrderId)+'</bdi>').join('، ')}</p>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" style="width:auto;flex:1" onclick="markPickedUp('${ids}')"><i class="fa-solid fa-box-open"></i> تم الاستلام</button>
+      ${g.merchantMapUrl?`<a class="btn btn-ghost btn-sm" style="width:auto" href="${esc(g.merchantMapUrl)}" target="_blank" rel="noopener"><i class="fa-solid fa-map-location-dot"></i></a>`:''}
+      ${g.merchantWhatsapp?`<a class="btn btn-ghost btn-sm" style="width:auto" href="${waLink(g.merchantWhatsapp,'مرحبًا، أنا مندوب التوصيل لاستلام الطلب')}" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp"></i></a>`:''}
+    </div>
+  </div>`;
+}
+function deliveryStopCard(o){
+  const ids=o.parts.map(x=>x._id||x.id).join(',');
+  return `<div class="order-card delivery-stop">
+    <div class="top-row"><span class="oid">#${esc(o.orderId)}</span><span class="status-pill ${o.ready?'status-active':'status-pending'}"><i class="fa-solid fa-motorcycle"></i> ${o.ready?'جاهز للتسليم':'في انتظار الاستلام'}</span></div>
+    <div class="divider" style="margin:10px 0"></div>
+    <p style="font-size:12.5px;margin:0 0 4px"><i class="fa-solid fa-shop"></i> من: ${o.parts.map(x=>esc(x.merchantName)+(x.batchFlow&&!x.pickedUpAt?' (لم يُستلم)':' (تم الاستلام)')).join('، ')}</p>
+    <p style="font-size:12.5px;margin:0 0 4px"><i class="fa-solid fa-user"></i> تسليم إلى: ${esc(o.customerName)} · ${esc(o.customerPhone)}</p>
+    <p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-location-dot"></i> ${esc(o.address)}</p>
+    ${o.missingParts>0?`<p style="font-size:11.5px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-circle-info"></i> الطلب من ${o.parts.length+o.missingParts} متاجر. لو فيه جزء لسه ماتسندلكش راجع الإدارة قبل التسليم.</p>`:''}
+    <div class="summary-row"><span>مشتريات</span><span>${fmtMoney(o.goods)}</span></div>
+    <div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(o.fee)}</span></div>
+    ${o.discount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم</span><span>-${fmtMoney(o.discount)}</span></div>`:''}
+    <div class="summary-row total"><span>قيمة التحصيل عند الاستلام</span><span>${fmtMoney(o.collect)}</span></div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" style="width:auto;flex:1" ${o.ready?'':'disabled'} onclick="markTripDelivered('${ids}')"><i class="fa-solid fa-check"></i> تم التسليم</button>
+      <a class="btn btn-ghost btn-sm" style="width:auto" href="${waLink(o.customerPhone,'مرحبًا، أنا مندوب التوصيل بخصوص طلبك رقم #'+o.orderId)}" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp"></i></a>
+    </div>
+  </div>`;
+}
+window.markPickedUp = async (idsCsv)=>{
+  const ids=String(idsCsv).split(',').filter(Boolean);
+  const parts=ids.map(id=>(S.myAgentSubOrders||[]).find(x=>(x._id||x.id)===id)).filter(x=>x&&x.status==='OUT_FOR_DELIVERY'&&!x.pickedUpAt);
+  if(!parts.length) return;
+  try{
+    for(const x of parts){
+      await updateDoc(doc(db,'subOrders',x.id),{pickedUpAt:serverTimestamp()});
+      await pushNotification('CUSTOMER', x.customerId, 'تحديث حالة طلبك', `استلم المندوب جزءًا من طلبك رقم #${x.parentOrderId} من المتجر وفي الطريق إليك`, x.parentOrderId);
+    }
+    UI.toast('تم تسجيل الاستلام');
+  }catch(e){ console.error('markPickedUp failed',e); UI.toast('تعذر تسجيل الاستلام، حاول تاني'); }
+};
+window.markTripDelivered = async (idsCsv)=>{
+  const ids=String(idsCsv).split(',').filter(Boolean);
+  for(const id of ids){
+    const x=(S.myAgentSubOrders||[]).find(y=>(y._id||y.id)===id);
+    if(x&&x.batchFlow&&!x.pickedUpAt){ UI.toast('سجّل الاستلام من كل المتاجر الأول'); return; }
+  }
+  for(const id of ids) await updateSubOrderStatus(id,'DELIVERED');
+};
 function deliveryTaskCard(s){
   return `<div class="order-card">
     <div class="top-row"><span class="oid">#${s.parentOrderId}</span><span class="status-pill status-pending"><i class="fa-solid fa-motorcycle"></i> جاري التوصيل</span></div>
@@ -4954,6 +5043,7 @@ function renderAdminSettings(){
       <div class="field"><label>نسبة المسوّق من عمولة الطلبات (%) — لو المصدر يشمل الطلبات</label><input id="setMkPct" type="number" step="0.1" min="0" max="100" value="${s.marketerCommissionPercent!=null?s.marketerCommissionPercent:20}"></div>
       <div class="field"><label>مدة احتساب نسبة الطلبات بالأشهر (0 = بدون حد)</label><input id="setMkMonths" type="number" step="1" min="0" max="120" value="${s.marketerCommissionMonths||0}"></div>
       <div class="field"><label>رسوم التوصيل لكل تاجر في الطلب (جنيه)</label><input id="setDeliveryFee" type="number" step="1" min="0" value="${s.defaultDeliveryFee}"></div>
+      <div class="field"><label>خصم رسوم التوصيل عند الطلب من أكتر من متجر (%)</label><input id="setMultiStoreDiscount" type="number" step="1" min="0" max="100" value="${DeliveryBatch.discountPercent(s.multiStoreDeliveryDiscountPercent)}"></div>
       <button class="btn btn-primary" onclick="saveAppSettings()">حفظ الإعدادات</button>
     </div>
     <div class="card" style="margin-bottom:16px">
@@ -5019,7 +5109,8 @@ window.saveAppSettings = async ()=>{
   const defaultDeliveryFee = Math.max(0, parseFloat(document.getElementById('setDeliveryFee').value)||0);
   const marketerCommissionPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('setMkPct').value)||0));
   const marketerCommissionMonths = Math.max(0, Math.min(120, parseInt(document.getElementById('setMkMonths').value)||0));
-  await setDoc(doc(db,'settings','app'), {platformCommissionPercent, defaultDeliveryFee, marketerCommissionPercent, marketerCommissionMonths}, {merge:true});
+  const multiStoreDeliveryDiscountPercent = DeliveryBatch.discountPercent(document.getElementById('setMultiStoreDiscount').value);
+  await setDoc(doc(db,'settings','app'), {platformCommissionPercent, defaultDeliveryFee, marketerCommissionPercent, marketerCommissionMonths, multiStoreDeliveryDiscountPercent}, {merge:true});
   await logAudit('تعديل الإعدادات العامة', `عمولة: ${platformCommissionPercent}% — توصيل: ${defaultDeliveryFee}`);
   UI.toast('تم حفظ الإعدادات بنجاح ✅');
 };
