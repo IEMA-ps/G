@@ -11,7 +11,7 @@ const JWKS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken
 const CODE_TTL_SECONDS = 900; // كود الربط صالح 15 دقيقة
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_NOTIFY_KEYS = 10, MAX_TEXT = 3500;
-const KEY_PATTERN = /^(m:|a:)[A-Za-z0-9_\-]{1,40}$/;
+const KEY_PATTERN = /^(m:|a:)[A-Za-z0-9_\-]{1,64}$/;
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -106,8 +106,8 @@ async function handleLinkStart(request, env) {
   const body = await request.json().catch(() => ({}));
   const link = {
     uid,
-    merchantId: typeof body.merchantId === 'string' && /^[A-Za-z0-9_\-]{1,40}$/.test(body.merchantId) ? body.merchantId : null,
-    deliveryAgentId: typeof body.deliveryAgentId === 'string' && /^[A-Za-z0-9_\-]{1,40}$/.test(body.deliveryAgentId) ? body.deliveryAgentId : null,
+    merchantId: typeof body.merchantId === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(body.merchantId) ? body.merchantId : null,
+    deliveryAgentId: typeof body.deliveryAgentId === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(body.deliveryAgentId) ? body.deliveryAgentId : null,
     admin: body.admin === true
   };
   const code = newCode();
