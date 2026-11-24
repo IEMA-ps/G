@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {videoCardHTML,videoEnabled,VIDEO_FILES,setVersion} from './marketer-video.js';
+assert.equal(videoEnabled({}),false);
+assert.equal(videoEnabled(undefined),false);
+assert.equal(videoCardHTML({}),'');
+assert.equal(videoCardHTML({marketerVideoEnabled:false}),'');
+assert.equal(videoCardHTML({marketerVideoEnabled:'true'}),'');
+const html=videoCardHTML({marketerVideoEnabled:true});
+assert.ok(html.includes('mkVideoEl')&&html.includes(VIDEO_FILES.male)&&html.includes('pickMarketerVideo(\'female\')'));
+assert.ok(!/[0-9]/.test(html.replace(/<[^>]*>/g,'')),'no numbers in the card text');
+const els={mkVideoEl:{pause(){},load(){},src:''},mkVidBtnMale:{classList:{toggle(c,on){this.on=on}},setAttribute(){}},mkVidBtnFemale:{classList:{toggle(c,on){this.on=on}},setAttribute(){}}};
+const doc={getElementById:id=>els[id]||null};
+assert.equal(setVersion(doc,'female'),true);
+assert.ok(els.mkVideoEl.src.startsWith(VIDEO_FILES.female));
+assert.equal(els.mkVidBtnFemale.classList.on,true);
+assert.equal(setVersion({getElementById:()=>null},'male'),false);
+console.log('marketer-video tests passed');
