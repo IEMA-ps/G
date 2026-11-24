@@ -19,6 +19,7 @@ const browser = await chromium.launch({executablePath: '/usr/bin/google-chrome',
 const page = await browser.newPage({viewport: {width: 390, height: 844}, deviceScaleFactor: 1});
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
+const settle = () => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished)).catch(() => {}));
 const shot = name => page.screenshot({path: (process.env.SCREENSHOT_DIR || '/tmp') + '/' + name + '.png', fullPage: false});
 
 try {
@@ -38,12 +39,46 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, 'delivery overflow');
   await shot('tg-delivery-profile-390');
 
+  // 2ب) صفحة حساب العميل وفيها صف تليجرام
+  await page.evaluate(() => { S.role='customer'; renderMain(); window.scrollTo(0, document.body.scrollHeight); });
+  assert.equal(await page.locator('div[onclick="openTelegramLink(\'customer\')"]').count(), 1, 'customer telegram row');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, 'customer overflow');
+  await shot('tg-customer-profile-390');
+
+  // 2ج) إعدادات الموقع: كارت البث فيه الجماهير الستة
+  await page.evaluate(() => { S.role='admin'; renderMain(); });
+  assert.equal(await page.locator('#tgBcAudience option').count(), 6, 'audience options');
+  await page.evaluate(() => document.getElementById('tgBcAudience').scrollIntoView({block:'center'}));
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, 'admin overflow');
+  await shot('tg-admin-broadcast-390');
+
+  // 2د) معاينة البث بالنص النهائي قبل الإرسال
+  await page.evaluate(() => {
+    document.getElementById('tgBcText').value = 'خبر مهم: توصيل مجاني النهاردة 🎉\nلكل الطلبات فوق ٢٠٠ جنيه.';
+    previewTelegramBroadcast();
+  });
+  await settle();
+  assert.equal(await page.locator('button[onclick="sendTelegramBroadcast()"]').count(), 1, 'confirm broadcast button');
+  assert.ok((await page.locator('#tgBcBody').innerText()).includes('توصيل مجاني'), 'preview shows exact text');
+  await shot('tg-broadcast-preview-390');
+
+  // 2هـ) نتيجة البث بعد الإرسال
+  await page.evaluate(() => { document.getElementById('tgBcBody').innerHTML = TelegramNotify.broadcastResultHTML({ok:true,total:12,sent:11,blocked:1,failed:0}); });
+  await shot('tg-broadcast-result-390');
+  await page.evaluate(() => UI.closeModal());
+
+  // 2و) زرار المسوّق موجود في الكود المصدري (لوحته تقيلة على المعاينة)
+  {
+    const src = readFileSync('index.html', 'utf8');
+    assert.ok(src.includes("openTelegramLink('marketer')"), 'marketer telegram button in source');
+    assert.ok(src.includes("openTelegramLink('customer')"), 'customer telegram row in source');
+  }
+
   // 3) المودال بحالاته
   const openModal = state => page.evaluate(st => {
     document.getElementById('modalSheet').innerHTML = '<div class="modal-head"><h3><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> إشعارات تليجرام</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><div id="tgLinkBody">' + TelegramNotify.linkModalHTML(st) + '</div>';
     document.getElementById('modalRoot').classList.remove('hidden');
   }, state);
-  const settle = () => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished)).catch(() => {}));
   await page.evaluate(() => { S.role='merchant'; renderMain(); });
   await openModal('unlinked'); await settle();
   assert.equal(await page.locator('button[onclick="startTelegramLink()"]').count(), 1, 'link button');
