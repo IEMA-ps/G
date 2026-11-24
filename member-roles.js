@@ -22,11 +22,11 @@ export async function assignMemberRole({db,doc,runTransaction,actorId,userId,rec
   });
 }
 
-export function newMemberRecord(role,input,user,userId,recordId,now,plansV2=false){
+export function newMemberRecord(role,input,user,userId,recordId,now,plansV2=false,status='PENDING'){
   const clean=(k,max=120)=>String(input[k]||'').trim().replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,max);
   const phone=clean('phone',30),whatsapp=clean('whatsapp',30)||phone,name=clean('name');
   if(!name || !/^\+?[\d\s()-]{7,25}$/.test(phone) || !/^\+?[\d\s()-]{7,25}$/.test(whatsapp)) throw Error('invalid-contact');
-  const common={id:recordId,phone,ownerId:userId,registeredAt:now,status:'PENDING'};
+  const common={id:recordId,phone,ownerId:userId,registeredAt:now,status:status==='ACTIVE'?'ACTIVE':'PENDING'};
   if(role==='MERCHANT'){
     const activityType=clean('activity'),address=clean('address',200);
     if(!activityType || !address) throw Error('missing-store-details');
@@ -41,7 +41,7 @@ export function newMemberRecord(role,input,user,userId,recordId,now,plansV2=fals
   throw Error('invalid-assignment');
 }
 
-export async function createMemberRecord({db,doc,runTransaction,actorId,userId,recordId,role,input,now}){
+export async function createMemberRecord({db,doc,runTransaction,actorId,userId,recordId,role,input,now,status='PENDING'}){
   const type=assignmentType(role);
   if(!type || !actorId || !userId || !recordId) throw Error('invalid-assignment');
   return runTransaction(db,async tx=>{
@@ -50,7 +50,7 @@ export async function createMemberRecord({db,doc,runTransaction,actorId,userId,r
     const settings=role==='MERCHANT'?await tx.get(doc(db,'settings','app')):null;
     if(record.exists()) throw Error('record-already-exists');
     const patch=assignmentPatch(actor.exists()?actor.data():null,user.exists()?user.data():null,{id:recordId},role,recordId);
-    const data=newMemberRecord(role,input,user.data(),userId,recordId,now,settings?.exists() && settings.data().merchantPlansV2===true);
+    const data=newMemberRecord(role,input,user.data(),userId,recordId,now,settings?.exists() && settings.data().merchantPlansV2===true,status);
     if(role==='MERCHANT' && input.marketerCode){
       if(!input.marketerId) throw Error('marketer-unavailable');
       const mk=await tx.get(doc(db,'users',input.marketerId));
