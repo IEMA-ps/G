@@ -530,7 +530,7 @@ installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
-import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-1';installStoreTypes();
+import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-2';installStoreTypes();
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
@@ -4095,7 +4095,9 @@ const CATEGORY_SEED = [
   ['مستلزمات أطفال','ألعاب ومستلزمات ولوازم الأطفال والرضع','🧸'],
   ['مستلزمات منزلية','أدوات وتجهيزات ومستلزمات المنزل','🏠'],
   ['ورد وهدايا','باقات ورد وهدايا لكل المناسبات','💐'],
-  ['أدوات مكتبية','أدوات مكتبية وقرطاسية ومستلزمات دراسية','📚']
+  ['أدوات مكتبية','أدوات مكتبية وقرطاسية ومستلزمات دراسية','📚'],
+  ['مخابز وأفران','عيش وفطير ومخبوزات طازجة من الأفران','🥖'],
+  ['مغاسل ومكوجى','غسيل وكوي ملابس واستلام وتسليم لحد الباب','👔']
 ];
 window.seedCategories = async ()=>{
   const batch = writeBatch(db);
