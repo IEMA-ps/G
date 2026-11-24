@@ -28,7 +28,7 @@ export function parseCSV(text){
  row.push(cell);if(row.some(v=>v.trim()))rows.push(row);
  const headers=rows.shift()||[];
  if(new Set(headers).size!==headers.length||headers.some(k=>!CATALOG_FIELDS.includes(k)||k==='rightsConfirmed')||!['sku','title','categoryId','unit','source'].every(k=>headers.includes(k)))throw Error('عناوين الملف المطلوبة: sku,title,description,categoryId,unit,barcode,source');
- if(!rows.length||rows.length>100)throw Error('كل دفعة من 1 إلى 100 منتج');
+ if(!rows.length||rows.length>300)throw Error('كل دفعة من 1 إلى 300 منتج. الملف فيه '+rows.length+' منتج، قسّمه لملفين أو أكتر.');
  const seen=new Set();return rows.map(values=>{if(values.length!==headers.length)throw Error('عدد الأعمدة مش متساوي');const r=Object.fromEntries(headers.map((h,i)=>[h,values[i]]));r.sku=safeKey(r.sku);if(seen.has(r.sku))throw Error('كود مكرر داخل الملف: '+r.sku);seen.add(r.sku);return r;});
 }
 export function offerId(mid,sku){return 'catalog_'+encodeURIComponent(mid)+'_'+safeKey(sku);}
