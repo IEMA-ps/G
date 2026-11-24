@@ -3026,14 +3026,14 @@ function renderMerchantPage(){
       <div style="display:flex;gap:12px;align-items:center">
         <div class="merchant-card" style="border:none;padding:0;flex:0"><div class="logo" style="width:64px;height:64px">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-shop"></i>'}</div></div>
         <div style="flex:1"><h3 style="margin:0 0 4px">${esc(m.businessName)}</h3>
-          <div class="meta" style="color:var(--ink-soft);font-size:12.5px"><i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · ${esc(typeLabel(m))}</div>
+          <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · `}${esc(typeLabel(m))}</div>
         </div>
-        <span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':'مغلق حاليًا'}</span>
+        ${isSvc?'':`<span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':'مغلق حاليًا'}</span>`}
       </div>
       ${m.description?`<p style="font-size:13px;color:var(--ink-soft);margin:12px 0 0;line-height:1.7">${esc(m.description)}</p>`:''}
-      ${m.openTime&&m.closeTime?`<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0"><i class="fa-solid fa-clock"></i> ساعات العمل: ${esc(m.openTime)} — ${esc(m.closeTime)}</p>`:''}
-      ${m.minOrderAmount>0?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-circle-info"></i> الحد الأدنى للطلب من هذا المتجر: ${fmtMoney(m.minOrderAmount)}</p>`:''}
-      <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, 'مرحبًا، أريد الاستفسار عن منتجاتكم في '+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
+      ${!isSvc&&m.openTime&&m.closeTime?`<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0"><i class="fa-solid fa-clock"></i> ساعات العمل: ${esc(m.openTime)} — ${esc(m.closeTime)}</p>`:''}
+      ${!isSvc&&m.minOrderAmount>0?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-circle-info"></i> الحد الأدنى للطلب من هذا المتجر: ${fmtMoney(m.minOrderAmount)}</p>`:''}
+      <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, (isSvc?'مرحبًا، أريد الاستفسار عن خدماتكم في ':'مرحبًا، أريد الاستفسار عن منتجاتكم في ')+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
     </div>
     ${merchantContactCard(m)}
     ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم المزود مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
@@ -3934,11 +3934,11 @@ window.openMerchantEdit = ()=>{
     ${locationPicker('meLoc')}<div class="field"><label>العنوان الحالي / التفاصيل</label><input id="meAddr" value="${esc(m.address)}"></div>
     ${MerchantPlans.mapField('meMap',m,esc)}
     <div class="field"><label>رابط الشعار</label><input id="meLogo" value="${esc(m.logoUrl||'')}" placeholder="https://..."></div>
-    <div style="display:flex;gap:10px">
+    ${Services.isServiceProvider(m)?'':`<div style="display:flex;gap:10px">
       <div class="field" style="flex:1"><label>وقت الفتح</label><input id="meOpen" type="time" value="${esc(m.openTime||'09:00')}"></div>
       <div class="field" style="flex:1"><label>وقت الغلق</label><input id="meClose" type="time" value="${esc(m.closeTime||'23:00')}"></div>
     </div>
-    <div class="field"><label>الحد الأدنى لقيمة الطلب (جنيه) — 0 يعني بدون حد أدنى</label><input id="meMinOrder" type="number" step="1" min="0" value="${m.minOrderAmount||0}"></div>
+    <div class="field"><label>الحد الأدنى لقيمة الطلب (جنيه) — 0 يعني بدون حد أدنى</label><input id="meMinOrder" type="number" step="1" min="0" value="${m.minOrderAmount||0}"></div>`}
     <button class="btn btn-primary" onclick="saveMerchantEdit()">حفظ</button>
   `);
 };
@@ -3953,9 +3953,9 @@ window.saveMerchantEdit = async ()=>{
     whatsappNumber: document.getElementById('meWa').value.trim(),
     address: locationAddress,
     logoUrl: document.getElementById('meLogo').value.trim(),
-    openTime: document.getElementById('meOpen').value,
+    ...(document.getElementById('meOpen')?{openTime: document.getElementById('meOpen').value,
     closeTime: document.getElementById('meClose').value,
-    minOrderAmount: Math.max(0, parseFloat(document.getElementById('meMinOrder').value)||0)
+    minOrderAmount: Math.max(0, parseFloat(document.getElementById('meMinOrder').value)||0)}:{})
   });
   if(MerchantPlans.isNewMerchant(S.myMerchant)){
     try{const d=await getDoc(doc(db,'merchants',S.myMerchant.id));await setDoc(doc(db,'publicMerchantProfiles',S.myMerchant.id),publicMerchantData(d.data()));}
