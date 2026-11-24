@@ -524,13 +524,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
-import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=store-types-1';
+import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=member-svc-2';
 import { locationPicker, installLocations } from '/egypt-locations.js?v=eg-2';
 installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
-import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-3';installStoreTypes();
+import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
 import * as Services from '/services.js?v=svc-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
@@ -5190,7 +5190,7 @@ function renderAdminUsers(){
           <span class="badge-chip">${roleLabel}</span>
         </div>
         ${canManageAdmins ? `<div class="member-role-actions" style="display:flex;gap:4px;flex-wrap:nowrap;margin-top:8px">
-          ${u.role==='CUSTOMER' && !u.merchantId && !u.deliveryAgentId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT')"><i class="fa-solid fa-store"></i> تعيين تاجر</button><button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','DELIVERY')"><i class="fa-solid fa-motorcycle"></i> تعيين مندوب</button>` : ''}
+          ${u.role==='CUSTOMER' && !u.merchantId && !u.deliveryAgentId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT')"><i class="fa-solid fa-store"></i> تعيين تاجر</button><button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','DELIVERY')"><i class="fa-solid fa-motorcycle"></i> تعيين مندوب</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT','service')"><i class="fa-solid fa-calendar-check"></i> مقدم خدمة</button>`:''}` : ''}
           ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
           ${u.role==='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openMarketerRate('${u._id}')"><i class="fa-solid fa-percent"></i> نسبته ${mkRate(u)}%</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="removeMarketer('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء المسوّق</button>` : ''}
           ${u.role!=='ADMIN' && u.role!=='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToAdmin('${u._id}')"><i class="fa-solid fa-user-shield"></i> أدمن مساعد</button>` : ''}
@@ -5203,12 +5203,13 @@ function renderAdminUsers(){
     ${!canManageAdmins ? `<div class="hint-box" style="margin-top:16px"><i class="fa-solid fa-lock"></i> تغيير صلاحيات الأعضاء لإدارة الموقع بس.</div>` : ''}
   `;
 }
-window.openAssignMemberRole = (userId,role)=>{
+window.openAssignMemberRole = (userId,role,kind)=>{
+  const svc=role==='MERCHANT'&&kind==='service';
   if(!isSuperAdmin()) return;
   const type=assignmentType(role), user=(S.allUsers||[]).find(u=>u._id===userId);
   if(!type || !user || user.role!=='CUSTOMER' || user.merchantId || user.deliveryAgentId){ UI.toast('العضو لم يعد عميلًا متاحًا للتعيين'); return; }
-  window._memberRecordDraft={userId,role,recordId:(role==='MERCHANT'?'merch_':'agent_')+uid()};
-  UI.openModal(memberRecordForm(user,role,esc,locationPicker('memberLoc'),role==='MERCHANT'?MerchantPlans.mapField('memberRecordMap',{},esc):'',role==='MERCHANT'?typePicker('memberRecordActivity','',esc,Services.servicesEnabled(S.settings)):''));
+  window._memberRecordDraft={userId,role,svc,recordId:(role==='MERCHANT'?'merch_':'agent_')+uid()};
+  UI.openModal(memberRecordForm(user,role,esc,locationPicker('memberLoc'),role==='MERCHANT'?MerchantPlans.mapField('memberRecordMap',{},esc):'',role==='MERCHANT'?svc?typePicker('memberRecordActivity','',esc,true,Services.SERVICE_TYPES):typePicker('memberRecordActivity','',esc,Services.servicesEnabled(S.settings)):'',svc));
 };
 window.fillMemberRecordFromRequest = role=>{
   const draft=window._memberRecordDraft;if(!draft || draft.role!==role) return;
@@ -5229,6 +5230,7 @@ window.saveMemberRole = async (userId,role)=>{
   try{
     input.address=EgyptLocations.address('memberLoc',input.address);
     if(role==='MERCHANT')input.activity=StoreTypes.read('memberRecordActivity');
+    if(draft.svc && !Services.SERVICE_TYPES.includes(input.activity)) throw Error('missing-store-details');
     if(role==='MERCHANT')input.mapLocation=MerchantPlans.mapLocationPatch(value('memberRecordMap'));
     if(input.marketerCode){
       if(!/^[A-Z0-9-]{4,64}$/.test(input.marketerCode)) throw Error('marketer-unavailable');

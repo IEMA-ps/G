@@ -62,26 +62,26 @@ export async function createMemberRecord({db,doc,runTransaction,actorId,userId,r
   });
 }
 
-export function memberRecordForm(user,role,esc,locationHTML='',mapHTML='',typeHTML=''){
+export function memberRecordForm(user,role,esc,locationHTML='',mapHTML='',typeHTML='',svc=false){
   const merchant=role==='MERCHANT',type=assignmentType(role),person=((user.firstName||'')+' '+(user.lastName||'')).trim();
   const field=(id,label,value='',attrs='')=>`<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${esc(value)}" ${attrs}></div>`;
-  return `<div class="modal-head"><h3>إنشاء ${merchant?'متجر':'سجل مندوب'} وتعيين العضو</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div>
+  return `<div class="modal-head"><h3>إنشاء ${svc?'مقدم خدمة':merchant?'متجر':'سجل مندوب'} وتعيين العضو</h3><button class="modal-close" onclick="UI.closeModal()" aria-label="إغلاق">×</button></div>
   <p style="font-size:13px;line-height:1.8;margin-bottom:12px">حساب العضو: <b>${esc(person||user.email||'')}</b>. انقل بيانات طلب واتساب هنا، فالطلب لا يُحفظ داخل التطبيق.</p>
   <div class="field"><label for="memberRequestPaste">الصق رسالة طلب واتساب (اختياري)</label><textarea id="memberRequestPaste" maxlength="12000" rows="4" oninput="fillMemberRecordFromRequest('${role}')" placeholder="طلب تسجيل متجر أو طلب الانضمام كمندوب..."></textarea></div>
   <p id="memberPasteNotice" role="status" style="font-size:12px;line-height:1.8;margin-bottom:12px">بنملا الحقول اللي قدرنا نتعرف عليها بس. راجعها وعدلها قبل ما تنشئ الحساب. الرسالة مش بتتبعت أو تتحفظ.</p>
-  ${field('memberRecordName',merchant?'اسم المتجر كما في طلب واتساب':'اسم المندوب',merchant?'':person,'required maxlength="120"')}
+  ${field('memberRecordName',svc?'اسم العيادة أو المدرس أو الشركة':merchant?'اسم المتجر كما في طلب واتساب':'اسم المندوب',merchant?'':person,'required maxlength="120"')}
   ${merchant?field('memberRecordManager','اسم المسؤول',person,'maxlength="120"'):''}
   ${field('memberRecordPhone','رقم الهاتف',user.phone||'','required type="tel" maxlength="30"')}
   ${field('memberRecordWhatsapp','واتساب (اختياري، يستخدم الهاتف إذا تُرك فارغًا)',user.phone||'','type="tel" maxlength="30"')}
   ${merchant?(typeHTML||field('memberRecordActivity','نوع النشاط','','required maxlength="120"')):field('memberRecordVehicle','وسيلة التوصيل','','required maxlength="50"')}
   ${locationHTML}
   ${mapHTML}
-  ${field('memberRecordAddress',merchant?'عنوان المتجر':'منطقة العمل','','required maxlength="200"')}
+  ${field('memberRecordAddress',svc?'عنوان مقدم الخدمة':merchant?'عنوان المتجر':'منطقة العمل','','required maxlength="200"')}
   ${merchant?field('memberRecordMarketer','كود المسوّق للمراجعة (اختياري)','','maxlength="64" autocomplete="off"'):''}
-  ${merchant?field('memberRecordDescription','وصف المتجر (اختياري)','','maxlength="400"'):''}
-  <div class="hint-box" style="font-size:12px;line-height:1.8;margin-bottom:12px">السجل الجديد قيد المراجعة، وليس نشطًا. لا اشتراك أو تحصيل تلقائي. سيدخل العضو بنفس حسابه كـ${type.label}.</div>
+  ${merchant?field('memberRecordDescription',svc?'وصف الخدمة (اختياري)':'وصف المتجر (اختياري)','','maxlength="400"'):''}
+  <div class="hint-box" style="font-size:12px;line-height:1.8;margin-bottom:12px">السجل الجديد قيد المراجعة، وليس نشطًا. لا اشتراك أو تحصيل تلقائي. سيدخل العضو بنفس حسابه كـ${svc?'مقدم خدمة':type.label}.</div>
   <p id="memberRecordError" role="alert" style="color:var(--danger);font-size:13px"></p>
-  <button id="memberRoleSave" class="btn btn-primary" onclick="saveMemberRole('${esc(user._id)}','${role}')">إنشاء ${merchant?'المتجر':'سجل المندوب'} وربط العضو</button>`;
+  <button id="memberRoleSave" class="btn btn-primary" onclick="saveMemberRole('${esc(user._id)}','${role}')">إنشاء ${svc?'مقدم الخدمة':merchant?'المتجر':'سجل المندوب'} وربط العضو</button>`;
 }
 
 // Parse only the app's known request labels. The pasted text is never executable.
