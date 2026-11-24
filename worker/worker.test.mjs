@@ -13,6 +13,7 @@ class FakeKV {
 const sentMessages = [];
 _internals.verifyFirebaseIdToken = async token => {
   if (token === 'good-uid-1') return 'uid-1';
+  if (token === 'good-uid-2') return 'uid-2';
   if (token === 'good-uid-admin') return 'uid-admin';
   throw new Error('bad token');
 };
@@ -84,6 +85,25 @@ let linkUrl;
   assert.equal(sentMessages.length, before + 1);
   assert.equal(sentMessages.at(-1).chatId, '555');
   assert.ok(sentMessages.at(-1).text.includes('ORD-1'));
+}
+
+// 3ب) رجعي: معرّفات التطبيق الحقيقية (merch_/agent_ + UUID = 42 حرف) لازم تتقبل في الربط والإشعار
+{
+  const merchId = 'merch_3f6b2a1c-9d4e-4f8a-b7c6-5d4e3f2a1b09'; // 42 حرف — الشكل الفعلي في الإنتاج
+  const agentId = 'agent_0a1b2c3d-4e5f-4678-89ab-cdef01234567';
+  assert.equal(merchId.length, 42);
+  const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-2'), body: {merchantId: merchId}});
+  assert.equal(res.status, 200);
+  const code = (await res.json()).url.split('start=')[1];
+  await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 556}, text: '/start ' + code}}});
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:' + merchId], title: 't', message: 'm'}});
+  assert.equal((await nres.json()).sent, 1);
+  assert.equal(sentMessages.at(-1).chatId, '556');
+  await call('/link/stop', {method: 'POST', headers: auth('good-uid-2')});
+  // ومندوب بنفس طول المعرّف
+  const ares = await call('/link/start', {method: 'POST', headers: auth('good-uid-2'), body: {deliveryAgentId: agentId}});
+  assert.equal(ares.status, 200);
+  await call('/link/stop', {method: 'POST', headers: auth('good-uid-2')});
 }
 
 // 4) /notify بدون السر مترفض، وبمفاتيح غير معروفة يرجع 0
