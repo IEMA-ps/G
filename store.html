@@ -31,6 +31,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/fireba
 import { getFirestore,doc,getDoc } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 import { phoneHref,mapHref } from '/merchant-plans.js?v=offer2-1';
 import {storeIdFromLocation,publicStoreUrl} from '/store-sharing.js?v=share-1';
+import {SERVICE_TYPES} from '/services.js?v=svc-1';
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 seedHistory('/',location.href);
 document.getElementById('back').onclick=()=>previousOr('/');
@@ -57,7 +58,9 @@ async function load(){
   $('noContact').classList.toggle('hidden',!!(phone||wa));
   if(map){$('map').href=map;$('map').classList.remove('hidden');}
   const logo=safeLogo(m.logoUrl);if(logo){$('logo').src=logo;$('logo').alt=m.businessName||'';$('logo').classList.remove('hidden');$('logoFallback').classList.add('hidden');$('logo').onerror=()=>{$('logo').classList.add('hidden');$('logoFallback').classList.remove('hidden');};}
-  if(m.subPlanType==='ORDERING'){const u=new URL('/',location.origin);u.searchParams.set('store',id);$('order').href=u.href;$('order').classList.remove('hidden');$('profileNote').textContent='تقدر تطلب المنتجات من التطبيق وتدفع كاش عند الاستلام. التاجر بيجهز طلبك عشان المندوب يستلمه.';}
+  const isSvc=SERVICE_TYPES.includes(m.activityType);
+  if(isSvc)$('kind').textContent='حجز مواعيد';
+  if(m.subPlanType==='ORDERING'){const u=new URL('/',location.origin);u.searchParams.set('store',id);$('order').href=u.href;$('order').classList.remove('hidden');if(isSvc){$('order').textContent='احجز ميعاد من التطبيق';$('profileNote').textContent='تقدر تحجز ميعاد من التطبيق وتختار اليوم والوقت المناسب.';}else{$('profileNote').textContent='تقدر تطلب المنتجات من التطبيق وتدفع كاش عند الاستلام. التاجر بيجهز طلبك عشان المندوب يستلمه.';}}
   $('message').classList.add('hidden');$('store').classList.remove('hidden');
  }catch{unavailable();}
 }
