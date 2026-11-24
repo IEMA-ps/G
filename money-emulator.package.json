@@ -1,0 +1,11 @@
+{
+ "private": true,
+ "scripts": {
+  "test": "firebase emulators:exec --config money-emulator.firebase.json --only firestore --project demo-order-money 'node money-emulator.test.mjs'"
+ },
+ "devDependencies": {
+  "firebase-tools": "15.37.0",
+  "@firebase/rules-unit-testing": "3.0.3",
+  "firebase": "10.13.2"
+ }
+}
