@@ -156,6 +156,15 @@ img{max-width:100%; display:block;}
 
 /* ---------- categories ---------- */
 .cat-scroll{display:flex; gap:10px; overflow-x:auto; scrollbar-width:none; padding:2px 4px 4px;}
+.ck-opt{display:flex;gap:12px;align-items:flex-start;min-width:0;cursor:pointer}
+.ck-opt input[type=radio],.ck-opt input[type=radio]{accent-color:var(--teal);width:18px;height:18px;flex-shrink:0;margin:2px 0 0}
+.ck-opt .ck-txt{min-width:0;flex:1;overflow-wrap:anywhere}
+.ck-opt:has(input:checked){border-color:var(--teal);background:var(--teal-tint)}
+.ck-coupon{display:flex;gap:8px;align-items:stretch;min-width:0}
+.ck-coupon .ck-input{flex:1 1 0;width:0;min-width:0;text-transform:uppercase}
+.ck-input{display:block;width:100%;max-width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:var(--radius-s);background:var(--surface);outline:none;font:inherit}
+.ck-input:focus{border-color:var(--teal);box-shadow:var(--focus-ring)}
+.ck-row{gap:10px;flex-wrap:wrap}.ck-row span{min-width:0;flex:1 1 150px}
 .cat-chip{flex-shrink:0;} .cat-chip span:not(.em){white-space:nowrap;}
 .cat-scroll::-webkit-scrollbar{display:none;}
 .cat-chip{min-width:74px; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px 8px;}
@@ -3124,9 +3133,9 @@ function renderCheckout(){
   return `
     <div class="section-head" style="margin-top:0"><h3>عنوان التوصيل</h3><span class="more" onclick="openAddressForm()">+ إضافة</span></div>
     ${addr.length? `<div class="list-gap" id="addrPicker">${addr.map(a=>`
-      <label class="card" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
+      <label class="card ck-opt">
         <input type="radio" name="addrPick" value="${a._id}" ${selected&&selected._id===a._id?'checked':''} style="margin-top:3px">
-        <div><b style="font-size:13.5px">${esc(a.label)}</b><div style="font-size:12.5px;color:var(--ink-soft);margin-top:3px">${esc(a.fullAddressText||(a.governorate+' - '+a.area))}</div></div>
+        <div class="ck-txt"><b style="font-size:13.5px">${esc(a.label)}</b><div style="font-size:12.5px;color:var(--ink-soft);margin-top:3px">${esc(a.fullAddressText||(a.governorate+' - '+a.area))}</div></div>
       </label>`).join('')}</div>` : `<div class="card" style="text-align:center;color:var(--ink-soft);font-size:13px">لا يوجد عنوان محفوظ، أضف عنوانًا للمتابعة</div>`}
 
     ${belowMin.length? `<div class="hint-box" style="border-color:var(--danger);background:var(--danger-tint);color:var(--danger)">
@@ -3142,8 +3151,8 @@ function renderCheckout(){
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="removeCoupon()">إزالة</button>
         </div>
       ` : `
-        <div style="display:flex;gap:8px">
-          <input id="couponInput" placeholder="أدخل كود الخصم" style="flex:1;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;text-transform:uppercase">
+        <div class="ck-coupon">
+          <input id="couponInput" class="ck-input" placeholder="أدخل كود الخصم" autocapitalize="characters">
           <button class="btn btn-primary btn-sm" style="width:auto;padding:0 16px" onclick="applyCoupon()">تطبيق</button>
         </div>
       `}
@@ -3158,7 +3167,7 @@ function renderCheckout(){
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="removeLoyaltyPoints()">إزالة</button>
         </div>
       ` : `
-        <div class="row-between">
+        <div class="row-between ck-row">
           <span style="font-size:13px;color:var(--ink-soft)">رصيدك: ${availablePoints} نقطة (بقيمة ${fmtMoney(roundMoney(availablePoints*redeemValue))})</span>
           <button class="btn btn-primary btn-sm" style="width:auto" ${availablePoints<=0?'disabled':''} onclick="applyLoyaltyPoints()">استخدام النقاط</button>
         </div>
@@ -3166,11 +3175,11 @@ function renderCheckout(){
     </div>` : ''}
 
     <div class="section-head"><h3>طريقة الدفع</h3></div>
-    <div class="list-gap">${PAYMENT_METHODS.map(m=>`<label class="card" style="display:flex;gap:10px;align-items:center;${m.enabled?'cursor:pointer':'opacity:.55'}">
+    <div class="list-gap">${PAYMENT_METHODS.map(m=>`<label class="card ck-opt" style="align-items:center;${m.enabled?'cursor:pointer':'opacity:.55'}">
       <input type="radio" name="payPick" ${m.id==='COD'?'checked':''} ${m.enabled?'':'disabled'} onchange="S.paymentMethod='${m.id}'"> <span style="font-size:13.5px">${esc(m.label)}${m.soon?' <small style="color:var(--ink-soft)">(قريبًا)</small>':''}</span></label>`).join('')}</div>
 
     <div class="section-head"><h3>ملاحظات إضافية</h3></div>
-    <textarea id="orderNotes" class="field" style="width:100%;padding:12px;border:1.5px solid var(--line);border-radius:14px;min-height:60px" placeholder="اذكر أي تفاصيل تخص طلبك (اختياري)"></textarea>
+    <textarea id="orderNotes" class="ck-input" style="min-height:70px;resize:vertical" placeholder="اذكر أي تفاصيل تخص طلبك (اختياري)"></textarea>
 
     <div class="card" style="margin-top:16px">
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
