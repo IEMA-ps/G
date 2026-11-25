@@ -1,6 +1,7 @@
 // New features start OFF. The super admin switches them on here (settings/app, merged, nothing else is touched).
 export const FLAGS = [
-  {key:'favoriteStoresEnabled', label:'المتاجر المفضلة وحفظ المفضلة على حساب العميل'}
+  {key:'favoriteStoresEnabled', label:'المتاجر المفضلة وحفظ المفضلة على حساب العميل'},
+  {key:'merchantRatingsEnabled', label:'تقييمات العملاء للتاجر (عرض وردود) وعدد التقييمات على صفحة المتجر'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;
 

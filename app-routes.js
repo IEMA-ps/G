@@ -1,7 +1,7 @@
 // Routes identify screens, never permission. Existing role/rules checks still apply.
 export const ROLE_TABS={
  customer:['home','browse','cart','checkout','orders','profile','marketerBenefits','addresses','notifications','wishlist','recurringOrders','groupBuys'],
- merchant:['m_dashboard','m_products','m_orders','m_profile','m_reports','m_subscription','m_statement','notifications'],
+ merchant:['m_dashboard','m_products','m_orders','m_profile','m_reports','m_ratings','m_subscription','m_statement','notifications'],
  delivery:['d_dashboard','d_history','d_profile','notifications'],
  marketer:['mk_dashboard','mk_merchants','mk_earnings','mk_tools','notifications'],
  admin:['a_dashboard','a_new_orders','a_merchants','a_providers','a_categories','a_products','a_orders','a_recurring','a_users','a_settlements','a_settings','a_agents','a_coupons','a_reports','a_audit','a_marketers','a_dbsetup','a_subscriptions','notifications']
