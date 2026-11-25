@@ -564,6 +564,7 @@ import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
 import * as Services from '/services.js?v=svc-6';
 import * as OrderMoney from '/order-money.js?v=money-1';
+import * as StoreHours from '/store-hours.js?v=hours-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
@@ -650,17 +651,8 @@ function weekLabelOf(wk){
 }
 function roundMoney(n){ return Math.round((n||0)*100)/100; }
 /* ---- هل المتجر مفتوح الآن؟ بناءً على ساعات العمل المحددة من التاجر (openTime/closeTime بصيغة HH:MM) ---- */
-function isMerchantOpenNow(m){
-  if(!m || !m.openTime || !m.closeTime) return true; // لو التاجر ماحددش ساعات عمل، اعتبره متاح دايمًا
-  const now = new Date();
-  const [oh,om] = m.openTime.split(':').map(Number);
-  const [ch,cm] = m.closeTime.split(':').map(Number);
-  const nowMins = now.getHours()*60 + now.getMinutes();
-  const openMins = oh*60+om, closeMins = ch*60+cm;
-  if(openMins===closeMins) return true; // نفس الوقت = مفتوح 24 ساعة
-  if(openMins < closeMins) return nowMins>=openMins && nowMins<closeMins;
-  return nowMins>=openMins || nowMins<closeMins; // فترة عمل بتمتد لليوم التالي، زي 10 مساءً → 2 فجرًا
-}
+function isMerchantOpenNow(m){ return StoreHours.storeStatus(m).open; }
+function merchantClosedLabel(m){ return StoreHours.REASON_LABEL[StoreHours.storeStatus(m).reason]||'مغلق حاليًا'; }
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const ORDER_STATUS = {
@@ -2963,7 +2955,7 @@ function merchantCard(m){
   return `<div class="merchant-card" onclick="openMerchant('${m.id}')">
     <div class="logo">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-shop"></i>'}</div>
     <div class="info"><h4>${esc(m.businessName)}</h4>
-      <div class="meta"><i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · ${esc(typeLabel(m))} · <span style="color:${openNow?'var(--success)':'var(--danger)'}">${openNow?'مفتوح':'مغلق'}</span></div>
+      <div class="meta"><i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · ${esc(typeLabel(m))} · <span style="color:${openNow?'var(--success)':'var(--danger)'}">${openNow?'مفتوح':merchantClosedLabel(m)}</span></div>
     </div>
     <i class="fa-solid fa-chevron-left" style="color:var(--ink-soft)"></i>
   </div>`;
@@ -3123,10 +3115,12 @@ function renderMerchantPage(){
         <div style="flex:1"><h3 style="margin:0 0 4px">${esc(m.businessName)}</h3>
           <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · `}${esc(typeLabel(m))}</div>
         </div>
-        ${isSvc?'':`<span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':'مغلق حاليًا'}</span>`}
+        ${isSvc?'':`<span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':merchantClosedLabel(m)}</span>`}
       </div>
       ${m.description?`<p style="font-size:13px;color:var(--ink-soft);margin:12px 0 0;line-height:1.7">${esc(m.description)}</p>`:''}
       ${!isSvc&&m.openTime&&m.closeTime?`<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0"><i class="fa-solid fa-clock"></i> ساعات العمل: ${esc(m.openTime)} — ${esc(m.closeTime)}</p>`:''}
+      ${!isSvc&&Array.isArray(m.closedDays)&&m.closedDays.length?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-calendar-xmark"></i> إجازة: ${m.closedDays.map(d=>StoreHours.DAY_NAMES[Number(d)]).filter(Boolean).map(esc).join('، ')}</p>`:''}
+      ${!isSvc&&m.temporarilyClosed===true?`<p class="hint-box" style="margin:10px 0 0">المتجر مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي.</p>`:''}
       ${!isSvc&&m.minOrderAmount>0?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-circle-info"></i> الحد الأدنى للطلب من هذا المتجر: ${fmtMoney(m.minOrderAmount)}</p>`:''}
       <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, (isSvc?'مرحبًا، أريد الاستفسار عن خدماتكم في ':'مرحبًا، أريد الاستفسار عن منتجاتكم في ')+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
     </div>
@@ -3354,6 +3348,10 @@ window.submitOrder = async ()=>{
         return;
       }
     }
+    for(const mid of Object.keys(groups)){
+      const m = getMerchant(mid);
+      if(m && m.temporarilyClosed===true){ UI.toast(`${m.businessName} مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي، شيل منتجاته من السلة أو حاول بعدين`); return; }
+    }
     if(Object.keys(groups).length>DeliveryBatch.MAX_STORES_PER_ORDER){ UI.toast(`الحد الأقصى ${DeliveryBatch.MAX_STORES_PER_ORDER} متاجر في الطلب الواحد`); return; }
     const notes = document.getElementById('orderNotes').value.trim();
     const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
@@ -3380,6 +3378,7 @@ window.submitOrder = async ()=>{
       const merchantEntries=Object.entries(groups);
       const merchantSnaps=await Promise.all(merchantEntries.map(([mid])=>tx.get(doc(db,'merchants',mid))));
       merchantSnaps.forEach(d=>{if(!d.exists() || !MerchantPlans.canOrder(d.data(),S.settings.subsEnforced)) throw new Error('أحد المتاجر لا يستقبل طلبات حاليًا، راجع السلة');});
+      merchantSnaps.forEach(d=>{ if(d.data().temporarilyClosed===true) throw new Error(`${d.data().businessName||'أحد المتاجر'} مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي، شيل منتجاته من السلة أو حاول بعدين`); });
       priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
       if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
@@ -4122,6 +4121,8 @@ window.openMerchantEdit = ()=>{
       <div class="field" style="flex:1"><label>وقت الفتح</label><input id="meOpen" type="time" value="${esc(m.openTime||'09:00')}"></div>
       <div class="field" style="flex:1"><label>وقت الغلق</label><input id="meClose" type="time" value="${esc(m.closeTime||'23:00')}"></div>
     </div>
+    <div class="field"><label>أيام الإجازة الأسبوعية</label><div id="meDays" style="display:flex;flex-wrap:wrap;gap:8px">${StoreHours.DAY_NAMES.map((n,i)=>`<label style="display:flex;align-items:center;gap:4px;font-size:12.5px"><input type="checkbox" value="${i}" ${(m.closedDays||[]).map(Number).includes(i)?'checked':''}> ${n}</label>`).join('')}</div></div>
+    <div class="field"><label>إغلاق مؤقت (المتجر مش هيستقبل طلبات لحد ما تفتحه)</label><select id="meTemp"><option value="0" ${m.temporarilyClosed===true?'':'selected'}>المتجر شغال</option><option value="1" ${m.temporarilyClosed===true?'selected':''}>مقفول مؤقتًا</option></select></div>
     <div class="field"><label>الحد الأدنى لقيمة الطلب (جنيه) — 0 يعني بدون حد أدنى</label><input id="meMinOrder" type="number" step="1" min="0" value="${m.minOrderAmount||0}"></div>`}
     <button class="btn btn-primary" onclick="saveMerchantEdit()">حفظ</button>
   `);
@@ -4139,6 +4140,8 @@ window.saveMerchantEdit = async ()=>{
     logoUrl: document.getElementById('meLogo').value.trim(),
     ...(document.getElementById('meOpen')?{openTime: document.getElementById('meOpen').value,
     closeTime: document.getElementById('meClose').value,
+    closedDays: [...document.querySelectorAll('#meDays input:checked')].map(x=>Number(x.value)),
+    temporarilyClosed: document.getElementById('meTemp').value==='1',
     minOrderAmount: Math.max(0, parseFloat(document.getElementById('meMinOrder').value)||0)}:{})
   });
   if(MerchantPlans.isNewMerchant(S.myMerchant)){
