@@ -34,3 +34,16 @@ assert.match(card,/setBookingStatus\('x_1','ACCEPTED'\)/);assert.doesNotMatch(ca
 const c2=S.bookingCardHTML({id:'x_1',status:'CANCELLED',date:'2026-11-24',time:'13:00',merchantName:'د'},esc,'customer');assert.doesNotMatch(c2,/cancelMyBooking/);
 assert.equal(S.fmtTime('13:00'),'1:00 م');assert.equal(S.fmtTime('00:30'),'12:30 ص');
 console.log('services tests passed');
+{
+  const days=Object.fromEntries([0,1,2,3,4,5,6].map(i=>[String(i),{on:true,from:'10:00',to:'12:00'}]));
+  const sch=S.normalizeSchedule({slotMinutes:60,days,closedDates:['2026-12-10']});
+  const ms=Date.parse('2026-11-25T09:00:00+02:00');
+  const ser=S.seriesInfo({schedule:sch,booked:new Set(['2026-12-03|10:00']),date:'2026-11-26',time:'10:00',weeks:8},ms);
+  assert.equal(ser.length,8);assert.equal(ser[0].date,'2026-11-26');assert.equal(ser[1].date,'2026-12-03');
+  assert.deepEqual(ser.map(x=>x.ok),[true,false,false,true,true,true,true,true]);
+  assert.equal(S.seriesInfo({schedule:sch,booked:new Set(),date:'2026-11-26',time:'10:00',weeks:7},ms).length,4);
+  assert.deepEqual(S.WEEK_CHOICES,[4,8,12]);
+  const html=S.bookingPanelHTML({m:{id:'m1'},schedule:sch,booked:new Set(),date:'2026-11-26',time:'10:00',profile:{},repeat:'weekly',weeks:12},(x=>x),ms);
+  assert.ok(html.includes('12 أسابيع')&&html.includes('أرسل 11 طلبات'));
+  console.log('weekly booking tests passed');
+}

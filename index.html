@@ -180,6 +180,12 @@ img{max-width:100%; display:block;}
 .hm-tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px 8px;border:1.5px solid var(--line);border-radius:var(--radius-m);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;min-width:0}
 .hm-tile i{font-size:22px;color:var(--teal)}.hm-tile strong{font-size:15px;font-weight:800}.hm-tile small{font-size:11.5px;color:var(--ink-soft);text-align:center}
 .hm-tile.active{background:var(--teal);border-color:var(--teal);color:#fff}.hm-tile.active i,.hm-tile.active small{color:#fff}
+.bk-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px}
+.bk-mode{padding:11px 4px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--surface);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
+.bk-mode.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.bk-series{margin:10px 0 4px;display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.bk-series div{display:flex;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--teal-tint);border-radius:var(--radius-s)}
+.bk-series div.off{background:var(--danger-tint);color:var(--danger)}
 .cat-chip{flex-shrink:0;} .cat-chip span:not(.em){white-space:nowrap;}
 .cat-scroll::-webkit-scrollbar{display:none;}
 .cat-chip{min-width:74px; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px 8px;}
@@ -555,7 +561,7 @@ document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{requir
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
-import * as Services from '/services.js?v=svc-1';
+import * as Services from '/services.js?v=svc-4';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
@@ -2941,7 +2947,7 @@ function merchantCard(m){
 }
 window.openCategory = (cid)=>{ S.selectedCategory=cid; if(cid) loadProductsFor('category',cid); go('browse'); };
 /* ================= SERVICES (booking) ================= */
-const bookDefault=()=>({ready:false,schedule:null,booked:new Set(),date:'',time:''});
+const bookDefault=()=>({ready:false,schedule:null,booked:new Set(),date:'',time:'',repeat:'once',weeks:4});
 window.loadBookingData = async (mid)=>{
   S.book=S.book||{}; S.book[mid]={...bookDefault()};
   try{
@@ -2953,19 +2959,30 @@ window.loadBookingData = async (mid)=>{
 // booked set is date|time; panel needs per-day set
 const bookedFor=(mid,date)=>Services.bookedSetFor(S.book?.[mid]?.booked,date);
 window.pickBookDate=(mid,date)=>{ const st=S.book[mid]; st.date=date; st.time=''; renderMain(); };
+window.pickBookRepeat=(mid,r)=>{ S.book[mid].repeat=r; renderMain(); };
+window.pickBookWeeks=(mid,n)=>{ S.book[mid].weeks=n; renderMain(); };
 window.pickBookTime=(mid,date,time)=>{ const st=S.book[mid]; st.date=date; st.time=time; renderMain(); };
 window.submitBooking = async (mid,date,time)=>{
   const m=getMerchant(mid),st=S.book?.[mid]; if(!m||!st||!S.user) return;
   try{
+    const weekly=st.repeat==='weekly';
     const v=Services.validBookingInput({date,time,name:document.getElementById('bkName').value,phone:document.getElementById('bkPhone').value,note:document.getElementById('bkNote').value},st.schedule,bookedFor(mid,date));
-    const sid=Services.bookingId(mid,date,time),sch=Services.normalizeSchedule(st.schedule),t=nowMs(),batch=writeBatch(db);
-    batch.set(doc(db,'bookedSlots',sid),{merchantId:mid,date,time,active:true,customerId:S.user.uid});
-    batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date,time,slotMinutes:sch.slotMinutes,note:v.note,status:'PENDING',createdAt:t,updatedAt:t});
-    await batch.commit();
-    notifyProvider(mid,'طلب حجز جديد 📅',`${v.name} (${v.phone}) طلب ميعاد ${date} الساعة ${Services.fmtTime(time)}${v.note?'\nملاحظة: '+v.note:''}\nادخل على الحجوزات للقبول أو الرفض.`);
+    const dates=weekly?Services.seriesInfo({schedule:st.schedule,booked:st.booked,date,time,weeks:st.weeks}).filter(x=>x.ok).map(x=>x.date):[date];
+    if(weekly&&v.note.length>270) throw Error('الملاحظة طويلة، اختصرها لأقل من 270 حرف');
+    const sch=Services.normalizeSchedule(st.schedule),t=nowMs(); let done=0;
+    for(let i=0;i<dates.length;i+=5){
+      const batch=writeBatch(db);
+      dates.slice(i,i+5).forEach((d,j)=>{
+        const sid=Services.bookingId(mid,d,time),note=weekly?(v.note?v.note+' · ':'')+`حجز أسبوعي (${i+j+1} من ${dates.length})`:v.note;
+        batch.set(doc(db,'bookedSlots',sid),{merchantId:mid,date:d,time,active:true,customerId:S.user.uid});
+        batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date:d,time,slotMinutes:sch.slotMinutes,note,status:'PENDING',createdAt:t,updatedAt:t});
+      });
+      await batch.commit(); done+=Math.min(5,dates.length-i);
+    }
     try{localStorage.setItem('bk_phone_'+S.user.uid,v.phone);}catch(e){}
     if(!String(S.profile?.phone||'').trim()) updateDoc(doc(db,'users',S.user.uid),{phone:v.phone}).catch(()=>{});
-    UI.toast('اتبعت طلب الحجز للمزود ✅'); go('myBookings'); loadBookingData(mid);
+    notifyProvider(mid,weekly?'طلب حجز أسبوعي جديد 📅':'طلب حجز جديد 📅',weekly?`${v.name} (${v.phone}) طلب ${dates.length} مواعيد أسبوعية، كل ${Services.fmtDay(date).split(' ')[0]} الساعة ${Services.fmtTime(time)}، من ${date} إلى ${dates[dates.length-1]}${v.note?'\nملاحظة: '+v.note:''}\nادخل على الحجوزات للقبول أو الرفض.`:`${v.name} (${v.phone}) طلب ميعاد ${date} الساعة ${Services.fmtTime(time)}${v.note?'\nملاحظة: '+v.note:''}\nادخل على الحجوزات للقبول أو الرفض.`);
+    UI.toast(weekly?`اتبعت ${dates.length} طلبات حجز للمزود ✅`:'اتبعت طلب الحجز للمزود ✅'); st.repeat='once'; go('myBookings'); loadBookingData(mid);
   }catch(e){ UI.toast(e.code==='permission-denied'?'الميعاد ده اتحجز، اختار ميعاد تاني':(e.message||'تعذر الحجز')); loadBookingData(mid); }
 };
 // إشعار المزود بحجز جديد: داخل التطبيق + تليجرام (لو ربط البوت). الفشل ما بيوقفش الحجز.
@@ -3092,7 +3109,7 @@ function renderMerchantPage(){
     </div>
     ${merchantContactCard(m)}
     ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم المزود مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
-    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
+    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,repeat:S.book[m.id].repeat,weeks:S.book[m.id].weeks,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
     ${canOrder&&!isSvc?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
     ${canOrder&&!isSvc?(prods.length? `<div class="product-grid pl-list">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
     ${canOrder && S.storePages?.[m.id]?.more?`<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreStoreProducts('${m.id}')" ${S.storePages[m.id].busy?'disabled':''}>${S.storePages[m.id].busy?'جاري التحميل...':'عرض باقي منتجات المتجر'}</button>`:''}
