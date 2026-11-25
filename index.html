@@ -533,6 +533,7 @@ import * as Favorites from '/favorites.js?v=fav-1';
 import * as FeatureFlags from '/feature-flags.js?v=flags-1';
 import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
 import * as OrderTimeline from '/order-timeline.js?v=tl-1';
+import * as MarketerInsights from '/marketer-insights.js?v=mki-1';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -2015,6 +2016,21 @@ window.shareReferral = ()=>{
 };
 window.copyText = async (t)=>{ try{ await navigator.clipboard.writeText(t); UI.toast('تم النسخ ✅'); }catch(e){ UI.toast(t); } };
 
+/* ===== ملخص الشهر ومحلات محتاجة متابعة للمسوّق (مفتوحة بمفتاح من الإدارة) ===== */
+const MK_ATTN = {EXPIRED:['انتهى اشتراكه','var(--danger)'], EXPIRING:['اشتراكه هيخلص','var(--gold)'], NO_SUB:['ماعندوش اشتراك','var(--danger)'], PENDING:['قيد المراجعة','var(--ink-soft)']};
+function renderMarketerInsights(){
+  if(!FeatureFlags.isOn(S.settings,'marketerInsightsEnabled')) return '';
+  const ms=S.mkMerchants||[], sm=MarketerInsights.monthSummary(ms,S.mkSubOrders||[]), att=MarketerInsights.needsAttention(ms);
+  const chg=(c,p)=>{ const v=MarketerInsights.change(c,p); return v===null?'':`<span style="font-size:11px;color:${v>=0?'var(--success)':'var(--danger)'}">${v>=0?'▲':'▼'} ${Math.abs(v)}% عن الشهر اللي فات</span>`; };
+  const msg=a=>a.kind==='PENDING'?'':`أهلاً ${a.m.managerName||''}، بخصوص اشتراك "${a.m.businessName}" على على بابك، تحب نجدده؟`;
+  return `<div class="card" style="margin-bottom:14px"><b style="font-size:14px">ملخص الشهر ده</b>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:12.5px">
+      <div style="flex:1;min-width:120px"><div style="font-size:18px;font-weight:700">${sm.cur.orders}</div>طلبات مسلّمة<br>${chg(sm.cur.orders,sm.prev.orders)}</div>
+      <div style="flex:1;min-width:120px"><div style="font-size:18px;font-weight:700">${fmtMoney(sm.cur.gross)}</div>مبيعات محلاتي<br>${chg(sm.cur.gross,sm.prev.gross)}</div>
+      <div style="flex:1;min-width:120px"><div style="font-size:18px;font-weight:700">${sm.cur.newStores}</div>محلات سجّلتها<br><span style="font-size:11px;color:var(--ink-soft)">الشهر اللي فات: ${sm.prev.newStores}</span></div>
+    </div></div>
+    ${att.length?`<div class="card" style="margin-bottom:14px"><b style="font-size:14px">محلات محتاجة متابعة (${att.length})</b><div class="list-gap" style="margin-top:10px">${att.slice(0,8).map(a=>{const t=MK_ATTN[a.kind];return `<div class="row-between" style="font-size:12.5px"><span><b>${esc(a.m.businessName)}</b><br><span style="color:${t[1]}">${t[0]}${a.kind==='EXPIRED'?' من '+a.days+' يوم':a.kind==='EXPIRING'?' بعد '+a.days+' يوم':a.kind==='PENDING'&&a.days?' من '+a.days+' يوم':''}</span></span>${a.kind!=='PENDING'&&a.m.phone?`<a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" rel="noopener" href="${waLink(a.m.whatsappNumber||a.m.phone,msg(a))}"><i class="fa-brands fa-whatsapp"></i> كلّمه</a>`:''}</div>`;}).join('')}</div></div>`:''}`;
+}
 function renderMarketerDashboard(){
   if(Program.enabled()&&!Program.creditsReady())return '<div class="card">انتظر تحميل سجل الحوافز قبل عرض الرصيد.</div>';
   const t = mkMyTotals(); const ms = S.mkMerchants||[];
@@ -2024,6 +2040,7 @@ function renderMarketerDashboard(){
     ${AdSlots.adSlotHTML(S.settings,'mkDash',esc)}
     ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
+    ${renderMarketerInsights()}
     <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك بتتحسب من اشتراكات محلاتك اللي الإدارة اعتمدتها، حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
     ${(()=>{ const tr = mkTier(ms.filter(m=>m.status==='ACTIVE').length); const tiers = mkTiers(); return `<div class="card" style="margin-bottom:14px">
       <div class="row-between"><b style="font-size:14px">مستواك: ${esc(tr.cur.name)}</b><span class="badge-chip">${tr.cur.bonus>0?'+'+tr.cur.bonus+'% على كل باقة':mkBaseRateLabel()}</span></div>
@@ -2042,11 +2059,15 @@ function renderMarketerDashboard(){
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openTelegramLink('marketer')"><i class="fa-brands fa-telegram"></i> إشعارات الطلبات على تليجرام</button>
     <div class="hint-box" style="margin-top:14px"><i class="fa-solid fa-circle-info"></i> المحل اللي تسجّله بيبقى «قيد المراجعة» لحد ما الإدارة توافق عليه وتربط حساب صاحبه. النسبة بتتحسب بعد ما الإدارة تعتمد الاشتراك (أو الطلب يوصل للعميل حسب إعدادات الإدارة).</div>`;
 }
+window.setMkFilter = k => { S.mkFilter=k; renderMain(); };
 function renderMarketerMerchants(){
-  const ms = S.mkMerchants||[]; const t = mkMyTotals();
+  const all = S.mkMerchants||[]; const t = mkMyTotals();
+  const insightsOn = FeatureFlags.isOn(S.settings,'marketerInsightsEnabled');
+  const ms = insightsOn ? MarketerInsights.filterByStatus(all,S.mkFilter) : all;
   const byId = {}; t.rows.forEach(r=>byId[r.m.id]=r);
   return `
     <button class="btn btn-primary" style="margin-bottom:14px" onclick="openMarketerMerchantForm()"><i class="fa-solid fa-plus"></i> تسجيل محل جديد</button>
+    ${insightsOn&&all.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${[['ALL','الكل'],['ACTIVE','نشط'],['PENDING','قيد المراجعة'],['SUSPENDED','موقوف']].map(([k,l])=>`<button class="btn btn-sm ${(S.mkFilter||'ALL')===k?'btn-primary':'btn-ghost'}" style="width:auto" onclick="setMkFilter('${k}')">${l} (${MarketerInsights.filterByStatus(all,k).length})</button>`).join('')}</div>`:''}
     ${ms.length? `<div class="list-gap">${ms.map(m=>{
       const st = MERCHANT_STATUS[m.status]||{}; const r = byId[m.id]||{orders:0,gross:0,earn:0};
       return `<div class="card"><div class="row-between"><b style="font-size:14px">${esc(m.businessName)}</b><span class="status-pill ${st.cls}"><i class="fa-solid ${m.status==='ACTIVE'?'fa-circle-check':m.status==='PENDING'?'fa-clock':'fa-ban'}"></i> ${st.label}</span></div>

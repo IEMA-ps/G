@@ -2,7 +2,8 @@
 export const FLAGS = [
   {key:'favoriteStoresEnabled', label:'المتاجر المفضلة وحفظ المفضلة على حساب العميل'},
   {key:'merchantRatingsEnabled', label:'تقييمات العملاء للتاجر (عرض وردود) وعدد التقييمات على صفحة المتجر'},
-  {key:'trackingTimelineEnabled', label:'تتبع الطلب للعميل بأوقات كل خطوة واسم المندوب ورقمه (يحتاج قواعد Firebase الأخيرة)'}
+  {key:'trackingTimelineEnabled', label:'تتبع الطلب للعميل بأوقات كل خطوة واسم المندوب ورقمه (يحتاج قواعد Firebase الأخيرة)'},
+  {key:'marketerInsightsEnabled', label:'لوحة المسوّق: ملخص الشهر، محلات محتاجة متابعة، وفلتر المحلات'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;
 
