@@ -280,4 +280,102 @@ let linkUrl;
   assert.equal(sentMessages.length, before);
 }
 
-console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. reminders sync/prefs/cron (1h reminder, 2h aggregated alert, tomorrow summary, prefs off, unlinked merchant). messages sent:', sentMessages.length);
+// 11) Web Push: مفتاح VAPID، الاشتراكات، fan-out في /notify، تنظيف الميت، وفك تشفير RFC 8291
+{
+  const b64u = buf => Buffer.from(buf).toString('base64url');
+  const b64uDec = s => new Uint8Array(Buffer.from(s, 'base64url'));
+  const cat = (...as) => { const o = new Uint8Array(as.reduce((n, a) => n + a.length, 0)); let off = 0; for (const a of as) { o.set(a, off); off += a.length; } return o; };
+  const hmac = async (k, d) => new Uint8Array(await crypto.subtle.sign('HMAC', await crypto.subtle.importKey('raw', k, {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']), d));
+
+  // المفتاح العام: ثابت عبر النداءات، 65 بايت
+  const k1 = await (await call('/push/key')).json();
+  const k2 = await (await call('/push/key')).json();
+  assert.equal(k1.key, k2.key);
+  assert.equal(b64uDec(k1.key).length, 65);
+  assert.equal(b64uDec(k1.key)[0], 4); // نقطة غير مضغوطة
+
+  // الحراسات
+  assert.equal((await call('/push/subscribe', {method: 'POST', headers: {'content-type': 'application/json'}, body: {subscription: {}}})).status, 401);
+  const sub1 = {endpoint: 'https://push.example/sub/AAA', keys: {p256dh: b64u(crypto.getRandomValues(new Uint8Array(65))), auth: b64u(crypto.getRandomValues(new Uint8Array(16)))}};
+  assert.equal((await call('/push/subscribe', {method: 'POST', headers: auth('good-uid-1'), body: {subscription: {endpoint: 'http://insecure/x', keys: sub1.keys}}})).status, 400);
+  assert.equal((await call('/push/subscribe', {method: 'POST', headers: auth('good-uid-1'), body: {subscription: {endpoint: sub1.endpoint}}})).status, 400);
+
+  // اشتراك سليم بمفتاح m:m1 + إضافة uid تلقائية، وإعادة الاشتراك متكررش
+  assert.equal((await (await call('/push/subscribe', {method: 'POST', headers: auth('good-uid-1'), body: {subscription: sub1, keys: ['m:m1', 'x:bad']}})).json()).ok, true);
+  await call('/push/subscribe', {method: 'POST', headers: auth('good-uid-1'), body: {subscription: sub1, keys: ['m:m1']}});
+  const h1 = await _internals.pushHash(sub1.endpoint);
+  assert.deepEqual(JSON.parse(await env.TG_LINKS.get('push:idx:m:m1')), [h1]);
+  assert.deepEqual(JSON.parse(await env.TG_LINKS.get('push:idx:uid:uid-1')), [h1]);
+
+  // /notify بيبعت بوش جنب التليجرام، وال payload JSON فيه title/body
+  const pushCalls = [];
+  const origPush = _internals.pushSendOnce;
+  _internals.pushSendOnce = async (e, v, sub, payload) => { pushCalls.push({endpoint: sub.endpoint, payload}); return {ok: true}; };
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:m1'], title: 'طلب جديد', message: 'تفاصيل'}});
+  const ndata = await nres.json();
+  assert.equal(ndata.sent, 0); // ربط تليجرام بتاع m1 اتشال في اختبار 6 — البوش شغال لوحده
+  assert.equal(ndata.pushed, 1);
+  assert.equal(pushCalls.length, 1);
+  assert.equal(pushCalls[0].endpoint, sub1.endpoint);
+  assert.deepEqual(JSON.parse(pushCalls[0].payload), {title: 'طلب جديد', body: 'تفاصيل'});
+
+  // اشتراك ميت (404/410) بيتشال من الفهارس
+  _internals.pushSendOnce = async () => ({ok: false, gone: true});
+  const gres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:m1'], title: 't', message: 'm'}});
+  assert.equal((await gres.json()).pushed, 0);
+  assert.equal(await env.TG_LINKS.get('push:idx:m:m1'), '[]');
+  assert.equal(await env.TG_LINKS.get('push:sub:' + h1), null);
+
+  // unsubscribe بيمسح الاشتراك
+  await call('/push/subscribe', {method: 'POST', headers: auth('good-uid-1'), body: {subscription: sub1, keys: ['m:m1']}});
+  assert.equal((await call('/push/unsubscribe', {method: 'POST', headers: auth('good-uid-1'), body: {endpoint: sub1.endpoint}})).status, 200);
+  assert.equal(await env.TG_LINKS.get('push:sub:' + h1), null);
+  assert.equal(await env.TG_LINKS.get('push:idx:m:m1'), '[]');
+
+  // تشفير حقيقي: متصفح وهمي بمفتاح ECDH، ونفك التشفير في الاختبار (RFC 8291)
+  _internals.pushSendOnce = origPush;
+  const uaPair = await crypto.subtle.generateKey({name: 'ECDH', namedCurve: 'P-256'}, true, ['deriveBits']);
+  const uaPub = new Uint8Array(await crypto.subtle.exportKey('raw', uaPair.publicKey));
+  const authSecret = crypto.getRandomValues(new Uint8Array(16));
+  const subReal = {endpoint: 'https://push.example/sub/REAL', keys: {p256dh: b64u(uaPub), auth: b64u(authSecret)}};
+  const vapid = await _internals.getVapid(env);
+  let captured;
+  const fakeFetch = async (url, init) => { captured = {url, init}; return {status: 201}; };
+  const payload = JSON.stringify({title: 'عنوان', body: 'نص'});
+  const r = await _internals.pushSendOnce(env, vapid, subReal, payload, fakeFetch);
+  assert.equal(r.ok, true);
+  assert.equal(captured.url, subReal.endpoint);
+  assert.equal(captured.init.headers['content-encoding'], 'aes128gcm');
+  assert.equal(captured.init.headers['ttl'], '3600');
+
+  // هيدر VAPID: JWT صحيح التوقيع وk = المفتاح العام
+  const m = captured.init.headers.authorization.match(/^vapid t=([^,]+), k=(.+)$/);
+  assert.ok(m, 'authorization header');
+  assert.equal(m[2], vapid.pub);
+  const [h64, p64, s64] = m[1].split('.');
+  const claims = JSON.parse(Buffer.from(p64, 'base64url').toString());
+  assert.equal(claims.aud, 'https://push.example');
+  assert.equal(claims.sub, 'https://3alababk.com');
+  const vKey = await crypto.subtle.importKey('raw', b64uDec(vapid.pub), {name: 'ECDSA', namedCurve: 'P-256'}, false, ['verify']);
+  assert.equal(await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, vKey, b64uDec(s64), new TextEncoder().encode(h64 + '.' + p64)), true);
+
+  // فك التشفير: نفس خطوات RFC 8291 من ناحية المتصفح
+  const raw = new Uint8Array(captured.init.body);
+  const salt = raw.slice(0, 16);
+  const idlen = raw[20];
+  const asPub = raw.slice(21, 21 + idlen);
+  const cipher = raw.slice(21 + idlen);
+  const asKey = await crypto.subtle.importKey('raw', asPub, {name: 'ECDH', namedCurve: 'P-256'}, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({name: 'ECDH', public: asKey}, uaPair.privateKey, 256));
+  const keyInfo = cat(new TextEncoder().encode('WebPush: info\0'), uaPub, asPub);
+  const prkKey = await hmac(authSecret, shared);
+  const ikm = await hmac(prkKey, cat(keyInfo, new Uint8Array([1])));
+  const prk = await hmac(salt, ikm);
+  const cek = (await hmac(prk, new TextEncoder().encode('Content-Encoding: aes128gcm\0\x01'))).slice(0, 16);
+  const nonce = (await hmac(prk, new TextEncoder().encode('Content-Encoding: nonce\0\x01'))).slice(0, 12);
+  const plain = new Uint8Array(await crypto.subtle.decrypt({name: 'AES-GCM', iv: nonce}, await crypto.subtle.importKey('raw', cek, {name: 'AES-GCM'}, false, ['decrypt']), cipher));
+  assert.equal(plain.at(-1), 2); // فاصل السجل الأخير
+  assert.equal(new TextDecoder().decode(plain.slice(0, -1)), payload);
+}
+
+console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. reminders sync/prefs/cron (1h reminder, 2h aggregated alert, tomorrow summary, prefs off, unlinked merchant). web push (vapid key, subscribe guards/dedupe/uid selector, notify fan-out payload, gone cleanup, unsubscribe, RFC 8291 decrypt roundtrip + VAPID JWT signature). messages sent:', sentMessages.length);

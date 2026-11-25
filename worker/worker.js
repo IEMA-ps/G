@@ -317,6 +317,188 @@ async function runCron(env, now = Date.now()) {
   return {scanned: keys.length, reminders, alerts, summaries};
 }
 
+// ---------- Web Push (VAPID + RFC 8291) ----------
+// إشعارات متصفح لنفس مفاتيح /notify: التطبيق بيسجل اشتراكات البوش، و/notify بيبعت تليجرام وبوش مع بعض.
+// مفتاح VAPID بيتولد أول مرة وبيتخزن في KV — مفيش أسرار جديدة ولا خطوات كونسول على إسلام.
+const VAPID_KEY = 'vapid:keys';
+const VAPID_SUBJECT = 'https://3alababk.com';
+const PUSH_SUB_PREFIX = 'push:sub:';   // push:sub:<hash> -> {endpoint, keys, uid, selectors, createdAt}
+const PUSH_IDX_PREFIX = 'push:idx:';   // push:idx:<selector> -> [hash,...] — selector = مفاتيح /notify + uid:<uid>
+const PUSH_MAX_SELECTORS = 10, PUSH_MAX_PER_SELECTOR = 50;
+const B64URL_RE = /^[A-Za-z0-9_\-]+=*$/;
+
+function b64urlEncode(bytes) {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let s = '';
+  for (let i = 0; i < arr.length; i += 0x8000) s += String.fromCharCode.apply(null, arr.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlDecode(s) {
+  const str = String(s);
+  const b64 = str.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (str.length % 4)) % 4);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function concatBytes(...arrays) {
+  const out = new Uint8Array(arrays.reduce((n, a) => n + a.length, 0));
+  let off = 0;
+  for (const a of arrays) { out.set(a, off); off += a.length; }
+  return out;
+}
+async function hmacSha256(keyBytes, data) {
+  const key = await crypto.subtle.importKey('raw', keyBytes, {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, data));
+}
+
+// مفتاح VAPID: بيتولد مرة واحدة (ECDSA P-256) وبيتخزن كامل في KV؛ اللي بيطلع بره هو المفتاح العام بس.
+async function getVapid(env) {
+  const raw = await env.TG_LINKS.get(VAPID_KEY);
+  if (raw) { try { const v = JSON.parse(raw); if (v && v.jwkPriv && v.pub) return v; } catch {} }
+  const pair = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign']);
+  const jwkPriv = await crypto.subtle.exportKey('jwk', pair.privateKey);
+  const pubRaw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+  const rec = {jwkPriv, pub: b64urlEncode(pubRaw)};
+  await env.TG_LINKS.put(VAPID_KEY, JSON.stringify(rec));
+  return rec;
+}
+
+async function vapidJwt(vapid, endpoint) {
+  const enc = new TextEncoder();
+  const aud = new URL(endpoint).origin;
+  const header = b64urlEncode(enc.encode(JSON.stringify({typ: 'JWT', alg: 'ES256'})));
+  const payload = b64urlEncode(enc.encode(JSON.stringify({aud, exp: Math.floor(Date.now() / 1000) + 43200, sub: VAPID_SUBJECT})));
+  const key = await crypto.subtle.importKey('jwk', vapid.jwkPriv, {name: 'ECDSA', namedCurve: 'P-256'}, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign({name: 'ECDSA', hash: 'SHA-256'}, key, enc.encode(header + '.' + payload)));
+  return `${header}.${payload}.${b64urlEncode(sig)}`;
+}
+
+// تشفير الرسالة RFC 8291 (aes128gcm): ECDH مع مفتاح المتصفح + auth secret، سجل واحد أخير (فاصل 0x02).
+async function encryptPushPayload(sub, data) {
+  const enc = new TextEncoder();
+  const uaPub = b64urlDecode(sub.keys.p256dh);
+  const authSecret = b64urlDecode(sub.keys.auth);
+  const asPair = await crypto.subtle.generateKey({name: 'ECDH', namedCurve: 'P-256'}, true, ['deriveBits']);
+  const asPub = new Uint8Array(await crypto.subtle.exportKey('raw', asPair.publicKey));
+  const uaKey = await crypto.subtle.importKey('raw', uaPub, {name: 'ECDH', namedCurve: 'P-256'}, false, []);
+  const ecdhSecret = new Uint8Array(await crypto.subtle.deriveBits({name: 'ECDH', public: uaKey}, asPair.privateKey, 256));
+  const keyInfo = concatBytes(enc.encode('WebPush: info\0'), uaPub, asPub);
+  const prkKey = await hmacSha256(authSecret, ecdhSecret);
+  const ikm = await hmacSha256(prkKey, concatBytes(keyInfo, new Uint8Array([1])));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const prk = await hmacSha256(salt, ikm);
+  const cek = (await hmacSha256(prk, enc.encode('Content-Encoding: aes128gcm\0\x01'))).slice(0, 16);
+  const nonce = (await hmacSha256(prk, enc.encode('Content-Encoding: nonce\0\x01'))).slice(0, 12);
+  const aesKey = await crypto.subtle.importKey('raw', cek, {name: 'AES-GCM'}, false, ['encrypt']);
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({name: 'AES-GCM', iv: nonce}, aesKey, concatBytes(data, new Uint8Array([2]))));
+  const rs = new Uint8Array(4);
+  new DataView(rs.buffer).setUint32(0, 4096);
+  return concatBytes(salt, rs, new Uint8Array([asPub.length]), asPub, ciphertext);
+}
+
+async function pushSendOnce(env, vapid, sub, payload, fetchImpl = fetch) {
+  const jwt = await vapidJwt(vapid, sub.endpoint);
+  const body = await encryptPushPayload(sub, new TextEncoder().encode(payload));
+  const res = await fetchImpl(sub.endpoint, {
+    method: 'POST',
+    headers: {
+      'authorization': `vapid t=${jwt}, k=${vapid.pub}`,
+      'content-encoding': 'aes128gcm',
+      'content-type': 'application/octet-stream',
+      'ttl': '3600'
+    },
+    body
+  });
+  // 404/410 = الاشتراك مات — لازم يتشال
+  return {ok: res.status >= 200 && res.status < 300, gone: res.status === 404 || res.status === 410};
+}
+
+async function pushHash(endpoint) {
+  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint)));
+  return b64urlEncode(d).slice(0, 32);
+}
+async function pushIdxGet(env, selector) {
+  const raw = await env.TG_LINKS.get(PUSH_IDX_PREFIX + selector);
+  try { return raw ? JSON.parse(raw) : []; } catch { return []; }
+}
+async function pushIdxAdd(env, selector, hash) {
+  const list = await pushIdxGet(env, selector);
+  if (list.includes(hash)) return;
+  list.push(hash);
+  if (list.length > PUSH_MAX_PER_SELECTOR) list.shift();
+  await env.TG_LINKS.put(PUSH_IDX_PREFIX + selector, JSON.stringify(list));
+}
+async function pushIdxRemove(env, selector, hash) {
+  const list = await pushIdxGet(env, selector);
+  const next = list.filter(h => h !== hash);
+  if (next.length !== list.length) await env.TG_LINKS.put(PUSH_IDX_PREFIX + selector, JSON.stringify(next));
+}
+async function removePushSub(env, hash) {
+  let sub = null;
+  try { sub = JSON.parse(await env.TG_LINKS.get(PUSH_SUB_PREFIX + hash) || 'null'); } catch {}
+  const ops = [env.TG_LINKS.delete(PUSH_SUB_PREFIX + hash)];
+  if (sub) for (const sel of sub.selectors || []) ops.push(pushIdxRemove(env, sel, hash));
+  await Promise.all(ops);
+}
+
+async function handlePushKey(_request, env) {
+  const v = await getVapid(env);
+  return json({key: v.pub});
+}
+
+async function handlePushSubscribe(request, env) {
+  const uid = await authedUid(request, env);
+  if (!uid) return json({error: 'unauthorized'}, 401);
+  const body = await request.json().catch(() => null);
+  const s = body && body.subscription;
+  const valid = s && typeof s.endpoint === 'string' && s.endpoint.length <= 1024 && s.endpoint.startsWith('https://')
+    && s.keys && typeof s.keys.p256dh === 'string' && B64URL_RE.test(s.keys.p256dh) && s.keys.p256dh.length <= 256
+    && typeof s.keys.auth === 'string' && B64URL_RE.test(s.keys.auth) && s.keys.auth.length <= 64;
+  if (!valid) return json({error: 'bad request'}, 400);
+  const selectors = (Array.isArray(body.keys) ? body.keys : [])
+    .filter(k => typeof k === 'string' && (k === ADMIN_LIST_KEY || KEY_PATTERN.test(k)))
+    .slice(0, PUSH_MAX_SELECTORS);
+  const uidSel = 'uid:' + uid;
+  if (!selectors.includes(uidSel)) selectors.push(uidSel);
+  const hash = await pushHash(s.endpoint);
+  const record = {endpoint: s.endpoint, keys: {p256dh: s.keys.p256dh, auth: s.keys.auth}, uid, selectors, createdAt: Date.now()};
+  const ops = [env.TG_LINKS.put(PUSH_SUB_PREFIX + hash, JSON.stringify(record))];
+  for (const sel of selectors) ops.push(pushIdxAdd(env, sel, hash));
+  await Promise.all(ops);
+  return json({ok: true});
+}
+
+async function handlePushUnsubscribe(request, env) {
+  const uid = await authedUid(request, env);
+  if (!uid) return json({error: 'unauthorized'}, 401);
+  const body = await request.json().catch(() => null);
+  const endpoint = body && (typeof body.endpoint === 'string' ? body.endpoint : (body.subscription && body.subscription.endpoint));
+  if (typeof endpoint !== 'string' || !endpoint) return json({error: 'bad request'}, 400);
+  await removePushSub(env, await pushHash(endpoint));
+  return json({ok: true});
+}
+
+// بعت بوش لكل الاشتراكات المسجلة تحت مفاتيح الإشعار. الفشل العابر بيتجاهل، والميت (404/410) بيتشال.
+async function pushFanOut(env, keys, title, message) {
+  const hashes = new Set();
+  for (const k of keys) (await pushIdxGet(env, k)).forEach(h => hashes.add(h));
+  if (!hashes.size) return {pushed: 0, gone: 0};
+  const vapid = await getVapid(env);
+  const payload = JSON.stringify({title: String(title || '').slice(0, 200), body: String(message || '').slice(0, 3000)});
+  let pushed = 0, gone = 0;
+  await Promise.all([...hashes].map(async h => {
+    let sub = null;
+    try { sub = JSON.parse(await env.TG_LINKS.get(PUSH_SUB_PREFIX + h) || 'null'); } catch {}
+    if (!sub || !sub.endpoint) return;
+    let r;
+    try { r = await internals.pushSendOnce(env, vapid, sub, payload); } catch { return; }
+    if (r && r.ok) pushed++;
+    else if (r && r.gone) { gone++; await removePushSub(env, h); }
+  }));
+  return {pushed, gone};
+}
+
 // ---------- المسارات ----------
 async function handleLinkStart(request, env) {
   const uid = await authedUid(request, env);
@@ -381,7 +563,10 @@ async function handleNotify(request, env) {
     if (tgOk(r)) sent++;
     else if (tgBlocked(r)) await internals.removeChatEverywhere(env, chatId);
   }
-  return json({sent});
+  // بوش المتصفح لنفس المفاتيح — من غير ما يأثر على رد التليجرام
+  let pushed = 0;
+  try { pushed = (await internals.pushFanOut(env, keys, body.title, body.message)).pushed; } catch {}
+  return json({sent, pushed});
 }
 
 async function handleWebhook(request, env) {
@@ -480,6 +665,9 @@ async function route(request, env) {
   if (url.pathname === '/link/status' && request.method === 'GET') return handleLinkStatus(request, env);
   if (url.pathname === '/link/stop' && request.method === 'POST') return handleLinkStop(request, env);
   if (url.pathname === '/notify' && request.method === 'POST') return handleNotify(request, env);
+  if (url.pathname === '/push/key' && request.method === 'GET') return handlePushKey(request, env);
+  if (url.pathname === '/push/subscribe' && request.method === 'POST') return handlePushSubscribe(request, env);
+  if (url.pathname === '/push/unsubscribe' && request.method === 'POST') return handlePushUnsubscribe(request, env);
   if (url.pathname === '/reminders/sync' && request.method === 'POST') return handleReminderSync(request, env);
   if (url.pathname === '/reminders/prefs' && request.method === 'POST') return handleReminderPrefs(request, env);
   if (url.pathname === '/broadcast' && request.method === 'POST') return handleBroadcast(request, env);
@@ -487,7 +675,7 @@ async function route(request, env) {
 }
 
 // للاختبار المحلي: نقدر نستبدل التحقق والإرسال ببدائل وهمية.
-const internals = {verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr};
+const internals = {verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
 export const _internals = internals;
 
 export default {
