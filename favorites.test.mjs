@@ -13,6 +13,6 @@ eq(F.toggleId(['a','b'],'a'),{list:['b'],added:false});
 eq(G.isOn({favoriteStoresEnabled:true},'favoriteStoresEnabled'),true);
 eq(G.isOn({},'favoriteStoresEnabled'),false);eq(G.isOn(null,'x'),false);eq(G.isOn({x:'true'},'x'),false,'only boolean true');
 eq(G.readFlags(id=>id==='ff_favoriteStoresEnabled'?'1':null),{favoriteStoresEnabled:true});
-eq(G.readFlags(()=>'0'),{favoriteStoresEnabled:false});
+eq(G.readFlags(()=>'0'),Object.fromEntries(G.FLAGS.map(f=>[f.key,false])));
 assert.match(G.cardHTML({}, s=>s),/saveFeatureFlags/);n++;
 console.log('favorites tests ok',n);

@@ -531,6 +531,7 @@ import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import * as AdSlots from '/ad-slots.js?v=ads-2';
 import * as Favorites from '/favorites.js?v=fav-1';
 import * as FeatureFlags from '/feature-flags.js?v=flags-1';
+import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -2488,7 +2489,7 @@ function renderMain(){
     cart: renderCart, checkout: renderCheckout, orders: renderOrders, orderDetail: renderOrderDetail, orderDone: renderOrderDone,
     profile: renderProfile, marketerBenefits:()=>S.role==='customer'?marketerBenefits({enabled:Program.enabled()}):'', addresses: renderAddresses, notifications: renderNotifications, wishlist: renderWishlist, recurringOrders: renderRecurringOrders, groupBuys: renderGroupBuys,
     services: renderServices, myBookings: renderMyBookings, m_schedule: renderProviderSchedule,
-    m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports, m_statement:()=>renderMonthlyCommissionStatements(S.mySubOrders||[]),
+    m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports, m_ratings: renderMerchantRatings, m_statement:()=>renderMonthlyCommissionStatements(S.mySubOrders||[]),
     d_dashboard: renderDeliveryDashboard, d_history: renderDeliveryHistory, d_profile: renderDeliveryProfile,
     a_dashboard: renderAdminDashboard, a_new_orders: renderAdminNewOrders, a_merchants: renderAdminMerchants, a_providers: renderAdminProviders, a_categories: renderAdminCategories,
     a_products: renderAdminProducts, a_orders: renderAdminOrders, a_recurring: renderAdminRecurringOrders, a_users: renderAdminUsers,
@@ -3162,7 +3163,7 @@ function renderMerchantPage(){
       <div style="display:flex;gap:12px;align-items:center">
         <div class="merchant-card" style="border:none;padding:0;flex:0"><div class="logo" style="width:64px;height:64px">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-shop"></i>'}</div></div>
         <div style="flex:1"><h3 style="margin:0 0 4px">${esc(m.businessName)}</h3>
-          <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · `}${esc(typeLabel(m))}</div>
+          <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8}${FeatureFlags.isOn(S.settings,'merchantRatingsEnabled')&&m.ratingCount>0?` (${m.ratingCount} تقييم)`:''} · `}${esc(typeLabel(m))}</div>
         </div>
         ${favStoreBtn(m.id)}
         ${isSvc?'':`<span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':'مغلق حاليًا'}</span>`}
@@ -3771,6 +3772,38 @@ function emptyState(icon,title,sub){
 }
 
 /* ================= MERCHANT VIEWS ================= */
+/* ===== تقييمات العملاء للتاجر (مفتوحة بمفتاح من الإدارة) ===== */
+function ensureRatingsSub(){
+  if(S._ratSub||!S.myMerchant?.id) return;
+  S._ratSub=true; S.myRatings=null;
+  S.unsubs.push(onSnapshot(query(collection(db,'ratings'), where('merchantId','==',S.myMerchant.id), limit(200)), snap=>{ S.myRatings = snap.docs.map(d=>({...d.data(),id:d.id})); render(); }, ()=>{ S.myRatings=[]; render(); }));
+}
+const starsRow = n => [1,2,3,4,5].map(v=>`<i class="fa-${v<=Math.round(n)?'solid':'regular'} fa-star" style="color:var(--gold);font-size:13px"></i>`).join('');
+function renderMerchantRatings(){
+  if(!FeatureFlags.isOn(S.settings,'merchantRatingsEnabled')) return emptyState('fa-star','الميزة مش مفتوحة لسه','');
+  ensureRatingsSub();
+  const back=`<button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>`;
+  if(S.myRatings===null||S.myRatings===undefined) return back+emptyState('fa-hourglass-half','جاري تحميل التقييمات','');
+  const sm=MerchantRatings.summarize(S.myRatings), list=MerchantRatings.sortRatings(S.myRatings);
+  if(!sm.count) return back+emptyState('fa-star','لسه مفيش تقييمات','التقييمات بتظهر هنا بعد ما العملاء يستلموا طلباتهم ويقيّموك');
+  return `${back}
+    <div class="card" style="margin-bottom:14px"><div class="row-between"><div><b style="font-size:26px">${sm.avg}</b> <span style="color:var(--ink-soft);font-size:12.5px">من ٥ · ${sm.count} تقييم</span><div>${starsRow(sm.avg)}</div></div>
+      <div style="font-size:12px;color:var(--ink-soft);text-align:left">${[5,4,3,2,1].map(v=>`${v}★ ${sm.dist[v]}`).join('<br>')}</div></div>
+      ${sm.waitingReply?`<p style="font-size:12.5px;color:var(--teal);margin:10px 0 0">${sm.waitingReply} تقييم مستني ردك</p>`:''}</div>
+    <div class="list-gap">${list.map(r=>`<div class="card">
+      <div class="row-between"><span>${starsRow(r.merchantRating)}</span><span style="font-size:11.5px;color:var(--ink-soft)">${r.createdAt?fmtDate(r.createdAt):''}</span></div>
+      ${r.comment?`<p style="font-size:13.5px;line-height:1.7;margin:8px 0 0">${esc(r.comment)}</p>`:'<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0">من غير تعليق</p>'}
+      ${r.merchantReply?`<div style="background:var(--teal-tint,#eafaf8);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13px"><b>ردك:</b> ${esc(r.merchantReply)}</div>`
+        :`<div style="margin-top:8px"><textarea id="rr_${esc(r.id)}" rows="2" maxlength="${MerchantRatings.MAX_REPLY}" placeholder="اكتب ردك على العميل (اختياري)" style="width:100%"></textarea><button class="btn btn-primary btn-sm" style="width:auto;margin-top:6px" onclick="replyToRating('${esc(r.id)}')">إرسال الرد</button></div>`}
+    </div>`).join('')}</div>`;
+}
+window.replyToRating = async (id)=>{
+  const el=document.getElementById('rr_'+id); const txt=MerchantRatings.cleanReply(el&&el.value);
+  if(!txt){ UI.toast('اكتب رد من سطر لحد '+MerchantRatings.MAX_REPLY+' حرف'); return; }
+  const r=(S.myRatings||[]).find(x=>x.id===id); if(!r||r.merchantId!==S.myMerchant?.id) return;
+  try{ await updateDoc(doc(db,'ratings',id),{merchantReply:txt,merchantReplyAt:nowMs()}); UI.toast('تم إرسال ردك'); }
+  catch(e){ UI.toast('تعذر إرسال الرد'); }
+};
 function renderMerchantDashboard(){
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const m = S.myMerchant;
@@ -4140,6 +4173,7 @@ function renderMerchantProfile(){
     </div>
     ${storePageCard(m)}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
+    ${FeatureFlags.isOn(S.settings,'merchantRatingsEnabled')&&!Services.isServiceProvider(m)?`<button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_ratings')"><i class="fa-solid fa-star"></i> تقييمات عملائي${m.ratingCount?' ('+m.ratingCount+')':''}</button>`:''}
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openTelegramLink('merchant')"><i class="fa-brands fa-telegram"></i> إشعارات الطلبات على تليجرام</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openChangePassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
