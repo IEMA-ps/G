@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const load=async f=>import('data:text/javascript;base64,'+Buffer.from(await readFile(new URL(f,import.meta.url),'utf8')).toString('base64'));
+const F=await load('./favorites.js'), G=await load('./feature-flags.js');
+let n=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);n++;};
+eq(F.mergeIds(['a','b'],['b','c']),['a','b','c']);
+eq(F.mergeIds(null,undefined),[]);
+eq(F.mergeIds(['a',1,'',{}],['x']),['a','x'],'junk dropped');
+eq(F.mergeIds(Array.from({length:300},(_,i)=>'i'+i),[]).length,200,'capped');
+eq(F.sameIds(['a','b'],['b','a']),true);eq(F.sameIds(['a'],['a','b']),false);eq(F.sameIds(undefined,[]),true);
+eq(F.toggleId(['a'],'b'),{list:['b','a'],added:true});
+eq(F.toggleId(['a','b'],'a'),{list:['b'],added:false});
+eq(G.isOn({favoriteStoresEnabled:true},'favoriteStoresEnabled'),true);
+eq(G.isOn({},'favoriteStoresEnabled'),false);eq(G.isOn(null,'x'),false);eq(G.isOn({x:'true'},'x'),false,'only boolean true');
+eq(G.readFlags(id=>id==='ff_favoriteStoresEnabled'?'1':null),{favoriteStoresEnabled:true});
+eq(G.readFlags(()=>'0'),{favoriteStoresEnabled:false});
+assert.match(G.cardHTML({}, s=>s),/saveFeatureFlags/);n++;
+console.log('favorites tests ok',n);
