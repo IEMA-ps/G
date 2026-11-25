@@ -573,6 +573,7 @@ import * as OrderMoney from '/order-money.js?v=money-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
+import * as BcAud from '/broadcast-audience.js';
 import * as PushClient from '/push-client.js';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
@@ -4489,6 +4490,41 @@ window.unlinkTelegram = async ()=>{
 
 /* ---- بث الأدمن على تليجرام ---- */
 // خطوتين: معاينة النص النهائي أولًا، وبعدين تأكيد صريح قبل الإرسال — البث بيتم باسم المنصة فلازم موافقة على النص بالظبط.
+function targetedBroadcastFields(){
+  const people=(S.allUsers||[]).slice(0,3000);
+  return `<div class="field"><label>الجمهور</label><select id="tgBcAudience" onchange="document.getElementById('tgBcOneBox').style.display=this.value==='ONE'?'block':'none'">${BcAud.AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
+      <div class="field" id="tgBcOneBox" style="display:none"><label>الشخص (اكتب الاسم أو الرقم واختار)</label><input id="tgBcPerson" list="tgBcPeople" autocomplete="off"><datalist id="tgBcPeople">${people.map(u=>`<option value="${esc(BcAud.personLabel(u))}">`).join('')}</datalist></div>
+      <div class="field"><label>نص الرسالة</label><textarea id="tgBcText" rows="4" maxlength="3000" placeholder="اكتب الرسالة اللي هتوصل..."></textarea></div>
+      <button class="btn btn-primary" onclick="previewTargetedBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>`;
+}
+function bcResolve(audience){
+  const personVal=(document.getElementById('tgBcPerson')||{}).value||'';
+  const person=(S.allUsers||[]).find(u=>BcAud.personLabel(u)===personVal);
+  return BcAud.resolve(audience,{users:S.allUsers||[],merchants:S.allMerchants||[],isProvider:m=>Services.isServiceProvider(m),personId:person?person._id:''});
+}
+window.previewTargetedBroadcast = ()=>{
+  const aud=(document.getElementById('tgBcAudience')||{}).value, txt=((document.getElementById('tgBcText')||{}).value||'').trim();
+  if(!txt){ UI.toast('اكتب نص الرسالة الأول'); return; }
+  const r=bcResolve(aud);
+  if(!r.keys.length){ UI.toast(aud==='ONE'?'اختار الشخص من القائمة':'مفيش حسابات في الفئة دي'); return; }
+  S.tgBroadcast={audience:aud,text:txt,keys:r.keys};
+  const who=aud==='ONE'?esc(r.names[0]):`${esc(BcAud.labelOf(aud))} (${r.keys.length} حساب)`;
+  UI.openModal(`<div class="modal-head"><h3><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> تأكيد البث</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="tgBcBody"><p style="font-size:13px;line-height:1.9;margin:0 0 10px">الرسالة هتتبعت كما هي بالظبط لـ: <b>${who}</b>. بتوصل بس لمين ربط تليجرام أو فعّل الإشعارات الفورية.</p>
+    <div class="hint-box" style="padding:12px;margin:0 0 14px;white-space:pre-wrap;line-height:1.9">${esc(txt)}</div>
+    <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="sendTargetedBroadcast()"><i class="fa-solid fa-paper-plane"></i> إرسال</button><button class="btn btn-ghost" onclick="UI.closeModal()">رجوع</button></div></div>`);
+};
+window.sendTargetedBroadcast = async ()=>{
+  const body=document.getElementById('tgBcBody'); const b=S.tgBroadcast; if(!body||!b||!b.keys) return;
+  body.innerHTML=TelegramNotify.linkModalHTML('loading'); S.tgBroadcast=null;
+  try{
+    const token=await S.user.getIdToken(); const parts=[];
+    for(const ks of BcAud.chunk(b.keys)) parts.push(await TelegramNotify.broadcastKeys(ks,b.text,token));
+    const t=BcAud.sumResults(parts);
+    body.innerHTML=t.ok?`<p class="hint-box" style="padding:12px;margin:0">تم ✅ — وصلت على تليجرام لـ ${t.sent}، وإشعار فوري لـ ${t.pushed}، من ${t.total} مربوط. الباقي مربطش أو وقف البوت.${t.failed?` فشل ${t.failed}.`:''}</p>`:'<p class="hint-box" style="padding:12px;margin:0">حصلت مشكلة أثناء الإرسال. جرّب تاني بعد شوية.</p>';
+    if(t.ok){ const x=document.getElementById('tgBcText'); if(x) x.value=''; }
+  }catch(e){ body.innerHTML=TelegramNotify.linkModalHTML('unavailable'); }
+};
 window.previewTelegramBroadcast = ()=>{
   const aud = document.getElementById('tgBcAudience');
   const txt = document.getElementById('tgBcText');
@@ -5527,9 +5563,9 @@ function renderAdminSettings(){
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> بث رسالة على تليجرام</h3>
       <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">ابعت رسالة لكل اللي ربطوا تليجرام بالبوت، أو لدور معيّن بس. الرسالة بتوصل للمربوطين فقط، واللي وقف الاشتراك مش بيوصله حاجة.</p>
-      <div class="field"><label>الجمهور</label><select id="tgBcAudience">${TelegramNotify.BROADCAST_AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
+      ${FeatureFlags.isOn(s,'broadcastTargetsEnabled')?targetedBroadcastFields():`<div class="field"><label>الجمهور</label><select id="tgBcAudience">${TelegramNotify.BROADCAST_AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
       <div class="field"><label>نص الرسالة</label><textarea id="tgBcText" rows="4" maxlength="3500" placeholder="اكتب الرسالة اللي هتوصل على تليجرام..."></textarea></div>
-      <button class="btn btn-primary" onclick="previewTelegramBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>
+      <button class="btn btn-primary" onclick="previewTelegramBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>`}
     </div>
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 14px;font-size:15px"><i class="fa-brands fa-whatsapp" style="color:var(--teal)"></i> الدعم الفني</h3>
