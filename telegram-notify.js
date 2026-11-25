@@ -64,6 +64,26 @@ export function linkStop(token, fetchImpl) {
   return post('/link/stop', {}, {token, fetchImpl});
 }
 
+// ---------- تذكيرات الحجوزات الموقوتة ----------
+// مرآة بيانات الحجز للـ Worker (الكرون بيقراها عشان التذكير الموقوت). fire-and-forget زي send:
+// أي فشل بيتسجل في الكونسول بس، من غير ما يأثر على مسار الحجز.
+// bookings: عنصر واحد أو مصفوفة {id, merchantId, customerName, date, time, status, createdAt}.
+// ابعت الحالة الجديدة بعد كل تغيير (إنشاء/قبول/رفض/إلغاء/انتهاء) — غير PENDING/ACCEPTED بتمسح المرآة.
+export function reminderSync(bookings, fetchImpl) {
+  const list = (Array.isArray(bookings) ? bookings : [bookings]).filter(b => b && typeof b === 'object' && b.id).slice(0, 100);
+  if (!list.length) return Promise.resolve(false);
+  return post('/reminders/sync', {bookings: list}, {fetchImpl})
+    .then(r => !!(r && r.ok))
+    .catch(e => { console.warn('reminder sync failed', e); return false; });
+}
+
+// مفاتيح التذكير لكل مقدم خدمة: {reminder1h?, unanswered2h?, tomorrowSummary?} — بعت اللي اتغير بس.
+export function reminderPrefs(merchantId, prefs, fetchImpl) {
+  return post('/reminders/prefs', {merchantId, ...prefs}, {fetchImpl})
+    .then(r => !!(r && r.ok))
+    .catch(e => { console.warn('reminder prefs failed', e); return false; });
+}
+
 // محتوى مودال الربط لكل حالة — دالة نقية عشان تتختبر وتتعاين في صفحة المعاينة.
 export function linkModalHTML(state) {
   if (state === 'loading')
