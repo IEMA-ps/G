@@ -52,7 +52,7 @@ export function scheduleEditorHTML(schedule,esc){
   const s=normalizeSchedule(schedule);
   return `<div class="card" style="margin-bottom:14px"><b>مواعيد الشغل</b>
     <div class="field" style="margin-top:10px"><label>مدة الحجز</label><select id="schSlot">${SLOT_OPTIONS.map(n=>`<option value="${n}" ${s.slotMinutes===n?'selected':''}>${n} دقيقة</option>`).join('')}</select></div>
-    ${DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:8px;margin:8px 0;align-items:center"><label style="min-width:78px"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:110px"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:110px"></div>`;}).join('')}
+    ${DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:6px;margin:8px 0;align-items:center"><label style="min-width:70px;flex-shrink:0"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:0;min-width:0;flex:1"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:0;min-width:0;flex:1"></div>`;}).join('')}
     <div class="field"><label>أيام إجازة (اختياري)</label><div style="display:flex;gap:8px"><input type="date" id="schClosedAdd"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="addClosedDate()">إضافة</button></div>
     <div id="schClosedList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${s.closedDates.map(d=>`<span class="badge-chip" onclick="removeClosedDate('${d}')" style="cursor:pointer">${d} ✕</span>`).join('')}</div></div>
     <button class="btn btn-primary" onclick="saveProviderSchedule()">حفظ المواعيد</button></div>`;
@@ -63,22 +63,32 @@ export function readScheduleForm(get,closed){
   return normalizeSchedule({slotMinutes:Number(get('schSlot','value')),days,closedDates:closed});
 }
 export function bookedSetFor(booked,date){return new Set([...(booked||[])].filter(x=>x.startsWith(date+'|')).map(x=>x.split('|')[1]));}
-export function bookingPanelHTML({m,schedule,booked,date,time,profile},esc,ms=Date.now()){
+export const WEEK_CHOICES=[4,8,12];
+// dates of a weekly series starting at `date`; ok=false when that week's time is already taken or closed.
+export function seriesInfo({schedule,booked,date,time,weeks},ms=Date.now()){
+  const n=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0];
+  return Array.from({length:n},(_,i)=>{const d=addDays(date,7*i);return {date:d,ok:slotsFor(schedule,d,bookedSetFor(booked,d),ms).includes(time)};});
+}
+export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,weeks},esc,ms=Date.now()){
   const bf=d=>bookedSetFor(booked,d);
   const days=dateOptions(ms),sel=days.includes(date)?date:days.find(d=>slotsFor(schedule,d,bf(d),ms).length)||days[0],slots=slotsFor(schedule,sel,bf(sel),ms);
-  const person=((profile?.firstName||'')+' '+(profile?.lastName||'')).trim(),ph=String(profile?.phone||'').trim(),known=!!person&&/^\+?[\d\s()-]{7,25}$/.test(ph),ready=!!(time&&slots.includes(time));
+  const person=((profile?.firstName||'')+' '+(profile?.lastName||'')).trim(),ph=String(profile?.phone||'').trim(),known=!!person&&/^\+?[\d\s()-]{7,25}$/.test(ph),ready=!!(time&&slots.includes(time)),wk=repeat==='weekly',wn=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0],ser=wk&&ready?seriesInfo({schedule,booked,date:sel,time,weeks:wn},ms):[],okN=ser.filter(x=>x.ok).length;
   const dayChip=d=>{const n=slotsFor(schedule,d,bf(d),ms).length,f=fmtDay(d).split(' ');return `<button type="button" class="bk-day ${d===sel?'active':''} ${n?'':'off'}" ${n?`onclick="pickBookDate('${esc(m.id)}','${d}')"`:'disabled'}><strong>${f[0]}</strong><span>${f[1]}</span><small>${n?n+' ميعاد':'مقفول'}</small></button>`;};
   return `<div class="card bk-panel" id="bookPanel" style="margin-bottom:16px"><h3 style="margin:0 0 14px">احجز ميعاد</h3>
     <div class="bk-label">1. اختار اليوم</div>
     <div class="bk-days">${days.map(dayChip).join('')}</div>
     <div class="bk-label">2. اختار الميعاد ${fmtDay(sel)}</div>
     ${slots.length?`<div class="bk-slots">${slots.map(t=>`<button type="button" class="bk-slot ${t===time?'active':''}" onclick="pickBookTime('${esc(m.id)}','${sel}','${t}')">${fmtTime(t)}</button>`).join('')}</div>`:'<p class="hint-box">مفيش مواعيد فاضية فى اليوم ده.</p>'}
-    ${ready?`<div class="bk-label">3. بياناتك</div>
+    ${ready?`<div class="bk-label">3. نوع الحجز</div>
+    <div class="bk-modes"><button type="button" class="bk-mode ${wk?'':'active'}" onclick="pickBookRepeat('${esc(m.id)}','once')">مرة واحدة</button><button type="button" class="bk-mode ${wk?'active':''}" onclick="pickBookRepeat('${esc(m.id)}','weekly')">كل أسبوع</button></div>
+    ${wk?`<div class="bk-label" style="margin-top:12px">لمدة قد إيه؟ (نفس اليوم والساعة كل أسبوع)</div><div class="bk-modes">${WEEK_CHOICES.map(n=>`<button type="button" class="bk-mode ${n===wn?'active':''}" onclick="pickBookWeeks('${esc(m.id)}',${n})">${n} أسابيع</button>`).join('')}</div>
+    <div class="bk-series">${ser.map((x,i)=>`<div class="${x.ok?'':'off'}"><span>${i+1}. ${fmtDay(x.date)} ${fmtTime(time)}</span><b>${x.ok?'✓':'مش متاح، هيتخطى'}</b></div>`).join('')}</div>`:''}
+    <div class="bk-label">4. بياناتك</div>
     ${known?`<div class="bk-known" id="bkKnown"><div><strong>${esc(person)}</strong><span>${esc(ph)}</span></div><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('bkKnown').classList.add('hidden');document.getElementById('bkEdit').classList.remove('hidden')">تعديل</button></div>`:''}
     <div id="bkEdit" class="${known?'hidden':''}"><div class="field"><label>اسمك</label><input id="bkName" maxlength="80" value="${esc(person)}"></div>
     <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(ph)}"></div></div>
     <div class="field"><label>ملاحظة (اختياري)</label><textarea id="bkNote" maxlength="300" placeholder="مثال: سبب الزيارة أو المادة أو العطل"></textarea></div>
-    <button class="btn btn-primary" onclick="submitBooking('${esc(m.id)}','${sel}','${time}')">أرسل طلب الحجز: ${fmtDay(sel)} ${fmtTime(time)}</button>
+    <button class="btn btn-primary" ${wk&&!okN?'disabled':''} onclick="submitBooking('${esc(m.id)}','${sel}','${time}')">${wk?`أرسل ${okN} طلبات حجز أسبوعية: ${fmtDay(sel)} ${fmtTime(time)}`:`أرسل طلب الحجز: ${fmtDay(sel)} ${fmtTime(time)}`}</button>
     <p class="welcome-note">الطلب بيوصل للمزود وهو اللى بيأكد الميعاد. الدفع بينك وبينه مباشرة.</p>`:''}</div>`;
 }
 export function bookingCardHTML(b,esc,role){
