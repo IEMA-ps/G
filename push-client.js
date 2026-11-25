@@ -21,13 +21,14 @@ async function call(fetchImpl, workerUrl, path, {method = 'GET', token, appSecre
   return res.json();
 }
 // Asks permission, subscribes this browser and registers it with the Worker. Returns 'on' or a reason string.
-export async function enable({reg, token, workerUrl, appSecret, fetchImpl, requestPermission}){
+export async function enable({reg, token, workerUrl, appSecret, fetchImpl, requestPermission, keys = []}){
   const perm = await requestPermission();
   if(perm !== 'granted') return 'denied';
   const k = await call(fetchImpl, workerUrl, '/push/key', {appSecret});
-  if(!k || typeof k.publicKey !== 'string' || !k.publicKey) return 'unavailable';
-  const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64ToBytes(k.publicKey)});
-  await call(fetchImpl, workerUrl, '/push/subscribe', {method: 'POST', token, appSecret, body: {subscription: sub.toJSON()}});
+  const pub = k && (typeof k.key === 'string' ? k.key : k.publicKey);
+  if(typeof pub !== 'string' || !pub) return 'unavailable';
+  const sub = await reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: b64ToBytes(pub)});
+  await call(fetchImpl, workerUrl, '/push/subscribe', {method: 'POST', token, appSecret, body: {subscription: sub.toJSON(), keys}});
   return 'on';
 }
 export async function disable({reg, token, workerUrl, appSecret, fetchImpl}){

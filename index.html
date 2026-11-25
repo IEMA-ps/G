@@ -4446,7 +4446,8 @@ window.enablePush = async ()=>{
   b.innerHTML=PushClient.modalHTML('loading');
   try{
     const e=await pushEnv();
-    const r=await PushClient.enable({reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o),requestPermission:()=>Notification.requestPermission()});
+    const kind=S.tgLinkKind;const keys=kind==='merchant'?[TelegramNotify.merchantKey(S.profile.merchantId)]:kind==='delivery'?[TelegramNotify.agentKey(S.profile.deliveryAgentId)]:kind==='admin'?[TelegramNotify.ADMIN_KEY]:[];
+    const r=await PushClient.enable({keys,reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o),requestPermission:()=>Notification.requestPermission()});
     b.innerHTML=PushClient.modalHTML(r);
   }catch(err){ b.innerHTML=PushClient.modalHTML('unavailable'); }
 };

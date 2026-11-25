@@ -6,14 +6,14 @@ eq([...P.b64ToBytes('AQID')],[1,2,3]);eq([...P.b64ToBytes('-_8')],[251,255],'url
 const ok={hasSW:true,hasPush:true,hasNotification:true,permission:'default',isIOS:false,standalone:false,subscribed:false};
 eq(P.pushState(ok),'ready');eq(P.pushState({...ok,subscribed:true}),'on');eq(P.pushState({...ok,permission:'denied'}),'denied');
 eq(P.pushState({...ok,hasPush:false}),'unsupported');eq(P.pushState({...ok,isIOS:true}),'needs-install');eq(P.pushState({...ok,isIOS:true,standalone:true}),'ready');
-const calls=[];const fetchImpl=async(u,o)=>{calls.push([u,o.method,o.headers.authorization||'',o.body||'']);return {ok:true,json:async()=>u.endsWith('/push/key')?{publicKey:'AQID'}:{ok:true}};};
+const calls=[];const fetchImpl=async(u,o)=>{calls.push([u,o.method,o.headers.authorization||'',o.body||'']);return {ok:true,json:async()=>u.endsWith('/push/key')?{key:'AQID'}:{ok:true}};};
 let subscribed=null;const reg={pushManager:{subscribe:async o=>{subscribed=o;return {endpoint:'https://e/1',toJSON:()=>({endpoint:'https://e/1',keys:{p256dh:'a',auth:'b'}}),unsubscribe:async()=>true};},getSubscription:async()=>({endpoint:'https://e/1',unsubscribe:async()=>true})}};
 const base={reg,token:'T',workerUrl:'https://w',appSecret:'S',fetchImpl};
 eq(await P.enable({...base,requestPermission:async()=>'denied'}),'denied');eq(calls.length,0,'no network when permission is refused');
-eq(await P.enable({...base,requestPermission:async()=>'granted'}),'on');
+eq(await P.enable({...base,keys:['m:shop1'],requestPermission:async()=>'granted'}),'on');
 eq(subscribed.userVisibleOnly,true);eq([...subscribed.applicationServerKey],[1,2,3]);
 eq(calls.map(c=>c[0]+' '+c[1]),['https://w/push/key GET','https://w/push/subscribe POST']);
-eq(calls[1][2],'Bearer T');eq(JSON.parse(calls[1][3]).subscription.endpoint,'https://e/1');
+eq(calls[1][2],'Bearer T');eq(JSON.parse(calls[1][3]).subscription.endpoint,'https://e/1');eq(JSON.parse(calls[1][3]).keys,['m:shop1']);
 eq(await P.enable({...base,fetchImpl:async()=>({ok:true,json:async()=>({})}),requestPermission:async()=>'granted'}),'unavailable');
 await assert.rejects(()=>P.enable({...base,fetchImpl:async()=>({ok:false,status:500}),requestPermission:async()=>'granted'}));n++;
 calls.length=0;eq(await P.disable(base),'ready');eq(calls[0][0],'https://w/push/unsubscribe');eq(JSON.parse(calls[0][3]),{endpoint:'https://e/1'});
