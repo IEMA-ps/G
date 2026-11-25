@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const R=await import('data:text/javascript;base64,'+Buffer.from(await readFile(new URL('./merchant-ratings.js',import.meta.url),'utf8')).toString('base64'));
+let n=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);n++;};
+const L=[{id:'a',merchantRating:5,createdAt:1},{id:'b',merchantRating:3,createdAt:3,merchantReply:'شكرا'},{id:'c',merchantRating:4,createdAt:2},{id:'x',merchantRating:9},{id:'y'},null];
+eq(R.validRatings(L).map(r=>r.id),['a','b','c'],'junk dropped');
+eq(R.sortRatings(L).map(r=>r.id),['b','c','a'],'newest first');
+eq(R.summarize(L),{count:3,avg:4,dist:{1:0,2:0,3:1,4:1,5:1},waitingReply:2});
+eq(R.summarize([]),{count:0,avg:0,dist:{1:0,2:0,3:0,4:0,5:0},waitingReply:0});
+eq(R.summarize([{merchantRating:5},{merchantRating:4}]).avg,4.5);
+eq(R.cleanReply('  شكرا   ليك \n '),'شكرا ليك');
+eq(R.cleanReply('   '),null);eq(R.cleanReply(null),null);
+eq(R.cleanReply('أ'.repeat(301)),null);eq(R.cleanReply('أ'.repeat(300)).length,300);
+console.log('merchant-ratings tests ok',n);
