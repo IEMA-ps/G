@@ -326,6 +326,7 @@ const PUSH_SUB_PREFIX = 'push:sub:';   // push:sub:<hash> -> {endpoint, keys, ui
 const PUSH_IDX_PREFIX = 'push:idx:';   // push:idx:<selector> -> [hash,...] — selector = مفاتيح /notify + uid:<uid>
 const PUSH_MAX_SELECTORS = 10, PUSH_MAX_PER_SELECTOR = 50;
 const B64URL_RE = /^[A-Za-z0-9_\-]+=*$/;
+const UID_KEY_RE = /^uid:[A-Za-z0-9_\-]{1,128}$/;
 
 function b64urlEncode(bytes) {
   const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -626,7 +627,11 @@ async function handleSetupWebhook(request, env) {
   return json({ok: res.ok && data.ok === true, telegram: data});
 }
 
-// بث رسالة من الأدمن لكل المربوطين أو لدور معيّن. محمي: لازم المتصل يكون أدمن مربوط.
+// بث رسالة من الأدمن. محمي: لازم المتصل يكون أدمن مربوط.
+// وضعين: audience بدور (تليجرام بس، زي ما هي من غير تغيير)، أو keys قائمة 'uid:<uid>' (حد أقصى 100)
+// وبعدين بيتجاهل audience — التطبيق بيحل بيها «كل التجار» و«المقدمين» و«شخص واحد» لقائمة uid من عنده.
+// في وضع keys: تليجرام من سجل الربط uid:<uid> + بوش المتصفح من فهرس uid:<uid>، وبيرجع total = عدد
+// الـ uids اللي ليها ربط تليجرام أو اشتراك بوش.
 // تليجرام بيحدّ ~30 رسالة/ثانية — بنبعت بالتتابع مع مهلة 34ms بين كل رسالة.
 async function handleBroadcast(request, env) {
   const uid = await authedUid(request, env);
@@ -637,11 +642,45 @@ async function handleBroadcast(request, env) {
   if (link.role !== 'ADMIN' && link.admin !== true) return json({error: 'forbidden'}, 403);
   const body = await request.json().catch(() => null);
   if (!body) return json({error: 'bad request'}, 400);
+  const text = String(body.text || '').trim().slice(0, MAX_TEXT);
+  if (!text) return json({error: 'bad request'}, 400);
+
+  // وضع المفاتيح الصريحة: uid بس، تحقق صارم — قائمة فاضية أو أي مفتاح غلط أو أكتر من 100 = 400
+  if (Array.isArray(body.keys)) {
+    if (!body.keys.length || body.keys.length > 100) return json({error: 'bad request'}, 400);
+    const keys = body.keys;
+    for (const k of keys) if (typeof k !== 'string' || !UID_KEY_RE.test(k)) return json({error: 'bad request'}, 400);
+    const uids = [...new Set(keys.map(k => k.slice(4)))];
+
+    const chatIds = new Set();
+    const linkedUids = new Set(), pushUids = new Set();
+    for (const u of uids) {
+      let rec = {};
+      try { rec = JSON.parse(await env.TG_LINKS.get(uidKey(u)) || '{}'); } catch {}
+      if (rec.chatId) { chatIds.add(rec.chatId); linkedUids.add(u); }
+      if ((await pushIdxGet(env, 'uid:' + u)).length) pushUids.add(u);
+    }
+    const total = new Set([...linkedUids, ...pushUids]).size;
+
+    let sent = 0, blocked = 0, failed = 0;
+    for (const chatId of chatIds) {
+      const r = await internals.tgSend(env, chatId, text);
+      if (tgOk(r)) sent++;
+      else if (tgBlocked(r)) { blocked++; await internals.removeChatEverywhere(env, chatId); }
+      else failed++;
+      if (chatIds.size > 1) await sleep(34);
+    }
+
+    let pushed = 0;
+    try { pushed = (await internals.pushFanOut(env, uids.map(u => 'uid:' + u), 'على بابك', text)).pushed; } catch {}
+
+    return json({ok: true, total, sent, pushed, blocked, failed});
+  }
+
+  // وضع الجمهور بالدور: زي ما هو من غير تغيير
   const audience = String(body.audience || 'ALL').toUpperCase();
   const roles = audience === 'ALL' ? ROLES : (ROLES.includes(audience) ? [audience] : null);
   if (!roles) return json({error: 'bad request'}, 400);
-  const text = String(body.text || '').trim().slice(0, MAX_TEXT);
-  if (!text) return json({error: 'bad request'}, 400);
   const chatIds = new Set();
   for (const role of roles) (await roleChatIds(env, role)).forEach(id => chatIds.add(id));
   let sent = 0, blocked = 0, failed = 0;
