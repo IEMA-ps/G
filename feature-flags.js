@@ -6,6 +6,7 @@ export const FLAGS = [
   {key:'marketerInsightsEnabled', label:'لوحة المسوّق: ملخص الشهر، محلات محتاجة متابعة، وفلتر المحلات'},
   {key:'pushNotificationsEnabled', label:'الإشعارات الفورية على الموبايل (تحتاج Worker الإشعارات المحدّث)'},
   {key:'providerRemindersEnabled', label:'تذكيرات مقدمي الخدمة على تليجرام (قبل الميعاد بساعة، حجز مستني ساعتين، ملخص بكرة) (تحتاج Worker #115)'},
+  {key:'broadcastTargetsEnabled', label:'بث الأدمن لفئة معينة (تجار، مناديب، مقدمي خدمة، مسوقين، أو شخص واحد) على تليجرام والإشعارات الفورية (يحتاج Worker المحدّث)'},
   {key:'marketerContestEnabled', label:'مسابقة المسوّقين الشهرية (ترتيب بأول اشتراك مدفوع، الجوائز يدويًا)'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;

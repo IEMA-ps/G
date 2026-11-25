@@ -134,3 +134,9 @@ export function broadcastResultHTML(r) {
   if (!r || r.ok !== true) return '<p class="hint-box" style="padding:12px;margin:0">حصلت مشكلة أثناء الإرسال. جرّب تاني بعد شوية.</p>';
   return `<p class="hint-box" style="padding:12px;margin:0">تم البث ✅ — وصلت لـ ${r.sent || 0} من ${r.total || 0}${r.blocked ? `، واتشال ${r.blocked} كانوا وقفين البوت` : ''}${r.failed ? `، وتعذر الإرسال لـ ${r.failed}` : ''}.</p>`;
 }
+
+// ---------- بث لمستخدمين محددين (أدمن) ----------
+// keys: مفاتيح 'uid:<uid>' (حد أقصى 100 في الطلب). بيرجع {ok,total,sent,pushed,blocked,failed}.
+export function broadcastKeys(keys, text, token, fetchImpl) {
+  return post('/broadcast', {keys, text: String(text || '').slice(0, MAX_MESSAGE)}, {token, fetchImpl});
+}
