@@ -176,6 +176,10 @@ img{max-width:100%; display:block;}
 .ck-input{display:block;width:100%;max-width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:var(--radius-s);background:var(--surface);outline:none;font:inherit}
 .ck-input:focus{border-color:var(--teal);box-shadow:var(--focus-ring)}
 .ck-row{gap:10px;flex-wrap:wrap}.ck-row span{min-width:0;flex:1 1 150px}
+.hm-tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.hm-tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:16px 8px;border:1.5px solid var(--line);border-radius:var(--radius-m);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;min-width:0}
+.hm-tile i{font-size:22px;color:var(--teal)}.hm-tile strong{font-size:15px;font-weight:800}.hm-tile small{font-size:11.5px;color:var(--ink-soft);text-align:center}
+.hm-tile.active{background:var(--teal);border-color:var(--teal);color:#fff}.hm-tile.active i,.hm-tile.active small{color:#fff}
 .cat-chip{flex-shrink:0;} .cat-chip span:not(.em){white-space:nowrap;}
 .cat-scroll::-webkit-scrollbar{display:none;}
 .cat-chip{min-width:74px; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px 8px;}
@@ -2898,10 +2902,12 @@ function renderHome(){
     {t:'أفضل العروض اليوم', s:'خصومات تصل حتى 30%', i:'fa-tags'}
   ];
   const reminders = todaysRecurringReminders();
+  const svcMode = homeMode()==='services';
   const nearbyGroups = groupBuysNearMe();
   return `
-    ${servicesHomeCard()}
-    ${renderCustomerStores()}
+    ${homeModeTiles()}
+    ${svcMode?`<div class="section-head"><h3>خدمات بحجز ميعاد</h3></div>${Services.serviceListHTML(S.providers||[],S.serviceType||'',esc)}`:renderCustomerStores()}
+    ${svcMode?'':`
     ${nearbyGroups.length? `<div class="card" style="margin-bottom:14px;border-color:var(--teal);cursor:pointer" onclick="go('groupBuys')">
       <b style="font-size:13.5px"><i class="fa-solid fa-people-group"></i> ${nearbyGroups.length} تجميعة مفتوحة في حيّك دلوقتي — انضم ووفّر</b>
     </div>` : ''}
@@ -2919,7 +2925,7 @@ function renderHome(){
     <div class="cat-scroll">${displayCategories().map(c=>`
       <div class="cat-chip" onclick="openCategory('${c.id}')"><span class="em">${c.iconEmoji||'🛍️'}</span><span>${esc(c.name)}</span></div>
     `).join('') || ''}</div>
-
+    `}
   `;
 }
 function merchantCard(m){
@@ -2995,9 +3001,13 @@ window.saveServicesSwitch = async ()=>{
   await logAudit('تعديل قسم الخدمات',servicesEnabled?'تشغيل':'إيقاف');
   UI.toast(servicesEnabled?'تم تشغيل قسم الخدمات ✅':'تم إيقاف قسم الخدمات');
 };
-function servicesHomeCard(){
-  if(!Services.servicesEnabled(S.settings)||!(S.providers||[]).length) return '';
-  return `<div class="card" style="margin-bottom:14px;border-color:var(--teal);cursor:pointer" onclick="go('services')"><div class="row-between"><b style="font-size:14px"><i class="fa-solid fa-calendar-check" style="color:var(--teal)"></i> خدمات بحجز ميعاد</b><span class="badge-chip">${S.providers.length}</span></div><div style="font-size:12.5px;color:var(--ink-soft);margin-top:4px">عيادات، مدرسين، صيانة منزلية</div></div>`;
+function homeHasServices(){ return Services.servicesEnabled(S.settings)&&(S.providers||[]).length>0; }
+function homeMode(){ if(!homeHasServices()) return 'stores'; let m=S.homeMode; if(!m){ try{ m=localStorage.getItem('home_mode'); }catch(e){} } return m==='services'?'services':'stores'; }
+window.setHomeMode=m=>{ S.homeMode=m; try{ localStorage.setItem('home_mode',m); }catch(e){} renderMain(); };
+function homeModeTiles(){
+  if(!homeHasServices()) return '';
+  const cur=homeMode(),tile=(m,icon,title,sub)=>`<button type="button" class="hm-tile ${cur===m?'active':''}" onclick="setHomeMode('${m}')"><i class="fa-solid ${icon}"></i><strong>${title}</strong><small>${sub}</small></button>`;
+  return `<div class="hm-tiles">${tile('stores','fa-shop','متاجر','منتجات وتوصيل')}${tile('services','fa-calendar-check','خدمات','عيادات، مدرسين، صيانة')}</div>`;
 }
 function renderServices(){
   if(!Services.servicesEnabled(S.settings)) return emptyState('fa-calendar-check','القسم ده مش متاح حاليًا','');
