@@ -534,6 +534,7 @@ import * as FeatureFlags from '/feature-flags.js?v=flags-1';
 import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
 import * as OrderTimeline from '/order-timeline.js?v=tl-1';
 import * as MarketerInsights from '/marketer-insights.js?v=mki-1';
+import * as MarketerContest from '/marketer-contest.js?v=ctst-1';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -2016,6 +2017,36 @@ window.shareReferral = ()=>{
 };
 window.copyText = async (t)=>{ try{ await navigator.clipboard.writeText(t); UI.toast('تم النسخ ✅'); }catch(e){ UI.toast(t); } };
 
+/* ===== مسابقة المسوّقين الشهرية (مفتوحة بمفتاح من الإدارة، الجوائز بتتصرف يدويًا) ===== */
+const contestOn = () => FeatureFlags.isOn(S.settings,'marketerContestEnabled');
+function renderMarketerContestCard(){
+  if(!contestOn()) return '';
+  const month=MarketerContest.monthKey(Date.now()), pub=MarketerContest.visibleContest(S.settings,month);
+  const mine=MarketerContest.ownCount(S.mkSubs||[], S.user.uid, month);
+  return `<div class="card" style="margin-bottom:14px;border-color:var(--gold)"><b style="font-size:14px"><i class="fa-solid fa-trophy" style="color:var(--gold)"></i> مسابقة الشهر</b>
+    ${pub&&pub.prize?`<p style="font-size:13px;margin:8px 0 0">الجائزة: <b>${esc(pub.prize)}</b></p>`:''}
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0 0;line-height:1.8">بتحسب لك كل محل يدفع أول اشتراك ليه والإدارة تعتمده خلال الشهر. عندك الشهر ده (تقريبي، الترتيب المعتمد هو اللي بتنشره الإدارة): <b>${mine}</b></p>
+    ${pub&&pub.standings.length?`<div style="margin-top:10px;font-size:12.5px">${pub.standings.map(r=>`<div class="row-between"><span>${r.rank}. ${esc(r.name)}</span><b>${r.count}</b></div>`).join('')}<div style="font-size:11px;color:var(--ink-soft);margin-top:6px">آخر تحديث للترتيب: ${fmtDate(pub.publishedAt)}</div></div>`:'<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0">الإدارة لسه ما نشرتش الترتيب.</p>'}</div>`;
+}
+function renderContestAdmin(){
+  if(!contestOn()||!isSuperAdmin()) return '';
+  const month=MarketerContest.monthKey(Date.now()), st=MarketerContest.standings(S.allSubs||[],month);
+  const nm=id=>{const u=(S.allUsers||[]).find(x=>x._id===id);return u?((u.firstName||'')+' '+(u.lastName||'')).trim():id;};
+  const cur=S.settings.marketerContest&&S.settings.marketerContest.month===month?S.settings.marketerContest:null;
+  return `<div class="card" style="margin-bottom:14px;border-color:var(--gold)"><b>مسابقة المسوّقين — ${month}</b>
+    <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin:6px 0">بتتحسب لكل مسوّق عدد المحلات اللي دفعت أول اشتراك ليها واتعتمد في الشهر. الجوائز بتتصرف يدويًا من عندك.</p>
+    ${st.length?`<div style="font-size:13px;margin-bottom:10px">${st.map((r,i)=>`<div class="row-between"><span>${i+1}. ${esc(nm(r.marketerId))}</span><b>${r.count}</b></div>`).join('')}</div>`:'<p style="font-size:12.5px">لسه مفيش محلات دفعت أول اشتراك الشهر ده.</p>'}
+    <div class="field"><label>الجائزة (نص يظهر للمسوّقين)</label><input id="ctPrize" maxlength="200" value="${esc(cur?cur.prize:'')}" placeholder="مثال: ٥٠٠ جنيه لأول مركز"></div>
+    <button class="btn btn-primary" onclick="publishContest()">نشر الترتيب للمسوّقين</button>
+    ${cur?`<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px">آخر نشر: ${fmtDate(cur.publishedAt)}</div>`:''}</div>`;
+}
+window.publishContest = async ()=>{
+  if(!isSuperAdmin()||!contestOn()) return;
+  const month=MarketerContest.monthKey(Date.now());
+  const payload=MarketerContest.publishPayload({subs:S.allSubs||[],users:S.allUsers||[],month,prize:(document.getElementById('ctPrize')||{}).value});
+  try{ await setDoc(doc(db,'settings','app'),{marketerContest:payload},{merge:true}); await logAudit('نشر ترتيب مسابقة المسوّقين', `${month} — ${payload.standings.length} مسوّق`); UI.toast('تم النشر'); }
+  catch(e){ UI.toast('تعذر النشر: '+(e.code||e.message)); }
+};
 /* ===== ملخص الشهر ومحلات محتاجة متابعة للمسوّق (مفتوحة بمفتاح من الإدارة) ===== */
 const MK_ATTN = {EXPIRED:['انتهى اشتراكه','var(--danger)'], EXPIRING:['اشتراكه هيخلص','var(--gold)'], NO_SUB:['ماعندوش اشتراك','var(--danger)'], PENDING:['قيد المراجعة','var(--ink-soft)']};
 function renderMarketerInsights(){
@@ -2041,6 +2072,7 @@ function renderMarketerDashboard(){
     ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
     ${renderMarketerInsights()}
+    ${renderMarketerContestCard()}
     <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك بتتحسب من اشتراكات محلاتك اللي الإدارة اعتمدتها، حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
     ${(()=>{ const tr = mkTier(ms.filter(m=>m.status==='ACTIVE').length); const tiers = mkTiers(); return `<div class="card" style="margin-bottom:14px">
       <div class="row-between"><b style="font-size:14px">مستواك: ${esc(tr.cur.name)}</b><span class="badge-chip">${tr.cur.bonus>0?'+'+tr.cur.bonus+'% على كل باقة':mkBaseRateLabel()}</span></div>
@@ -2287,7 +2319,7 @@ function renderAdminMarketers(){
   const mks = S.allUsers.filter(u=>u.role==='MARKETER');
   if(!mks.length) return report+(isSuperAdmin()?Program.admin():'')+emptyState('fa-bullhorn','لا يوجد مسوّقون بعد','من «الأعضاء» اختر عضوًا واضغط «تعيين كمسوّق»');
   const pays = S.allMkPayouts||[];
-  return `${report}${isSuperAdmin()?Program.admin():''}${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
+  return `${report}${isSuperAdmin()?Program.admin():''}${renderContestAdmin()}${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
   <div class="list-gap">${mks.map(u=>{
     const ms = S.allMerchants.filter(m=>m.marketerId===u._id);
     const c = mkCalc(mkRate(u), ms, S.allSubOrders||[], S.allSubs||[], u._id);
