@@ -528,6 +528,7 @@ img{max-width:100%; display:block;}
 <script src="/qrcode.js"></script>
 <script type="module">
 import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
+import * as AdSlots from '/ad-slots.js?v=ads-2';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -1978,6 +1979,7 @@ function renderMarketerDashboard(){
   const code = S.profile.referralCode || '';
   return `
     ${(()=>{const bs=MarketerOffer.bonusState(S.mkSubs||[],S.user.uid,S.settings);return bs.cfg.on||bs.count>0?MarketerOffer.bonusCardHTML(bs,esc):'';})()}
+    ${AdSlots.adSlotHTML(S.settings,'mkDash',esc)}
     ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
     <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك بتتحسب من اشتراكات محلاتك اللي الإدارة اعتمدتها، حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
@@ -2928,6 +2930,7 @@ function renderHome(){
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="skipRecurringOrder('${r._id}')">مش النهاردة</button>
         </div>
       </div>`).join('')}</div>` : ''}
+    ${AdSlots.adSlotHTML(S.settings,'custHome',esc)}
     <div class="banner-strip">${banners.map(b=>`<div class="banner"><i class="fa-solid ${b.i}"></i><h4>${b.t}</h4><p>${b.s}</p></div>`).join('')}</div>
 
     <p class="location-note">اختار متجر علشان تشوف منتجاته وتطلب منه.</p><div class="section-head"><h3>الأقسام</h3><span class="more" onclick="go('browse')">عرض الكل</span></div>
@@ -3587,7 +3590,7 @@ window.openJoinRequest = (kind)=>{
   if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery','marketer','service'].includes(kind)) return;
   const available=!!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
   const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
-  UI.openModal(requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc,Services.servicesEnabled(S.settings)):kind==='service'?typePicker('rqActivity','',esc,true,Services.SERVICE_TYPES):''));
+  UI.openModal((kind==='marketer'?AdSlots.adSlotHTML(S.settings,'mkJoin',esc):'')+requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc,Services.servicesEnabled(S.settings)):kind==='service'?typePicker('rqActivity','',esc,true,Services.SERVICE_TYPES):''));
   addInAppRequestButton(kind);
 };
 const MR_KINDS={merchant:'store',service:'service',delivery:'courier'};
@@ -5309,6 +5312,17 @@ function renderAdminSettings(){
       <div class="field"><label>خصم رسوم التوصيل عند الطلب من أكتر من متجر (%)</label><input id="setMultiStoreDiscount" type="number" step="1" min="0" max="100" value="${DeliveryBatch.discountPercent(s.multiStoreDeliveryDiscountPercent)}"></div>
       <button class="btn btn-primary" onclick="saveAppSettings()">حفظ الإعدادات</button>
     </div>
+    ${isSuperAdmin()?`<div class="card" style="margin-bottom:16px">
+      <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-rectangle-ad" style="color:var(--teal)"></i> الإعلانات الثابتة</h3>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">صورة ثابتة بنسبة 3:1 (مثلا 1080x360). حط رابط الصورة (لازم يبدأ بـ https)، ورابط اختيارى لو عايزها تفتح صفحة. كل مكان مقفول لحد ما تفتحه.</p>
+      ${AdSlots.AD_SLOTS.map(sl=>{const v=AdSlots.normalizeSlot((s.adSlots||{})[sl.id]);return `<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">
+        <div class="row-between" style="margin-bottom:8px"><b style="font-size:13.5px">${esc(sl.label)}</b><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="ad_${sl.id}_on" ${v.on?'checked':''}> ظاهر</label></div>
+        <div class="field"><label>رابط الصورة</label><input id="ad_${sl.id}_imageUrl" type="url" dir="ltr" placeholder="https://..." value="${esc(v.imageUrl)}"></div>
+        <div class="field"><label>رابط عند الضغط (اختيارى)</label><input id="ad_${sl.id}_link" type="url" dir="ltr" placeholder="https://..." value="${esc(v.link)}"></div>
+        <div class="field"><label>وصف الصورة (اختيارى)</label><input id="ad_${sl.id}_alt" maxlength="120" value="${esc(v.alt)}"></div>
+      </div>`;}).join('')}
+      <button class="btn btn-primary" style="margin-top:14px" onclick="saveAdSlots()">حفظ الإعلانات</button>
+    </div>`:''}
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> إشعارات الطلبات على تليجرام</h3>
       <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">اربط حسابك ببوت «على بابك» على تليجرام عشان يوصلك إشعار فوري بأي طلب جديد على المنصة.</p>
@@ -5363,6 +5377,15 @@ window.saveLoyaltySettings = async ()=>{
   await setDoc(doc(db,'settings','app'), {loyaltyEnabled, loyaltyEarnRate, loyaltyRedeemValue}, {merge:true});
   await logAudit('تعديل إعدادات نقاط الولاء', `مفعّل: ${loyaltyEnabled} — كسب: ${loyaltyEarnRate} — استبدال: ${loyaltyRedeemValue}`);
   UI.toast('تم حفظ إعدادات نقاط الولاء ✅');
+};
+window.saveAdSlots = async ()=>{
+  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
+  const el=(id,f)=>document.getElementById('ad_'+id+'_'+f);
+  const r=AdSlots.readAdForm((id,f)=>f==='on'?el(id,f).checked:el(id,f).value);
+  if(r.error){ UI.toast(r.error); return; }
+  await setDoc(doc(db,'settings','app'), {adSlots:r.slots}, {merge:true});
+  await logAudit('تعديل الإعلانات الثابتة', AdSlots.AD_SLOT_IDS.map(id=>id+':'+(r.slots[id].on?'on':'off')).join(' '));
+  UI.toast('تم حفظ الإعلانات ✅');
 };
 window.saveSupportPhone = async ()=>{
   if(!isSuperAdmin()){ UI.toast('تعديل رقم الدعم لإدارة الموقع فقط'); return; }
