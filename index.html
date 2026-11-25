@@ -562,6 +562,7 @@ import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
 import * as Services from '/services.js?v=svc-6';
+import * as OrderTx from '/order-tx.js?v=tx-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
@@ -3562,6 +3563,7 @@ function renderOrderDetail(){
         <div class="divider"></div>
         ${(s.items||[]).map(it=>`<div class="row-between" style="font-size:13px;margin-bottom:6px"><span>${esc(it.productTitle)} × ${it.quantity}</span><span>${fmtMoney(it.price*it.quantity)}</span></div>`).join('')}
         <div class="summary-row total"><span>إجمالي هذا الجزء</span><span>${fmtMoney(s.subtotal)}</span></div>
+        ${(s.status==='PENDING_ADMIN'||s.status==='SENT_TO_MERCHANT') ? `<button class="btn btn-danger btn-sm" style="width:100%;margin-top:10px" onclick="openCustomerCancel('${s._id||s.id}')"><i class="fa-solid fa-ban"></i> إلغاء الطلب</button><p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0">تقدر تلغي قبل ما التاجر يقبل الطلب.</p>` : ''}
         ${s.status==='DELIVERED' ? (myRating
           ? `<div class="hint-box" style="margin-top:10px"><i class="fa-solid fa-star" style="color:var(--gold)"></i> شكرًا لتقييمك! قيّمت المتجر ${myRating.merchantRating}/5${myRating.comment?' — "'+esc(myRating.comment)+'"':''}</div>`
           : `<button class="btn btn-gold btn-sm" style="width:100%;margin-top:10px" onclick="openRateOrder('${s._id||s.id}')"><i class="fa-solid fa-star"></i> قيّم هذا الطلب</button>`
@@ -3773,6 +3775,7 @@ function subOrderCard(s, forAdminOrMerchant=true){
     </div>
   </div>`;
 }
+const OT_API = {doc, runTransaction, increment};
 window.updateSubOrderStatus = async (subId, status, reason=null)=>{
   const s = [...(S.mySubOrders||[]), ...(S.allSubOrders||[]), ...(S.myAgentSubOrders||[])].find(x=>(x._id||x.id)===subId);
   if(!s) return;
@@ -3780,7 +3783,13 @@ window.updateSubOrderStatus = async (subId, status, reason=null)=>{
   const extra = {status};
   if(status==='DELIVERED' && !s.deliveredAt) extra.deliveredAt=serverTimestamp();
   if(reason){ extra.cancelReason = reason; extra.cancelledAt = nowMs(); }
-  await updateDoc(doc(db,'subOrders', s.id), extra);
+  if(status==='REJECTED'||status==='CANCELLED'){
+    // رفض/إلغاء: الحالة + رجوع المخزون (وبعد آخر طلب فرعي: الكوبون والنقاط) في Transaction واحدة، مرة واحدة فقط
+    try{ await OrderTx.cancelSubOrderWithRestore(OT_API, db, s, extra); }
+    catch(err){ console.error('cancel+restore failed', err); UI.toast('تعذّر الإلغاء وإرجاع المخزون: '+(err&&err.message?err.message:err)); return; }
+  } else {
+    await updateDoc(doc(db,'subOrders', s.id), extra);
+  }
   const msg = reason ? `للأسف تم إلغاء طلبك رقم #${s.parentOrderId}. السبب: ${reason}` : `طلبك رقم #${s.parentOrderId} الآن: ${ORDER_STATUS[status].label}`;
   await pushNotification('CUSTOMER', s.customerId, 'تحديث حالة طلبك', msg, s.parentOrderId);
   await recomputeOrderStatus(s.parentOrderId);
@@ -3825,6 +3834,27 @@ window.openCancelSubOrder = (subId, who)=>{
     <div class="field"><label>سبب الإلغاء</label><textarea id="cancelReasonInput" placeholder="مثال: المنتج غير متوفر حاليًا"></textarea></div>
     <button class="btn btn-danger" onclick="confirmCancelSubOrder('${subId}','${who}')">تأكيد الإلغاء</button>
   `);
+};
+/* ---- العميل يلغي طلبه قبل قبول التاجر ---- */
+window.openCustomerCancel = (subId)=>{
+  UI.openModal(`
+    <div class="modal-head"><h3>إلغاء الطلب</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <p style="font-size:13.5px;margin-bottom:10px">هتلغي الطلب ده. المنتجات هترجع للمخزون، ولو استخدمت كوبون أو نقاط هيرجعوا لك بعد إلغاء آخر جزء في الطلب.</p>
+    <div class="field"><label>سبب الإلغاء (اختياري)</label><textarea id="custCancelReason" placeholder="مثال: غيرت رأيي"></textarea></div>
+    <button class="btn btn-danger" onclick="confirmCustomerCancel('${subId}')">تأكيد الإلغاء</button>
+    <button class="btn btn-ghost" style="margin-top:8px" onclick="UI.closeModal()">رجوع</button>`);
+};
+window.confirmCustomerCancel = async (subId)=>{
+  const s = (S.mySubOrders||[]).find(x=>(x._id||x.id)===subId);
+  if(!s) return;
+  const why = (document.getElementById('custCancelReason').value||'').trim();
+  const reason = 'ألغاه العميل'+(why?': '+why:'');
+  try{
+    await OrderTx.cancelSubOrderWithRestore(OT_API, db, s, {status:'CANCELLED', cancelReason:reason, cancelledAt:nowMs()}, {onlyFrom:['PENDING_ADMIN','SENT_TO_MERCHANT']});
+  }catch(err){ console.error('customer cancel failed', err); UI.toast('تعذّر إلغاء الطلب: '+(err&&err.message?err.message:err)); return; }
+  try{ await pushNotification('MERCHANT', s.merchantId, 'العميل ألغى الطلب', `تم إلغاء الطلب رقم #${s.parentOrderId} من العميل قبل القبول.`, s.parentOrderId); }catch(e){}
+  await recomputeOrderStatus(s.parentOrderId);
+  UI.closeModal(); UI.toast('تم إلغاء الطلب');
 };
 window.confirmCancelSubOrder = async (subId, who)=>{
   const reason = document.getElementById('cancelReasonInput').value.trim();
