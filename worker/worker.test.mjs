@@ -8,6 +8,13 @@ class FakeKV {
   async get(k) { return this.m.has(k) ? this.m.get(k) : null; }
   async put(k, v) { this.m.set(k, v); }
   async delete(k) { this.m.delete(k); }
+  async list({prefix = '', cursor} = {}) {
+    const all = [...this.m.keys()].filter(k => k.startsWith(prefix)).sort();
+    const start = cursor ? all.indexOf(cursor) + 1 : 0;
+    const page = all.slice(start, start + 2); // صفحة صغيرة عشان نختبر الترقيم
+    const done = start + page.length >= all.length;
+    return {keys: page.map(name => ({name})), list_complete: done, cursor: done ? undefined : page.at(-1)};
+  }
 }
 
 const sentMessages = [];
@@ -184,4 +191,93 @@ let linkUrl;
   assert.equal((await again.json()).total, 0);
 }
 
-console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. messages sent:', sentMessages.length);
+// 10) تذكيرات الحجوزات الموقوتة: /reminders/sync + /reminders/prefs + الكرون
+// توقيت ثابت: 15 يونيو 2026 10:00 UTC = 13:00 القاهرة (توقيت صيفي +3)
+{
+  const NOW = Date.parse('2026-06-15T10:00:00Z');
+  const TODAY = '2026-06-15', TOMORROW = '2026-06-16';
+  const sec = {'content-type': 'application/json', 'x-app-secret': 's3cr3t'};
+
+  // اربط تاجر mrem على شات 900
+  const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-2'), body: {merchantId: 'mrem'}});
+  const code = (await res.json()).url.split('start=')[1];
+  await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 900}, text: '/start ' + code}}});
+
+  // الحراسات: بدون السر 401، جسم غلط 400
+  assert.equal((await call('/reminders/sync', {method: 'POST', headers: {'content-type': 'application/json'}, body: {bookings: [{id: 'x'}]}})).status, 401);
+  assert.equal((await call('/reminders/sync', {method: 'POST', headers: sec, body: {bookings: []}})).status, 400);
+  assert.equal((await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem'}})).status, 400);
+
+  // مزامنة: حجز مقبول ميعاده بعد ساعة + حجز معلق من 3 ساعات + حجز تالف الشكل
+  const bk = (id, status, date, time, createdAt) => ({id, merchantId: 'mrem', customerName: 'أحمد', date, time, status, createdAt});
+  const sync = await call('/reminders/sync', {method: 'POST', headers: sec, body: {bookings: [
+    bk('mrem_2026-06-15_1400', 'ACCEPTED', TODAY, '14:00', NOW - 5 * 3600e3),  // الميعاد بعد 60 دقيقة بالظبط
+    bk('mrem_2026-06-15_2000', 'ACCEPTED', TODAY, '20:00', NOW - 5 * 3600e3),  // بعد 7 ساعات — بره النافذة
+    bk('mrem_2026-06-16_0930', 'PENDING', TOMORROW, '09:30', NOW - 3 * 3600e3), // معلق من 3 ساعات
+    bk('mrem_2026-06-16_1130', 'PENDING', TOMORROW, '11:30', NOW - 3 * 3600e3), // معلق تاني لنفس التاجر
+    {id: 'bad'},                                                               // شكل تالف يتخطى
+  ]}});
+  assert.deepEqual(await sync.json(), {ok: true, stored: 4, deleted: 0, skipped: 1});
+
+  // أول جولة كرون: تذكير واحد (14:00) + تنبيه مجمع واحد للحجزين المعلقين
+  let before = sentMessages.length;
+  let r = await _internals.runCron(env, NOW);
+  assert.equal(r.scanned, 4);
+  assert.equal(r.reminders, 1);
+  assert.equal(r.alerts, 2); // حجزين في رسالة واحدة
+  assert.equal(sentMessages.length, before + 2);
+  assert.equal(sentMessages[before].chatId, '900');
+  assert.ok(sentMessages[before].text.includes('تذكير') && sentMessages[before].text.includes('2:00 م') && sentMessages[before].text.includes('النهارده'));
+  assert.ok(sentMessages[before + 1].text.includes('2 حجوزات') && sentMessages[before + 1].text.includes('أحمد'));
+
+  // جولة تانية بعد 10 دقايق: مفيش تكرار
+  before = sentMessages.length;
+  r = await _internals.runCron(env, NOW + 10 * 60e3);
+  assert.equal(r.reminders, 0);
+  assert.equal(r.alerts, 0);
+  assert.equal(sentMessages.length, before);
+
+  // قبول الحجزين المعلقين: مزامنة بالحالة الجديدة تحتفظ بعلامة التنبيه
+  await call('/reminders/sync', {method: 'POST', headers: sec, body: {bookings: [
+    bk('mrem_2026-06-16_0930', 'ACCEPTED', TOMORROW, '09:30', NOW - 3 * 3600e3),
+    bk('mrem_2026-06-16_1130', 'ACCEPTED', TOMORROW, '11:30', NOW - 3 * 3600e3),
+  ]}});
+
+  // إلغاء حجز 20:00: المزامنة بحالة CANCELLED بتمسح المرآة
+  const del = await call('/reminders/sync', {method: 'POST', headers: sec, body: {bookings: [bk('mrem_2026-06-15_2000', 'CANCELLED', TODAY, '20:00', NOW - 5 * 3600e3)]}});
+  assert.equal((await del.json()).deleted, 1);
+
+  // الساعة 8 مساءً القاهرة (17:05 UTC): ملخص بكرة فيه الحجزين المقبولين، مرة واحدة بس
+  const EVENING = Date.parse('2026-06-15T17:05:00Z');
+  before = sentMessages.length;
+  r = await _internals.runCron(env, EVENING);
+  assert.equal(r.summaries, 1);
+  assert.ok(sentMessages.at(-1).text.includes('ملخص') && sentMessages.at(-1).text.includes('9:30 ص') && sentMessages.at(-1).text.includes('11:30 ص'));
+  r = await _internals.runCron(env, EVENING + 10 * 60e3);
+  assert.equal(r.summaries, 0);
+
+  // تفضيلات: قفل التذكير قبل الميعاد
+  const pr = await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem', reminder1h: false}});
+  assert.equal((await pr.json()).prefs.reminder1h, false);
+  await call('/reminders/sync', {method: 'POST', headers: sec, body: {bookings: [bk('mrem_2026-06-16_0900', 'ACCEPTED', TOMORROW, '09:00', NOW)]}});
+  // 09:00 القاهرة = 06:00 UTC. الساعة 04:50 UTC الميعاد بعد 50 دقيقة — جوه النافذة، كان هيتبعت لولا التفضيل
+  before = sentMessages.length;
+  r = await _internals.runCron(env, Date.parse('2026-06-16T04:50:00Z'));
+  assert.equal(r.reminders, 0);
+  assert.equal(sentMessages.length, before);
+  // ارجع شغّله: أول جولة بعد كده تبعت
+  await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem', reminder1h: true}});
+  r = await _internals.runCron(env, Date.parse('2026-06-16T04:55:00Z'));
+  assert.equal(r.reminders, 1);
+  assert.ok(sentMessages.at(-1).text.includes('9:00 ص'));
+
+  // تاجر مش مربوط: مفيش إرسال ومفيش كسر
+  await call('/reminders/sync', {method: 'POST', headers: sec, body: {bookings: [
+    {id: 'mxx_2026-06-15_1500', merchantId: 'mxx', customerName: 'سامي', date: TODAY, time: '15:00', status: 'ACCEPTED', createdAt: NOW - 3600e3},
+  ]}});
+  before = sentMessages.length;
+  await _internals.runCron(env, NOW + 60 * 60e3); // 14:00 القاهرة — ميعاد mxx بعد ساعة
+  assert.equal(sentMessages.length, before);
+}
+
+console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. reminders sync/prefs/cron (1h reminder, 2h aggregated alert, tomorrow summary, prefs off, unlinked merchant). messages sent:', sentMessages.length);

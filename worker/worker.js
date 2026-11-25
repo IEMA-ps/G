@@ -89,6 +89,20 @@ async function authedUid(request, env) {
   }
 }
 
+// ---------- توقيت القاهرة (الحجوزات بتتسجل بتاريخ وساعة القاهرة) ----------
+const _cairoFmt = new Intl.DateTimeFormat('en-GB', {timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
+function cairoParts(ms) {
+  return Object.fromEntries(_cairoFmt.formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+}
+// epoch لميعاد (تاريخ + ساعة) بتوقيت القاهرة — بتصحح الفرق بين +2 و+3 حسب التوقيت الصيفي
+function cairoToEpoch(date, time) {
+  const guess = Date.parse(`${date}T${time}:00+02:00`);
+  const p = cairoParts(guess);
+  const shown = Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);
+  return guess + (Date.parse(`${date}T${time}:00Z`) - shown);
+}
+function fmtTimeAr(hm) { const [h, m] = hm.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'ص' : 'م'}`; }
+
 // ---------- مفاتيح KV ----------
 const codeKey = code => 'code:' + code;
 const uidKey = uid => 'uid:' + uid;
@@ -135,6 +149,172 @@ async function removeChatEverywhere(env, chatId) {
     for (const role of ROLES) ops.push(removeFromRoleList(env, role, chatId));
   }
   await Promise.all(ops);
+}
+
+// ---------- تذكيرات الحجوزات الموقوتة (كرون) ----------
+// الـ Worker مالوش وصول لـ Firestore (مبدأ ثابت في التصميم): التطبيق بيعمل مرآة لبيانات الحجز
+// اللي التذكيرات محتاجاها في KV عن طريق /reminders/sync، والكرون بيقرأ المرآة دي بس.
+// التاجر بيتحكم في كل نوع تذكير من التطبيق، والتفضيلات بتتخزن هنا في prefs:<merchantId>.
+const REM_PREFIX = 'rem:';
+const PREFS_PREFIX = 'prefs:';
+const REM_STATUSES = new Set(['PENDING', 'ACCEPTED']); // أي حالة تانية = امسح المرآة
+const REM_WINDOW_MIN = [45, 75]; // الكرون كل 10 دقايق، فالميعاد يدخل النافذة مرة واحدة
+const UNANSWERED_AFTER_MS = 2 * 3600 * 1000;
+const SUMMARY_HOUR = 20; // ملخص حجوزات بكرة الساعة 8 مساءً بتوقيت القاهرة
+const REM_ID = /^[A-Za-z0-9_\-]{1,120}$/;
+const REM_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const REM_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DEFAULT_PREFS = {reminder1h: true, unanswered2h: true, tomorrowSummary: true};
+
+async function getPrefs(env, merchantId) {
+  const raw = await env.TG_LINKS.get(PREFS_PREFIX + merchantId);
+  if (!raw) return DEFAULT_PREFS;
+  try { return {...DEFAULT_PREFS, ...JSON.parse(raw)}; } catch { return DEFAULT_PREFS; }
+}
+
+// مرآة حجز/حجوزات من التطبيق: PENDING/ACCEPTED بتتخزن، غير كده (إلغاء/رفض/انتهاء) بتمسح.
+async function handleReminderSync(request, env) {
+  if ((request.headers.get('x-app-secret') || '') !== env.APP_SECRET) return json({error: 'unauthorized'}, 401);
+  const body = await request.json().catch(() => null);
+  const list = body && Array.isArray(body.bookings) ? body.bookings.slice(0, 100) : null;
+  if (!list || !list.length) return json({error: 'bad request'}, 400);
+  let stored = 0, deleted = 0, skipped = 0;
+  for (const b of list) {
+    const okShape = b && typeof b === 'object'
+      && typeof b.id === 'string' && REM_ID.test(b.id)
+      && typeof b.merchantId === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(b.merchantId)
+      && typeof b.date === 'string' && REM_DATE.test(b.date)
+      && typeof b.time === 'string' && REM_TIME.test(b.time)
+      && typeof b.status === 'string'
+      && typeof b.createdAt === 'number' && isFinite(b.createdAt);
+    if (!okShape) { skipped++; continue; }
+    const key = REM_PREFIX + b.id;
+    if (!REM_STATUSES.has(b.status)) {
+      await env.TG_LINKS.delete(key); deleted++; continue;
+    }
+    // احتفظ بعلامات الإرسال السابقة لو الحجز متزامن قبل كده
+    let prev = {};
+    try { prev = JSON.parse(await env.TG_LINKS.get(key) || '{}'); } catch {}
+    const expiry = Math.max(cairoToEpoch(b.date, b.time) + 26 * 3600 * 1000, b.createdAt + 3 * 24 * 3600 * 1000);
+    const entry = {
+      merchantId: b.merchantId,
+      customerName: String(b.customerName || '').slice(0, 200),
+      date: b.date, time: b.time, status: b.status,
+      createdAt: b.createdAt, exp: expiry,
+      remindedAt: typeof prev.remindedAt === 'number' ? prev.remindedAt : null,
+      alertedAt: typeof prev.alertedAt === 'number' ? prev.alertedAt : null,
+      summaryFor: typeof prev.summaryFor === 'string' ? prev.summaryFor : null
+    };
+    const ttl = Math.max(3600, Math.floor((expiry - Date.now()) / 1000));
+    await env.TG_LINKS.put(key, JSON.stringify(entry), {expirationTtl: ttl});
+    stored++;
+  }
+  return json({ok: true, stored, deleted, skipped});
+}
+
+// تفضيلات التذكير لكل مقدم خدمة — التطبيق بيبعتها لما التاجر يغيّر المفاتيح. الافتراضي: الكل شغال.
+async function handleReminderPrefs(request, env) {
+  if ((request.headers.get('x-app-secret') || '') !== env.APP_SECRET) return json({error: 'unauthorized'}, 401);
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body.merchantId !== 'string' || !/^[A-Za-z0-9_\-]{1,64}$/.test(body.merchantId)) return json({error: 'bad request'}, 400);
+  const prefs = await getPrefs(env, body.merchantId);
+  let touched = false;
+  for (const k of ['reminder1h', 'unanswered2h', 'tomorrowSummary']) {
+    if (typeof body[k] === 'boolean') { prefs[k] = body[k]; touched = true; }
+  }
+  if (!touched) return json({error: 'bad request'}, 400);
+  await env.TG_LINKS.put(PREFS_PREFIX + body.merchantId, JSON.stringify(prefs));
+  return json({ok: true, prefs});
+}
+
+async function sendToMerchant(env, merchantId, text) {
+  const chatId = await env.TG_LINKS.get('m:' + merchantId);
+  if (!chatId) return false;
+  const r = await internals.tgSend(env, chatId, text);
+  if (tgBlocked(r)) await internals.removeChatEverywhere(env, chatId);
+  return tgOk(r);
+}
+
+// جسم الكرون: بيتنفذ كل 10 دقايق. بيفحص مرايا الحجوزات ويبعت:
+// 1) تذكير قبل الميعاد المقبول بساعة (مرة واحدة).
+// 2) تنبيه بحجز مستني رد من ساعتين — رسالة واحدة مجمعة لكل مقدم خدمة (الحجز الأسبوعي متعملش سبام).
+// 3) ملخص مواعيد بكرة المقبولة، الساعة 8 مساءً بتوقيت القاهرة (مرة واحدة في اليوم).
+async function runCron(env, now = Date.now()) {
+  const keys = [];
+  let cursor;
+  do {
+    const res = await env.TG_LINKS.list(cursor ? {prefix: REM_PREFIX, cursor} : {prefix: REM_PREFIX});
+    for (const k of res.keys || []) keys.push(k.name);
+    cursor = res.list_complete === false ? res.cursor : null;
+  } while (cursor);
+
+  const p = cairoParts(now);
+  const today = `${p.year}-${p.month}-${p.day}`;
+  const tomorrowD = new Date(Date.parse(today + 'T12:00:00Z'));
+  tomorrowD.setUTCDate(tomorrowD.getUTCDate() + 1);
+  const tomorrow = tomorrowD.toISOString().slice(0, 10);
+  const inSummaryWindow = Number(p.hour) === SUMMARY_HOUR;
+
+  const pendingByMerchant = new Map(), tomorrowByMerchant = new Map();
+  const saves = [];
+  const save = e => saves.push(env.TG_LINKS.put(REM_PREFIX + e.id, JSON.stringify(e), {expirationTtl: Math.max(3600, Math.floor(((e.exp || (now + 26 * 3600 * 1000)) - now) / 1000))}));
+  let reminders = 0, alerts = 0, summaries = 0;
+
+  for (const key of keys) {
+    let e;
+    try { e = JSON.parse(await env.TG_LINKS.get(key) || 'null'); } catch { e = null; }
+    if (!e || !e.merchantId) continue;
+    e.id = key.slice(REM_PREFIX.length);
+    const prefs = await getPrefs(env, e.merchantId);
+    const startsAt = cairoToEpoch(e.date, e.time);
+
+    if (e.status === 'ACCEPTED' && !e.remindedAt && prefs.reminder1h !== false) {
+      const mins = (startsAt - now) / 60000;
+      if (mins >= REM_WINDOW_MIN[0] && mins <= REM_WINDOW_MIN[1]) {
+        const dayWord = e.date === today ? 'النهارده' : (e.date === tomorrow ? 'بكرة' : 'يوم ' + e.date);
+        if (await sendToMerchant(env, e.merchantId, `⏰ تذكير بميعاد\n\nعندك ميعاد مع ${e.customerName || 'العميل'} ${dayWord} الساعة ${fmtTimeAr(e.time)} — فاضل عليه حوالي ساعة.`)) {
+          e.remindedAt = now; save(e); reminders++;
+        }
+      }
+    }
+
+    // الحجز اللي ميعاده فات خلاص مش محتاج تنبيه «مستني ردك»
+    if (e.status === 'PENDING' && !e.alertedAt && now - e.createdAt >= UNANSWERED_AFTER_MS && startsAt > now && prefs.unanswered2h !== false) {
+      if (!pendingByMerchant.has(e.merchantId)) pendingByMerchant.set(e.merchantId, []);
+      pendingByMerchant.get(e.merchantId).push(e);
+    }
+
+    if (inSummaryWindow && e.status === 'ACCEPTED' && e.date === tomorrow && e.summaryFor !== tomorrow && prefs.tomorrowSummary !== false) {
+      if (!tomorrowByMerchant.has(e.merchantId)) tomorrowByMerchant.set(e.merchantId, []);
+      tomorrowByMerchant.get(e.merchantId).push(e);
+    }
+  }
+
+  for (const [mid, list] of pendingByMerchant) {
+    list.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const f = list[0];
+    const text = list.length === 1
+      ? `⏳ حجز مستني ردك\n\n${f.customerName || 'عميل'} طلب ميعاد يوم ${f.date} الساعة ${fmtTimeAr(f.time)} ومستني ردك من أكتر من ساعتين.\nادخل التطبيق واقبل أو ارفض عشان العميل ميمشيش.`
+      : `⏳ عندك ${list.length} حجوزات مستنية ردك من أكتر من ساعتين.\n\nأقربها: ${f.customerName || 'عميل'} يوم ${f.date} الساعة ${fmtTimeAr(f.time)}.\nادخل التطبيق ورد عليهم عشان العملاء ميمشوش.`;
+    if (await sendToMerchant(env, mid, text)) {
+      for (const e of list) { e.alertedAt = now; save(e); }
+      alerts += list.length;
+    }
+  }
+
+  for (const [mid, list] of tomorrowByMerchant) {
+    list.sort((a, b) => a.time.localeCompare(b.time));
+    const lines = list.slice(0, 5).map(x => `• ${fmtTimeAr(x.time)} — ${x.customerName || 'عميل'}`);
+    if (list.length > 5) lines.push(`… و ${list.length - 5} كمان`);
+    const text = `📋 ملخص حجوزات بكرة (${tomorrow})\n\nعندك ${list.length} مواعيد مقبولة:\n${lines.join('\n')}`;
+    if (await sendToMerchant(env, mid, text)) {
+      for (const e of list) { e.summaryFor = tomorrow; save(e); }
+      summaries++;
+    }
+  }
+
+  await Promise.all(saves);
+  return {scanned: keys.length, reminders, alerts, summaries};
 }
 
 // ---------- المسارات ----------
@@ -300,12 +480,14 @@ async function route(request, env) {
   if (url.pathname === '/link/status' && request.method === 'GET') return handleLinkStatus(request, env);
   if (url.pathname === '/link/stop' && request.method === 'POST') return handleLinkStop(request, env);
   if (url.pathname === '/notify' && request.method === 'POST') return handleNotify(request, env);
+  if (url.pathname === '/reminders/sync' && request.method === 'POST') return handleReminderSync(request, env);
+  if (url.pathname === '/reminders/prefs' && request.method === 'POST') return handleReminderPrefs(request, env);
   if (url.pathname === '/broadcast' && request.method === 'POST') return handleBroadcast(request, env);
   return json({error: 'not found'}, 404);
 }
 
 // للاختبار المحلي: نقدر نستبدل التحقق والإرسال ببدائل وهمية.
-const internals = {verifyFirebaseIdToken, tgSend, removeChatEverywhere};
+const internals = {verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr};
 export const _internals = internals;
 
 export default {
@@ -315,5 +497,9 @@ export default {
     } catch (e) {
       return json({error: 'internal'}, 500);
     }
+  },
+  // كرون كل 10 دقايق — شوف runCron فوق
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(internals.runCron(env));
   }
 };
