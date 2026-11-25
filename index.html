@@ -561,7 +561,7 @@ document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{requir
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
-import * as Services from '/services.js?v=svc-4';
+import * as Services from '/services.js?v=svc-6';
 import * as OrderTx from '/order-tx.js?v=tx-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
@@ -770,7 +770,7 @@ const UI = {
     clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 2400);
   },
   openModal(html){
-    document.getElementById('modalSheet').innerHTML = html;
+    document.getElementById('modalSheet').innerHTML = (typeof S!=='undefined'&&S&&S.role==='merchant'&&Services.isServiceProvider(S.myMerchant)) ? Services.providerWords(html) : html;
     document.getElementById('modalRoot').classList.remove('hidden');
     // نضيف خطوة في تاريخ المتصفح عشان زرار الرجوع في الموبايل يقفل المودال بدل ما يقفل الصفحة أو يغيّر التاب
     try{ if(!history.state?.modal)history.pushState({...history.state,modal:true,localDepth:(history.state?.localDepth||0)+1}, ''); }catch(e){}
@@ -2301,7 +2301,7 @@ function renderShell(){
 
   let title = 'على بابك', sub = '';
   if(S.role==='customer'){ title='على بابك'; sub = 'مرحبًا، ' + (S.profile.firstName||''); }
-  if(S.role==='merchant'){ title = (S.myMerchant && S.myMerchant.businessName) || 'لوحة التاجر'; sub='إدارة متجرك'; }
+  if(S.role==='merchant'){ title = (S.myMerchant && S.myMerchant.businessName) || (Services.isServiceProvider(S.myMerchant)?'لوحة مقدم الخدمة':'لوحة التاجر'); sub=Services.isServiceProvider(S.myMerchant)?'إدارة نشاطك':'إدارة متجرك'; }
   if(S.role==='delivery'){ title = (S.myAgent && S.myAgent.name) || 'لوحة المندوب'; sub='مهام التوصيل'; }
   if(S.role==='marketer'){ title = 'لوحة المسوّق'; sub = 'مرحبًا، ' + (S.profile.firstName||''); }
   if(S.role==='admin'){ title='لوحة التحكم'; sub='إدارة منصة على بابك'; }
@@ -2369,6 +2369,7 @@ function renderShell(){
 window.goBack=()=>previousOr(routeURL(defaultTabForRole(),S.role,location.search)||'/');
 window.go = (tab, opts)=>{
   const previousTab=S.tab;
+  if(typeof Services!=='undefined'&&S.role==='merchant'&&Services.isServiceProvider(S.myMerchant)&&['m_products','m_orders','m_reports','m_statement'].includes(tab)) tab='m_dashboard'; // شاشات المتجر مش للمزود
   S.tab = tab;
   if(tab==='mk_tools' && MARKETING_CONFIG.backendEnabled) S.settings.marketerToolsBackend=true;
   if(tab!=='browse') S.searchQuery='';
@@ -2454,7 +2455,8 @@ function renderMain(){
     mk_dashboard: renderMarketerDashboard, mk_merchants: renderMarketerMerchants, mk_earnings: renderMarketerEarnings, mk_tools: ()=>MarketerTools.render()
   };
   const fn = routes[S.tab] || renderHome;
-  el.innerHTML = (S.role==='admin'?adminPageHeading(S.tab,isSuperAdmin()):'')+fn();
+  const pageHtml = (S.role==='admin'?adminPageHeading(S.tab,isSuperAdmin()):'')+fn();
+  el.innerHTML = (S.role==='merchant'&&Services.isServiceProvider(S.myMerchant)) ? Services.providerWords(pageHtml) : pageHtml;
   el.dataset.renderKey = renderKey;
   // Preserve each filter strip on selection and live refresh, then reveal only if needed.
   el.querySelectorAll('.seg').forEach((seg,index)=>{
@@ -2983,10 +2985,10 @@ window.submitBooking = async (mid,date,time)=>{
     try{localStorage.setItem('bk_phone_'+S.user.uid,v.phone);}catch(e){}
     if(!String(S.profile?.phone||'').trim()) updateDoc(doc(db,'users',S.user.uid),{phone:v.phone}).catch(()=>{});
     notifyProvider(mid,weekly?'طلب حجز أسبوعي جديد 📅':'طلب حجز جديد 📅',weekly?`${v.name} (${v.phone}) طلب ${dates.length} مواعيد أسبوعية، كل ${Services.fmtDay(date).split(' ')[0]} الساعة ${Services.fmtTime(time)}، من ${date} إلى ${dates[dates.length-1]}${v.note?'\nملاحظة: '+v.note:''}\nادخل على الحجوزات للقبول أو الرفض.`:`${v.name} (${v.phone}) طلب ميعاد ${date} الساعة ${Services.fmtTime(time)}${v.note?'\nملاحظة: '+v.note:''}\nادخل على الحجوزات للقبول أو الرفض.`);
-    UI.toast(weekly?`اتبعت ${dates.length} طلبات حجز للمزود ✅`:'اتبعت طلب الحجز للمزود ✅'); st.repeat='once'; go('myBookings'); loadBookingData(mid);
+    UI.toast(weekly?`اتبعت ${dates.length} طلبات حجز لمقدم الخدمة ✅`:'اتبعت طلب الحجز لمقدم الخدمة ✅'); st.repeat='once'; go('myBookings'); loadBookingData(mid);
   }catch(e){ UI.toast(e.code==='permission-denied'?'الميعاد ده اتحجز، اختار ميعاد تاني':(e.message||'تعذر الحجز')); loadBookingData(mid); }
 };
-// إشعار المزود بحجز جديد: داخل التطبيق + تليجرام (لو ربط البوت). الفشل ما بيوقفش الحجز.
+// إشعار مقدم الخدمة بحجز جديد: داخل التطبيق + تليجرام (لو ربط البوت). الفشل ما بيوقفش الحجز.
 function notifyProvider(mid,title,message){
   try{ pushNotification('MERCHANT',mid,title,message).catch(()=>{}); }catch(e){}
   try{ TelegramNotify.send([TelegramNotify.merchantKey(mid)],title,message); }catch(e){}
@@ -3109,7 +3111,7 @@ function renderMerchantPage(){
       <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, (isSvc?'مرحبًا، أريد الاستفسار عن خدماتكم في ':'مرحبًا، أريد الاستفسار عن منتجاتكم في ')+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
     </div>
     ${merchantContactCard(m)}
-    ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم المزود مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
+    ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم مقدم الخدمة مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
     ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,repeat:S.book[m.id].repeat,weeks:S.book[m.id].weeks,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
     ${canOrder&&!isSvc?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
     ${canOrder&&!isSvc?(prods.length? `<div class="product-grid pl-list">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
@@ -4125,7 +4127,7 @@ window.saveMerchantEdit = async ()=>{
     try{const d=await getDoc(doc(db,'merchants',S.myMerchant.id));await setDoc(doc(db,'publicMerchantProfiles',S.myMerchant.id),publicMerchantData(d.data()));}
     catch(e){UI.toast('تم حفظ بيانات المتجر، لكن تحديث الصفحة العامة لم يكتمل. راجع صلاحيات النشر.');return;}
   }
-  UI.closeModal(); UI.toast('تم تحديث بيانات المتجر');
+  UI.closeModal(); UI.toast(Services.isServiceProvider(S.myMerchant)?'تم تحديث بيانات النشاط':'تم تحديث بيانات المتجر');
 };
 
 /* ================= DELIVERY AGENT VIEWS ================= */
@@ -5297,7 +5299,7 @@ function renderAdminSettings(){
   const s = S.settings;
   return `
     <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام داخل التطبيق</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setMemberRequests" ${s.memberRequestsEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">طلبات التاجر ومقدم الخدمة والمندوب تظهر في قائمة الأعضاء وتستنى موافقتك. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveMemberRequestsSwitch()">حفظ</button></div>
-    <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-calendar-check" style="color:var(--teal)"></i> قسم الخدمات (حجز مواعيد)</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setServices" ${s.servicesEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">عيادات ومدرسين وصيانة منزلية. المزود تاجر بنوع خدمات، بيشترك بنفس الباقات، وبيدير مواعيده وحجوزاته من لوحته. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveServicesSwitch()">حفظ</button></div>
+    <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-calendar-check" style="color:var(--teal)"></i> قسم الخدمات (حجز مواعيد)</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setServices" ${s.servicesEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">عيادات ومدرسين وصيانة منزلية. مقدم الخدمة تاجر بنوع خدمات، بيشترك بنفس الباقات، وبيدير مواعيده وحجوزاته من لوحته. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveServicesSwitch()">حفظ</button></div>
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 14px;font-size:15px">إعدادات عامة للمنصة</h3>
       <div class="field"><label>نسبة عمولة المنصة الافتراضية (%)</label><input id="setCommission" type="number" step="0.1" min="0" max="100" value="${s.platformCommissionPercent}"></div>
