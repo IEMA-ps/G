@@ -1,5 +1,6 @@
 // Reject/cancel of a sub order with give-back, in one transaction. The Firestore functions are passed in (api)
 // so the same code runs in the page and in the emulator tests.
+import * as OrderMoney from './order-money.js';
 export const TERMINAL_BAD = ['REJECTED','CANCELLED'];
 
 // What to give back when a sub order is rejected or cancelled.
@@ -48,4 +49,17 @@ export async function cancelSubOrderWithRestore(api, db, s, extra, opts={}){
       if(plan.points>0 && order) tx.update(doc(db,'users', order.customerId), { loyaltyPoints: increment(plan.points) });
     }
   });
+}
+
+// Runs INSIDE the checkout transaction, before any write: reads the coupon and the points balance fresh
+// and prices the order from the current cart. Throws if the coupon or points no longer fit.
+export async function priceInTx(api, db, tx, {coupon, wantedPoints, uid, subtotal, fee, rate, now}){
+  const {doc} = api;
+  const couponSnap = coupon ? await tx.get(doc(db,'coupons', coupon.code)) : null;
+  const userSnap = wantedPoints>0 ? await tx.get(doc(db,'users', uid)) : null;
+  const priced = OrderMoney.priceOrder({subtotal, fee, coupon: couponSnap&&couponSnap.exists()?couponSnap.data():null,
+    pointsWanted:wantedPoints, availablePoints: userSnap&&userSnap.exists()?(userSnap.data().loyaltyPoints||0):0, rate, now});
+  if(coupon && !priced.couponOk) throw new Error('الكوبون لم يعد صالحًا: '+priced.couponReason+'، أزله وحاول تاني');
+  if(wantedPoints>0 && priced.points<wantedPoints) throw new Error('رصيد النقاط أو إجمالي الطلب اتغيّر، أعد تطبيق النقاط وحاول تاني');
+  return priced;
 }

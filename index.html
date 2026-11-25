@@ -563,7 +563,8 @@ import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
 import * as Services from '/services.js?v=svc-6';
-import * as OrderTx from '/order-tx.js?v=tx-1';
+import * as OrderMoney from '/order-money.js?v=money-1';
+import * as OrderTx from '/order-tx.js?v=money-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
@@ -2838,12 +2839,28 @@ window.addToCart = (pid, qty=1)=>{
   if(p && p.stock!=null && desired>p.stock){
     if(p.stock<=0){ UI.toast('هذا المنتج نفذ من المخزون حاليًا'); return; }
     if(ex) ex.quantity = p.stock; else S.cart.push({productId:pid, quantity:p.stock});
-    saveCart(); UI.toast(`تم إضافة أقصى كمية متاحة (${p.stock})`); renderMain(); renderShell();
+    refreshDiscounts(); saveCart(); UI.toast(`تم إضافة أقصى كمية متاحة (${p.stock})`); renderMain(); renderShell();
     return;
   }
   if(ex) ex.quantity = desired; else S.cart.push({productId:pid, quantity:qty});
-  saveCart(); UI.toast('تمت الإضافة إلى السلة 🛒'); renderMain(); renderShell();
+  refreshDiscounts(); saveCart(); UI.toast('تمت الإضافة إلى السلة 🛒'); renderMain(); renderShell();
 };
+function refreshDiscounts(){
+  // الخصم لازم يتحسب من السلة الحالية دايمًا: أي تغيير في السلة بيعيد حساب الكوبون والنقاط
+  const cp = S.appliedCoupon, pt = S.appliedPoints;
+  if(!cp && !pt) return;
+  const fee = cartDeliveryQuote().net;
+  const r = OrderMoney.priceOrder({subtotal:cartTotal(), fee, coupon:cp&&cp.def, pointsWanted:pt?pt.points:0,
+    availablePoints:(S.profile&&S.profile.loyaltyPoints)||0, rate:S.settings.loyaltyRedeemValue||0});
+  if(cp){
+    if(r.couponOk) S.appliedCoupon = {...cp, discount:r.couponDiscount};
+    else { S.appliedCoupon = null; UI.toast('اتشال الكوبون: '+r.couponReason); }
+  }
+  if(pt){
+    if(r.points>0) S.appliedPoints = {points:r.points, discount:r.pointsDiscount};
+    else S.appliedPoints = null;
+  }
+}
 window.setCartQty = (pid, qty)=>{
   const p = getProduct(pid);
   if(qty<=0){ S.cart = S.cart.filter(c=>c.productId!==pid); }
@@ -2852,9 +2869,9 @@ window.setCartQty = (pid, qty)=>{
     if(qty<=0){ S.cart = S.cart.filter(c=>c.productId!==pid); }
     else { const ex = S.cart.find(c=>c.productId===pid); if(ex) ex.quantity=qty; }
   }
-  saveCart(); renderMain(); renderShell();
+  refreshDiscounts(); saveCart(); renderMain(); renderShell();
 };
-window.clearCart = ()=>{ S.cart=[]; saveCart(); renderMain(); renderShell(); };
+window.clearCart = ()=>{ S.cart=[]; S.appliedCoupon=null; S.appliedPoints=null; saveCart(); renderMain(); renderShell(); };
 
 function qtyInCart(pid){ const c = S.cart.find(c=>c.productId===pid); return c?c.quantity:0; }
 
@@ -3167,6 +3184,7 @@ function renderCheckout(){
     return { name: m?m.businessName:'', subtotal, min, short: min - subtotal };
   }).filter(b=>b.short>0);
 
+  refreshDiscounts();
   const coupon = S.appliedCoupon;
   const couponDiscount = coupon ? coupon.discount : 0;
   const pts = S.appliedPoints;
@@ -3246,7 +3264,7 @@ window.applyLoyaltyPoints = ()=>{
   const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
   const couponDiscount = S.appliedCoupon ? S.appliedCoupon.discount : 0;
   const remaining = Math.max(0, cartTotal()+fee-couponDiscount);
-  const maxUsablePoints = Math.min(available, Math.floor(remaining/rate));
+  const maxUsablePoints = OrderMoney.pointsFor(available, available, rate, remaining);
   if(maxUsablePoints<=0){ UI.toast('لا يمكن استخدام النقاط على هذا الطلب حاليًا'); return; }
   const discount = roundMoney(maxUsablePoints*rate);
   S.appliedPoints = { points:maxUsablePoints, discount };
@@ -3262,13 +3280,10 @@ window.applyCoupon = async ()=>{
     const snap = await getDoc(doc(db,'coupons', code));
     if(!snap.exists()){ UI.toast('كود الكوبون غير صحيح'); return; }
     const c = snap.data();
-    if(!c.isActive){ UI.toast('هذا الكوبون متوقف حاليًا'); return; }
-    if(c.expiresAt && c.expiresAt < nowMs()){ UI.toast('انتهت صلاحية هذا الكوبون'); return; }
-    if(c.maxUses && (c.usedCount||0) >= c.maxUses){ UI.toast('تم استنفاد عدد مرات استخدام هذا الكوبون'); return; }
-    const subtotal = cartTotal();
-    if(c.minOrderAmount && subtotal < c.minOrderAmount){ UI.toast(`هذا الكوبون يتطلب حد أدنى ${fmtMoney(c.minOrderAmount)} للسلة`); return; }
-    const discount = c.type==='PERCENT' ? roundMoney(subtotal*c.value/100) : Math.min(c.value, subtotal);
-    S.appliedCoupon = { code, discount };
+    const chk = OrderMoney.couponCheck(c, cartTotal(), nowMs());
+    if(!chk.ok){ UI.toast(chk.reason.replace(/ \d+ للسلة/, ' '+fmtMoney(c.minOrderAmount||0)+' للسلة')); return; }
+    S.appliedCoupon = { code, discount:chk.discount, def:{isActive:c.isActive, type:c.type, value:c.value, minOrderAmount:c.minOrderAmount||0, maxUses:c.maxUses||0, usedCount:c.usedCount||0, expiresAt:c.expiresAt||null} };
+    refreshDiscounts();
     UI.toast('تم تطبيق الكوبون بنجاح 🎉');
     renderMain();
   }catch(err){
@@ -3276,7 +3291,7 @@ window.applyCoupon = async ()=>{
     UI.toast('حصل خطأ أثناء التحقق من الكوبون');
   }
 };
-window.removeCoupon = ()=>{ S.appliedCoupon = null; renderMain(); };
+window.removeCoupon = ()=>{ S.appliedCoupon = null; refreshDiscounts(); renderMain(); };
 
 window.openAddressForm = (existing)=>{
   UI.openModal(`
@@ -3343,10 +3358,9 @@ window.submitOrder = async ()=>{
     const notes = document.getElementById('orderNotes').value.trim();
     const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
     const coupon = S.appliedCoupon;
-    const couponDiscount = coupon ? coupon.discount : 0;
-    const pts = S.appliedPoints;
-    const pointsDiscount = pts ? pts.discount : 0;
-    const totalDiscount = couponDiscount + pointsDiscount;
+    const wantedPoints = S.appliedPoints ? S.appliedPoints.points : 0;
+    const subtotalNow = cartTotal();
+    let priced = null;   // الخصم بيتحسب جوه الـ Transaction من الكوبون ورصيد النقاط الحاليين ومن السلة الحالية
     const orderId = newOrderId();
     // نحسب subIds مقدّمًا قبل أي كتابة، عشان نكتب المستند مرة واحدة فقط
     // (Firestore بيرفض batch فيه set() و update() على نفس المستند في نفس الوقت)
@@ -3366,13 +3380,14 @@ window.submitOrder = async ()=>{
       const merchantEntries=Object.entries(groups);
       const merchantSnaps=await Promise.all(merchantEntries.map(([mid])=>tx.get(doc(db,'merchants',mid))));
       merchantSnaps.forEach(d=>{if(!d.exists() || !MerchantPlans.canOrder(d.data(),S.settings.subsEnforced)) throw new Error('أحد المتاجر لا يستقبل طلبات حاليًا، راجع السلة');});
+      priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
       if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
       tx.set(doc(db,'orders',orderId), {
         id:orderId, customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(),
         customerPhone:S.profile.phone, deliveryAddress:address.fullAddressText, notes,
-        subtotal:cartTotal(), deliveryFee:fee, discount:totalDiscount, couponCode: coupon?coupon.code:null, couponDiscount,
-        pointsRedeemed: pts?pts.points:0, pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, total:Math.max(0, cartTotal()+fee-totalDiscount),
+        subtotal:subtotalNow, deliveryFee:fee, discount:priced.discount, couponCode: coupon?coupon.code:null, couponDiscount:priced.couponDiscount,
+        pointsRedeemed: priced.points, pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, total:priced.total,
         status:'PENDING_ADMIN', paymentMethod:paymentLabel(), paymentMethodId:(S.paymentMethod||'COD'), merchantCount:Object.keys(groups).length,
         subOrderIds: subIds, createdAt: nowMs()
       });
@@ -3388,7 +3403,7 @@ window.submitOrder = async ()=>{
           customerId:S.user.uid,
           customerName:(S.profile.firstName+' '+S.profile.lastName).trim(), customerPhone:S.profile.phone,
           deliveryAddress:address.fullAddressText, notes, createdAt: nowMs(),
-          batchFlow:true, orderStoreCount:Object.keys(groups).length, orderDeliveryFee:fee, orderDiscount:totalDiscount,
+          batchFlow:true, orderStoreCount:Object.keys(groups).length, orderDeliveryFee:fee, orderDiscount:priced.discount,
           merchantAddress:m?(m.address||''):'', merchantMapUrl:m?(m.googleMapsUrl||''):'',
           items: items.map(l=>({productId:l.productId, productTitle:l.product.title, price:effPrice(l.product), quantity:l.quantity}))
         });
@@ -3396,7 +3411,7 @@ window.submitOrder = async ()=>{
         items.forEach(l=>{ tx.update(doc(db,'products', l.productId), { stock: increment(-l.quantity) }); });
       });
       if(coupon){ tx.update(doc(db,'coupons', coupon.code), { usedCount: increment(1) }); }
-      if(pts && pts.points>0){ tx.update(doc(db,'users', S.user.uid), { loyaltyPoints: increment(-pts.points) }); }
+      if(priced.points>0){ tx.update(doc(db,'users', S.user.uid), { loyaltyPoints: increment(-priced.points) }); }
     });
     S.appliedCoupon = null;
     S.appliedPoints = null;
@@ -3414,7 +3429,7 @@ window.submitOrder = async ()=>{
     await pushNotification('ADMIN', 'ALL', 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}، في انتظار المراجعة والإرسال للتاجر.`, orderId);
     // إشعار تليجرام للإدارة بنفس نص إشعار التطبيق (fire-and-forget — فشله مش بيأثر على الطلب)
     TelegramNotify.send([TelegramNotify.ADMIN_KEY], 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}، في انتظار المراجعة والإرسال للتاجر.`);
-    S.lastOrderSummary = { id:orderId, total:Math.max(0, cartTotal()+fee-totalDiscount), fee, discount:totalDiscount, address:address.fullAddressText, payment:paymentLabel(),
+    S.lastOrderSummary = { id:orderId, total:priced.total, fee, discount:priced.discount, address:address.fullAddressText, payment:paymentLabel(),
       items: lines.map(l=>({title:l.product.title, qty:l.quantity, price:effPrice(l.product)})) };
     S.tab = 'orderDone';   // قبل clearCart عشان شاشة الدفع الفاضية ماترجّعش للسلة
     window.clearCart();
