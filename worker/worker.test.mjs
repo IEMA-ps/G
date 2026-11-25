@@ -378,4 +378,57 @@ let linkUrl;
   assert.equal(new TextDecoder().decode(plain.slice(0, -1)), payload);
 }
 
-console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. reminders sync/prefs/cron (1h reminder, 2h aggregated alert, tomorrow summary, prefs off, unlinked merchant). web push (vapid key, subscribe guards/dedupe/uid selector, notify fan-out payload, gone cleanup, unsubscribe, RFC 8291 decrypt roundtrip + VAPID JWT signature). messages sent:', sentMessages.length);
+// 12) بث الأدمن بمفاتيح uid: تليجرام + بوش، تحقق صارم، ووضع audience زي ما هو
+{
+  const bc = body => call('/broadcast', {method: 'POST', headers: auth('good-uid-admin'), body});
+
+  // ممنوع لغير الأدمن حتى مع keys
+  assert.equal((await call('/broadcast', {method: 'POST', headers: auth('good-uid-2'), body: {keys: ['uid:uid-2'], text: 'x'}})).status, 403);
+
+  // أي مفتاح مش uid: صالح = 400، وأكتر من 100 = 400
+  assert.equal((await bc({keys: ['m:m1'], text: 'x'})).status, 400);
+  assert.equal((await bc({keys: ['uid:ok', 'uid:bad key'], text: 'x'})).status, 400);
+  assert.equal((await bc({keys: Array.from({length: 101}, (_, i) => 'uid:u' + i), text: 'x'})).status, 400);
+  assert.equal((await bc({keys: [], text: 'x'})).status, 400);
+
+  // uid مش مربوط ومش مشترك بوش: ميتحسبش خالص
+  let r = await (await bc({keys: ['uid:nobody'], text: 'خبر'})).json();
+  assert.deepEqual(r, {ok: true, total: 0, sent: 0, pushed: 0, blocked: 0, failed: 0});
+
+  // uid-2 مربوط تليجرام (شات 900 من اختبار 10) + اشتراك بوش
+  const sub2 = {endpoint: 'https://push.example/sub/BBB', keys: {p256dh: Buffer.from(crypto.getRandomValues(new Uint8Array(65))).toString('base64url'), auth: Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64url')}};
+  await call('/push/subscribe', {method: 'POST', headers: auth('good-uid-2'), body: {subscription: sub2}});
+
+  const pushCalls = [];
+  const origPush2 = _internals.pushSendOnce;
+  _internals.pushSendOnce = async (e, v, sub, payload) => { pushCalls.push({endpoint: sub.endpoint, payload}); return {ok: true}; };
+
+  // بث لـ uid-2 (مكرر) + uid مش موجود: يوصل تليجرام وبوش، total بيعد uid-2 مرة واحدة
+  const before = sentMessages.length;
+  r = await (await bc({keys: ['uid:uid-2', 'uid:uid-2', 'uid:nobody'], text: 'رسالة إدارية'})).json();
+  assert.equal(r.ok, true);
+  assert.equal(r.total, 1);
+  assert.equal(r.sent, 1);
+  assert.equal(r.pushed, 1);
+  assert.equal(sentMessages.length, before + 1);
+  assert.equal(sentMessages.at(-1).chatId, '900');
+  assert.ok(sentMessages.at(-1).text.includes('رسالة إدارية'));
+  assert.equal(pushCalls.length, 1);
+  assert.equal(pushCalls[0].endpoint, sub2.endpoint);
+  assert.deepEqual(JSON.parse(pushCalls[0].payload), {title: 'على بابك', body: 'رسالة إدارية'});
+
+  // اشتراك بوش ميت أثناء البث بيتشال
+  _internals.pushSendOnce = async () => ({ok: false, gone: true});
+  r = await (await bc({keys: ['uid:uid-2'], text: 'خبر'})).json();
+  assert.equal(r.pushed, 0);
+  assert.equal(await env.TG_LINKS.get('push:idx:uid:uid-2'), '[]');
+  _internals.pushSendOnce = origPush2;
+
+  // وضع audience زي ما هو بالظبط: مفيش pushed في الرد، والتليجرام شغال
+  r = await (await bc({audience: 'ADMIN', text: 'إعلان'})).json();
+  assert.equal(r.sent, 1);
+  assert.equal(r.pushed, undefined);
+  assert.ok(sentMessages.at(-1).text.includes('إعلان'));
+}
+
+console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. reminders sync/prefs/cron (1h reminder, 2h aggregated alert, tomorrow summary, prefs off, unlinked merchant). web push (vapid key, subscribe guards/dedupe/uid selector, notify fan-out payload, gone cleanup, unsubscribe, RFC 8291 decrypt roundtrip + VAPID JWT signature). uid-keys broadcast (admin-only, strict 400s, 101 cap, unlinked not counted, telegram+push, dedupe, gone cleanup, audience unchanged). messages sent:', sentMessages.length);
