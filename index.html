@@ -573,7 +573,8 @@ import * as OrderMoney from '/order-money.js?v=money-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
-import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
+import * as PushClient from '/push-client.js';
+import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
@@ -3097,6 +3098,7 @@ window.submitBooking = async (mid,date,time)=>{
         batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date:d,time,slotMinutes:sch.slotMinutes,note,status:'PENDING',createdAt:t,updatedAt:t});
       });
       await batch.commit(); done+=Math.min(5,dates.length-i);
+      dates.slice(i,i+5).forEach(d=>syncReminder({id:Services.bookingId(mid,d,time),merchantId:mid,customerName:v.name,date:d,time,createdAt:t},'PENDING'));
     }
     try{localStorage.setItem('bk_phone_'+S.user.uid,v.phone);}catch(e){}
     if(!String(S.profile?.phone||'').trim()) updateDoc(doc(db,'users',S.user.uid),{phone:v.phone}).catch(()=>{});
@@ -3105,6 +3107,12 @@ window.submitBooking = async (mid,date,time)=>{
   }catch(e){ UI.toast(e.code==='permission-denied'?'الميعاد ده اتحجز، اختار ميعاد تاني':(e.message||'تعذر الحجز')); loadBookingData(mid); }
 };
 // إشعار مقدم الخدمة بحجز جديد: داخل التطبيق + تليجرام (لو ربط البوت). الفشل ما بيوقفش الحجز.
+const remindersOn=()=>FeatureFlags.isOn(S.settings,'providerRemindersEnabled');
+// مرآة الحجز للـ Worker عشان التذكيرات الموقوتة. بتشتغل بس لما المفتاح مفتوح، والفشل ما بيوقفش الحجز.
+function syncReminder(bk,status){
+  if(!remindersOn()||!bk) return;
+  try{ TelegramNotify.reminderSync([{id:bk.id,merchantId:bk.merchantId,customerName:bk.customerName||'',date:bk.date,time:bk.time,status,createdAt:bk.createdAt||nowMs()}]); }catch(e){}
+}
 function notifyProvider(mid,title,message){
   try{ pushNotification('MERCHANT',mid,title,message).catch(()=>{}); }catch(e){}
   try{ TelegramNotify.send([TelegramNotify.merchantKey(mid)],title,message); }catch(e){}
@@ -3112,10 +3120,10 @@ function notifyProvider(mid,title,message){
 window.cancelMyBooking = async (sid)=>{
   if(!confirm('تلغي الحجز؟')) return;
   const bk=(S.myBookings||[]).find(x=>x.id===sid);
-  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status:'CANCELLED',updatedAt:t}); b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('اتلغى الحجز'); if(bk) notifyProvider(bk.merchantId,'حجز اتلغى ❌',`${bk.customerName||'العميل'} لغى ميعاد ${bk.date} الساعة ${Services.fmtTime(bk.time)}.`); }catch(e){ UI.toast('تعذر الإلغاء'); }
+  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status:'CANCELLED',updatedAt:t}); b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('اتلغى الحجز'); if(bk) syncReminder(bk,'CANCELLED'); if(bk) notifyProvider(bk.merchantId,'حجز اتلغى ❌',`${bk.customerName||'العميل'} لغى ميعاد ${bk.date} الساعة ${Services.fmtTime(bk.time)}.`); }catch(e){ UI.toast('تعذر الإلغاء'); }
 };
 window.setBookingStatus = async (sid,status)=>{
-  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status,updatedAt:t}); if(status==='REJECTED') b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('تم'); }catch(e){ UI.toast('تعذر التحديث'); }
+  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status,updatedAt:t}); if(status==='REJECTED') b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('تم'); syncReminder((S.providerBookings||[]).find(x=>x.id===sid),status); }catch(e){ UI.toast('تعذر التحديث'); }
 };
 let _closedDraft=null;
 const closedNow=()=>_closedDraft||Services.normalizeSchedule(S.mySchedule).closedDates;
@@ -3164,8 +3172,19 @@ function providerBookingsView(){
 }
 function renderProviderSchedule(){
   if(S.role!=='merchant'||!Services.isServiceProvider(S.myMerchant)) return '';
-  return `<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}`;
+  return `<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}${remindersOn()?reminderPrefsHTML():''}`;
 }
+const REM_PREFS=[['reminder1h','تذكير قبل الميعاد بساعة'],['unanswered2h','تنبيه لو حجز مستني ردك أكتر من ساعتين'],['tomorrowSummary','ملخص حجوزات بكرة الساعة 8 مساءً']];
+const remPref=k=>{ try{ return localStorage.getItem('rem_'+k+'_'+S.profile.merchantId)!=='0'; }catch(e){ return true; } };
+function reminderPrefsHTML(){
+  return `<div class="card" style="margin-top:16px"><b><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> تذكيرات تليجرام</b><p class="hint-box" style="padding:10px;margin:8px 0">بتوصلك على تليجرام بس لو رابط حسابك بالبوت.</p>${REM_PREFS.map(([k,l])=>`<label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="rp_${k}" ${remPref(k)?'checked':''} onchange="saveReminderPref('${k}',this.checked)"> ${l}</label>`).join('')}</div>`;
+}
+window.saveReminderPref = async (k,on)=>{
+  const mid=S.profile.merchantId; if(!mid) return;
+  const ok=await TelegramNotify.reminderPrefs(mid,{[k]:on});
+  if(ok){ try{ localStorage.setItem('rem_'+k+'_'+mid,on?'1':'0'); }catch(e){} UI.toast('تم'); }
+  else{ const e=document.getElementById('rp_'+k); if(e) e.checked=!on; UI.toast('تعذر الحفظ، جرّب تاني'); }
+};
 window.openMerchant = (mid)=>{ S.activeMerchantId=mid; const mm=getMerchant(mid); if(Services.isServiceProvider(mm)){ if(MerchantPlans.canOrder(mm,S.settings.subsEnforced)) loadBookingData(mid); } else if(MerchantPlans.canOrder(mm,S.settings.subsEnforced)) loadProductsFor('merchant',mid); go('merchantPage'); };
 
 /* ================= CUSTOMER: BROWSE ================= */
@@ -4408,8 +4427,34 @@ window.openTelegramLink = (kind)=>{
   UI.openModal(`
     <div class="modal-head"><h3><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> إشعارات تليجرام</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div id="tgLinkBody">${TelegramNotify.linkModalHTML('loading')}</div>
+    ${FeatureFlags.isOn(S.settings,'pushNotificationsEnabled')?`<div style="margin-top:18px;border-top:1px solid var(--line,#ddd);padding-top:14px"><h4 style="margin:0 0 10px"><i class="fa-solid fa-bell" style="color:var(--teal)"></i> إشعارات فورية على الموبايل</h4><div id="pushBody">${PushClient.modalHTML('loading')}</div></div>`:''}
   `);
   checkTelegramLink();
+  if(FeatureFlags.isOn(S.settings,'pushNotificationsEnabled')) refreshPush();
+};
+async function pushEnv(){
+  const hasSW='serviceWorker' in navigator, hasPush='PushManager' in window, hasNotification='Notification' in window;
+  let reg=null,subscribed=false;
+  if(hasSW){try{reg=await navigator.serviceWorker.ready;subscribed=!!(hasPush&&await reg.pushManager.getSubscription());}catch(e){}}
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const standalone=window.navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+  return {reg,state:PushClient.pushState({hasSW,hasPush,hasNotification,permission:hasNotification?Notification.permission:'denied',isIOS,standalone,subscribed})};
+}
+window.refreshPush = async ()=>{ const b=document.getElementById('pushBody'); if(!b) return; const e=await pushEnv(); b.innerHTML=PushClient.modalHTML(e.state); };
+window.enablePush = async ()=>{
+  const b=document.getElementById('pushBody'); if(!b) return;
+  b.innerHTML=PushClient.modalHTML('loading');
+  try{
+    const e=await pushEnv();
+    const kind=S.tgLinkKind;const keys=kind==='merchant'?[TelegramNotify.merchantKey(S.profile.merchantId)]:kind==='delivery'?[TelegramNotify.agentKey(S.profile.deliveryAgentId)]:kind==='admin'?[TelegramNotify.ADMIN_KEY]:[];
+    const r=await PushClient.enable({keys,reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o),requestPermission:()=>Notification.requestPermission()});
+    b.innerHTML=PushClient.modalHTML(r);
+  }catch(err){ b.innerHTML=PushClient.modalHTML('unavailable'); }
+};
+window.disablePush = async ()=>{
+  const b=document.getElementById('pushBody'); if(!b) return;
+  try{ const e=await pushEnv(); await PushClient.disable({reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o)}); UI.toast('اتوقفت الإشعارات الفورية على الجهاز ده'); }catch(err){}
+  refreshPush();
 };
 window.checkTelegramLink = async ()=>{
   const body = document.getElementById('tgLinkBody'); if(!body) return;

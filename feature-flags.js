@@ -4,6 +4,8 @@ export const FLAGS = [
   {key:'merchantRatingsEnabled', label:'تقييمات العملاء للتاجر (عرض وردود) وعدد التقييمات على صفحة المتجر'},
   {key:'trackingTimelineEnabled', label:'تتبع الطلب للعميل بأوقات كل خطوة واسم المندوب ورقمه (يحتاج قواعد Firebase الأخيرة)'},
   {key:'marketerInsightsEnabled', label:'لوحة المسوّق: ملخص الشهر، محلات محتاجة متابعة، وفلتر المحلات'},
+  {key:'pushNotificationsEnabled', label:'الإشعارات الفورية على الموبايل (تحتاج Worker الإشعارات المحدّث)'},
+  {key:'providerRemindersEnabled', label:'تذكيرات مقدمي الخدمة على تليجرام (قبل الميعاد بساعة، حجز مستني ساعتين، ملخص بكرة) (تحتاج Worker #115)'},
   {key:'marketerContestEnabled', label:'مسابقة المسوّقين الشهرية (ترتيب بأول اشتراك مدفوع، الجوائز يدويًا)'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;
