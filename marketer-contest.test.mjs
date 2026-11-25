@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const C=await import('data:text/javascript;base64,'+Buffer.from(await readFile(new URL('./marketer-contest.js',import.meta.url),'utf8')).toString('base64'));
+let n=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);n++;};
+const nov=d=>Date.UTC(2026,10,d,12),oct=d=>Date.UTC(2026,9,d,12);
+const sub=(m,mk,at,price=100,status='APPROVED')=>({merchantId:m,marketerId:mk,approvedAt:at,price,status});
+const S=[sub('s1','A',nov(3)),sub('s1','A',nov(20)),sub('s2','A',nov(5)),sub('s3','B',nov(4)),sub('s4','B',nov(6)),sub('s5','B',oct(30)),sub('s5','B',nov(10)),
+ sub('s6','C',nov(7),0),sub('s7','C',nov(8),100,'PENDING'),sub('s8','',nov(9)),sub('s9','D',nov(2))];
+eq(C.monthKey(Date.UTC(2026,10,30,22,30)),'2026-12');
+eq(Object.keys(C.firstPaid(S)).sort(),['s1','s2','s3','s4','s5','s8','s9'],'free and pending ignored');
+eq(C.firstPaid(S).s5.at,oct(30),'renewal does not move the first paid date');
+eq(C.standings(S,'2026-11').map(r=>[r.marketerId,r.count]),[['A',2],['B',2],['D',1]],'tie: A reached 2 first (5 Nov vs 6 Nov); s5 counted in October; no marketer ignored');
+eq(C.standings(S,'2026-10').map(r=>[r.marketerId,r.count]),[['B',1]]);
+eq(C.ownCount(S,'A','2026-11'),2);eq(C.ownCount(S,'C','2026-11'),0);eq(C.ownCount(null,'A','2026-11'),0);
+const P=C.publishPayload({subs:S,users:[{_id:'A',firstName:'أحمد',phone:'010'},{_id:'B',firstName:'منى'}],month:'2026-11',prize:' 500 جنيه ',top:2,now:5});
+eq(P,{month:'2026-11',prize:'500 جنيه',publishedAt:5,standings:[{rank:1,name:'أحمد',count:2},{rank:2,name:'منى',count:2}]});
+assert.ok(!JSON.stringify(P).includes('010'));n++;
+eq(C.visibleContest({marketerContest:P},'2026-11').standings.length,2);
+eq(C.visibleContest({marketerContest:P},'2026-12'),null,'old month hidden');eq(C.visibleContest({},'2026-11'),null);
+console.log('marketer-contest tests ok',n);

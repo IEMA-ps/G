@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const T=await import('data:text/javascript;base64,'+Buffer.from(await readFile(new URL('./order-timeline.js',import.meta.url),'utf8')).toString('base64'));
+let n=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);n++;};
+eq(T.toMs(5),5);eq(T.toMs(0),null);eq(T.toMs(null),null);eq(T.toMs({toMillis:()=>7}),7);eq(T.toMs({seconds:3}),3000);eq(T.toMs('x'),null);
+const s={createdAt:100,merchantContactedAt:200,deliveredAt:{toMillis:()=>900},statusTimes:{ACCEPTED:300,PREPARING:400,OUT_FOR_DELIVERY:500}};
+eq(T.stepTime(s,'PENDING_ADMIN'),100);eq(T.stepTime(s,'SENT_TO_MERCHANT'),200);eq(T.stepTime(s,'ACCEPTED'),300);
+eq(T.stepTime(s,'OUT_FOR_DELIVERY'),500);eq(T.stepTime(s,'DELIVERED'),900);
+eq(T.stepTime({createdAt:1},'ACCEPTED'),null,'old orders have no step times');
+eq(T.stepTime({statusTimes:{SENT_TO_MERCHANT:250}},'SENT_TO_MERCHANT'),250);
+eq(T.stepTime(null,'ACCEPTED'),null);
+eq(T.dialPhone('0100 123-4567'),'01001234567');eq(T.dialPhone('+20 100 123 4567'),'+201001234567');
+eq(T.dialPhone('javascript:alert(1)'),'');eq(T.dialPhone('12'),'');eq(T.dialPhone(null),'');
+eq(T.courierInfo({deliveryAgentName:'أحمد',deliveryAgentPhone:'01001234567'}),{name:'أحمد',phone:'01001234567'});
+eq(T.courierInfo({}),null);
+console.log('order-timeline tests ok',n);

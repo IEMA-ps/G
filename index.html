@@ -529,6 +529,12 @@ img{max-width:100%; display:block;}
 <script type="module">
 import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import * as AdSlots from '/ad-slots.js?v=ads-2';
+import * as Favorites from '/favorites.js?v=fav-1';
+import * as FeatureFlags from '/feature-flags.js?v=flags-1';
+import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
+import * as OrderTimeline from '/order-timeline.js?v=tl-1';
+import * as MarketerInsights from '/marketer-insights.js?v=mki-1';
+import * as MarketerContest from '/marketer-contest.js?v=ctst-1';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -564,10 +570,13 @@ import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
 import * as Services from '/services.js?v=svc-6';
 import * as OrderMoney from '/order-money.js?v=money-1';
+import * as StoreHours from '/store-hours.js?v=hours-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
-import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
+import * as BcAud from '/broadcast-audience.js';
+import * as PushClient from '/push-client.js';
+import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
@@ -650,17 +659,8 @@ function weekLabelOf(wk){
 }
 function roundMoney(n){ return Math.round((n||0)*100)/100; }
 /* ---- هل المتجر مفتوح الآن؟ بناءً على ساعات العمل المحددة من التاجر (openTime/closeTime بصيغة HH:MM) ---- */
-function isMerchantOpenNow(m){
-  if(!m || !m.openTime || !m.closeTime) return true; // لو التاجر ماحددش ساعات عمل، اعتبره متاح دايمًا
-  const now = new Date();
-  const [oh,om] = m.openTime.split(':').map(Number);
-  const [ch,cm] = m.closeTime.split(':').map(Number);
-  const nowMins = now.getHours()*60 + now.getMinutes();
-  const openMins = oh*60+om, closeMins = ch*60+cm;
-  if(openMins===closeMins) return true; // نفس الوقت = مفتوح 24 ساعة
-  if(openMins < closeMins) return nowMins>=openMins && nowMins<closeMins;
-  return nowMins>=openMins || nowMins<closeMins; // فترة عمل بتمتد لليوم التالي، زي 10 مساءً → 2 فجرًا
-}
+function isMerchantOpenNow(m){ return StoreHours.storeStatus(m).open; }
+function merchantClosedLabel(m){ return StoreHours.REASON_LABEL[StoreHours.storeStatus(m).reason]||'مغلق حاليًا'; }
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const ORDER_STATUS = {
@@ -722,6 +722,7 @@ const S = {
   notifications:[],
   settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
   cart:[], // {productId, quantity}
+  favStores:[], // [storeId, ...] — المتاجر المفضلة (بتتزامن مع الحساب لما الميزة تتفتح)
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
   browseSort:'DEFAULT', browsePageSize:12,
   tab:'home', selectedCategory:null, activeMerchantId:null, searchQuery:'', merchantNoLink:false,
@@ -734,7 +735,26 @@ window.S = S; // لازم تتعرض على window عشان أي onclick="S...."
 function saveCart(){ if(S.user) localStorage.setItem('mosh_cart_'+S.user.uid, JSON.stringify(S.cart)); }
 function loadCart(){ if(S.user){ try{ S.cart = JSON.parse(localStorage.getItem('mosh_cart_'+S.user.uid)||'[]'); }catch(e){ S.cart=[]; } } }
 function saveWishlist(){ if(S.user) localStorage.setItem('mosh_wishlist_'+S.user.uid, JSON.stringify(S.wishlist)); }
-function loadWishlist(){ if(S.user){ try{ S.wishlist = JSON.parse(localStorage.getItem('mosh_wishlist_'+S.user.uid)||'[]'); }catch(e){ S.wishlist=[]; } } }
+function loadWishlist(){ if(S.user){ try{ S.wishlist = JSON.parse(localStorage.getItem('mosh_wishlist_'+S.user.uid)||'[]'); }catch(e){ S.wishlist=[]; } try{ S.favStores = JSON.parse(localStorage.getItem('mosh_favstores_'+S.user.uid)||'[]'); }catch(e){ S.favStores=[]; } S._favSynced=false; syncFavoritesFromAccount(); } }
+/* المفضلة على الحساب: لما الميزة تتفتح من الإدارة، قائمة المتاجر والمنتجات بتتجمع مع اللي على الحساب وبتتحفظ فيه، فتتبعه على أي موبايل. */
+function favOn(){ return S.role==='customer' && FeatureFlags.isOn(S.settings,'favoriteStoresEnabled'); }
+function saveFavStores(){ if(S.user) localStorage.setItem('mosh_favstores_'+S.user.uid, JSON.stringify(S.favStores)); }
+async function pushFavoritesToAccount(){
+  if(!favOn()||!S.user) return;
+  try{
+    await updateDoc(doc(db,'users',S.user.uid), {favoriteMerchantIds:S.favStores, favoriteProductIds:S.wishlist});
+    S.profile={...S.profile, favoriteMerchantIds:S.favStores, favoriteProductIds:S.wishlist};
+  }catch(e){ console.warn('favorites sync failed', e.code||e); }
+}
+function syncFavoritesFromAccount(){
+  if(!favOn()||!S.user||S._favSynced||!S.profile) return;
+  S._favSynced=true;
+  const rs=S.profile.favoriteMerchantIds, rp=S.profile.favoriteProductIds;
+  S.favStores=Favorites.mergeIds(S.favStores,rs); S.wishlist=Favorites.mergeIds(S.wishlist,rp);
+  saveFavStores(); saveWishlist();
+  if(!Favorites.sameIds(S.favStores,rs)||!Favorites.sameIds(S.wishlist,rp)) pushFavoritesToAccount();
+  render();
+}
 function isWishlisted(pid){ return (S.wishlist||[]).includes(pid); }
 function sortProducts(list, sortKey){
   const arr = [...list];
@@ -757,11 +777,20 @@ async function logAudit(action, details){
     });
   }catch(e){ console.error('logAudit failed', e); }
 }
+window.toggleFavStore = (mid,ev)=>{
+  if(ev&&ev.stopPropagation) ev.stopPropagation();
+  if(!favOn()) return;
+  const r=Favorites.toggleId(S.favStores,mid); S.favStores=r.list;
+  UI.toast(r.added?'تمت إضافة المتجر لمفضلتك ❤️':'تمت إزالة المتجر من مفضلتك');
+  saveFavStores(); pushFavoritesToAccount(); renderMain(); renderShell();
+};
+const isFavStore = mid => (S.favStores||[]).includes(mid);
+const favStoreBtn = (mid,extra='') => favOn()?`<button class="fav-store-btn" aria-label="مفضلة" onclick="toggleFavStore('${mid}',event)" style="border:none;background:none;cursor:pointer;font-size:19px;padding:6px;color:${isFavStore(mid)?'var(--danger)':'var(--ink-soft)'};${extra}"><i class="fa-${isFavStore(mid)?'solid':'regular'} fa-heart"></i></button>`:'';
 window.toggleWishlist = (pid)=>{
   const i = (S.wishlist||[]).indexOf(pid);
   if(i>=0){ S.wishlist.splice(i,1); UI.toast('تمت الإزالة من المفضلة'); }
   else { S.wishlist = S.wishlist||[]; S.wishlist.push(pid); UI.toast('تمت الإضافة للمفضلة ❤️'); }
-  saveWishlist(); renderMain(); renderShell();
+  saveWishlist(); pushFavoritesToAccount(); renderMain(); renderShell();
 };
 
 /* ================= TOAST / MODAL ================= */
@@ -1182,6 +1211,7 @@ function subscribeShared(){
     const programWasEnabled=window.Program?.enabled();
     if(d.exists()) S.settings = {...S.settings, ...d.data()};
     if(window.Program?.enabled()!==programWasEnabled) window.Program.subscribe();
+    syncFavoritesFromAccount();
     if(S._rawMerchants) recomputeMerchants();
     render();
   }));
@@ -1764,6 +1794,7 @@ function renderAdminSubscriptions(){
         <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${x.upgrade?'<b style="color:var(--teal)">طلب ترقية</b> · ':''}${esc(x.planName)} · ${x.months} شهر${x.reference?` · مرجع: ${esc(x.reference)}`:''}${m.marketerId?` · مسوّق: ${esc(m.marketerName||'')}`:''}</div>
         ${sa?`<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveSubscription('${x._id}')">اعتماد</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="rejectSubscription('${x._id}')">رفض</button></div>`:''}</div>`; }).join('')}</div>`:''}
     ${sa?`<div class="card" style="margin-bottom:16px;border-color:var(--teal)"><b>النظام الجديد: تعريفية وطلبات</b><p style="font-size:13px;line-height:1.8">تعريفية: 200 / 400 / 600 جنيه. طلبات: 400 / 800 / 1200 جنيه + 2% على التاجر. المدد: 3 / 6 / 12 شهر. الاشتراكات والعمولات القديمة مش هتتغير.</p><button class="btn btn-ghost" onclick="previewMerchantPlans()">مراجعة الباقات الست قبل الإضافة</button></div>`:''}
+    ${sa?FeatureFlags.cardHTML(S.settings,esc):''}
     <div class="section-head"><h3>الباقات</h3></div>
     ${sa?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="openPlanForm()"><i class="fa-solid fa-plus"></i> إضافة باقة</button>`:''}
     ${!plans.length && sa ? `<button class="btn btn-ghost" style="margin-bottom:12px" onclick="seedDefaultPlans()"><i class="fa-solid fa-wand-magic-sparkles"></i> إنشاء 3 باقات جاهزة (أساسية / متوسطة / مميزة)</button>` : ''}
@@ -1788,6 +1819,12 @@ function renderAdminSubscriptions(){
     <div class="section-head"><h3>المشتركون الحاليون (${activeMerchants.length})</h3></div>
     ${activeMerchants.length?`<div class="list-gap">${activeMerchants.map(m=>`<div class="card row-between"><div><b style="font-size:13px">${esc(m.businessName)}</b><div style="font-size:11.5px;color:var(--ink-soft)">${esc(m.subPlanName||'')} · حتى ${fmtDay(m.subEndsAt)}</div></div></div>`).join('')}</div>`:emptyState('fa-store','لا يوجد مشتركون حاليًا','')}`;
 }
+window.saveFeatureFlags = async ()=>{
+  if(!isSuperAdmin()) return;
+  const flags=FeatureFlags.readFlags(id=>{const e=document.getElementById(id);return e?e.value:null;});
+  try{ await setDoc(doc(db,'settings','app'), flags, {merge:true}); await logAudit('تعديل المميزات الجديدة', JSON.stringify(flags)); UI.toast('تم الحفظ'); }
+  catch(e){ UI.toast('تعذر الحفظ: '+(e.code||e.message)); }
+};
 window.saveSubSettings = async ()=>{
   if(!isSuperAdmin()) return;
   const subsEnforced = document.getElementById('ssEnforce').value==='1';
@@ -1974,6 +2011,51 @@ window.shareReferral = ()=>{
 };
 window.copyText = async (t)=>{ try{ await navigator.clipboard.writeText(t); UI.toast('تم النسخ ✅'); }catch(e){ UI.toast(t); } };
 
+/* ===== مسابقة المسوّقين الشهرية (مفتوحة بمفتاح من الإدارة، الجوائز بتتصرف يدويًا) ===== */
+const contestOn = () => FeatureFlags.isOn(S.settings,'marketerContestEnabled');
+function renderMarketerContestCard(){
+  if(!contestOn()) return '';
+  const month=MarketerContest.monthKey(Date.now()), pub=MarketerContest.visibleContest(S.settings,month);
+  const mine=MarketerContest.ownCount(S.mkSubs||[], S.user.uid, month);
+  return `<div class="card" style="margin-bottom:14px;border-color:var(--gold)"><b style="font-size:14px"><i class="fa-solid fa-trophy" style="color:var(--gold)"></i> مسابقة الشهر</b>
+    ${pub&&pub.prize?`<p style="font-size:13px;margin:8px 0 0">الجائزة: <b>${esc(pub.prize)}</b></p>`:''}
+    <p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0 0;line-height:1.8">بتحسب لك كل محل يدفع أول اشتراك ليه والإدارة تعتمده خلال الشهر. عندك الشهر ده (تقريبي، الترتيب المعتمد هو اللي بتنشره الإدارة): <b>${mine}</b></p>
+    ${pub&&pub.standings.length?`<div style="margin-top:10px;font-size:12.5px">${pub.standings.map(r=>`<div class="row-between"><span>${r.rank}. ${esc(r.name)}</span><b>${r.count}</b></div>`).join('')}<div style="font-size:11px;color:var(--ink-soft);margin-top:6px">آخر تحديث للترتيب: ${fmtDate(pub.publishedAt)}</div></div>`:'<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0">الإدارة لسه ما نشرتش الترتيب.</p>'}</div>`;
+}
+function renderContestAdmin(){
+  if(!contestOn()||!isSuperAdmin()) return '';
+  const month=MarketerContest.monthKey(Date.now()), st=MarketerContest.standings(S.allSubs||[],month);
+  const nm=id=>{const u=(S.allUsers||[]).find(x=>x._id===id);return u?((u.firstName||'')+' '+(u.lastName||'')).trim():id;};
+  const cur=S.settings.marketerContest&&S.settings.marketerContest.month===month?S.settings.marketerContest:null;
+  return `<div class="card" style="margin-bottom:14px;border-color:var(--gold)"><b>مسابقة المسوّقين — ${month}</b>
+    <p style="font-size:12px;color:var(--ink-soft);line-height:1.8;margin:6px 0">بتتحسب لكل مسوّق عدد المحلات اللي دفعت أول اشتراك ليها واتعتمد في الشهر. الجوائز بتتصرف يدويًا من عندك.</p>
+    ${st.length?`<div style="font-size:13px;margin-bottom:10px">${st.map((r,i)=>`<div class="row-between"><span>${i+1}. ${esc(nm(r.marketerId))}</span><b>${r.count}</b></div>`).join('')}</div>`:'<p style="font-size:12.5px">لسه مفيش محلات دفعت أول اشتراك الشهر ده.</p>'}
+    <div class="field"><label>الجائزة (نص يظهر للمسوّقين)</label><input id="ctPrize" maxlength="200" value="${esc(cur?cur.prize:'')}" placeholder="مثال: ٥٠٠ جنيه لأول مركز"></div>
+    <button class="btn btn-primary" onclick="publishContest()">نشر الترتيب للمسوّقين</button>
+    ${cur?`<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px">آخر نشر: ${fmtDate(cur.publishedAt)}</div>`:''}</div>`;
+}
+window.publishContest = async ()=>{
+  if(!isSuperAdmin()||!contestOn()) return;
+  const month=MarketerContest.monthKey(Date.now());
+  const payload=MarketerContest.publishPayload({subs:S.allSubs||[],users:S.allUsers||[],month,prize:(document.getElementById('ctPrize')||{}).value});
+  try{ await setDoc(doc(db,'settings','app'),{marketerContest:payload},{merge:true}); await logAudit('نشر ترتيب مسابقة المسوّقين', `${month} — ${payload.standings.length} مسوّق`); UI.toast('تم النشر'); }
+  catch(e){ UI.toast('تعذر النشر: '+(e.code||e.message)); }
+};
+/* ===== ملخص الشهر ومحلات محتاجة متابعة للمسوّق (مفتوحة بمفتاح من الإدارة) ===== */
+const MK_ATTN = {EXPIRED:['انتهى اشتراكه','var(--danger)'], EXPIRING:['اشتراكه هيخلص','var(--gold)'], NO_SUB:['ماعندوش اشتراك','var(--danger)'], PENDING:['قيد المراجعة','var(--ink-soft)']};
+function renderMarketerInsights(){
+  if(!FeatureFlags.isOn(S.settings,'marketerInsightsEnabled')) return '';
+  const ms=S.mkMerchants||[], sm=MarketerInsights.monthSummary(ms,S.mkSubOrders||[]), att=MarketerInsights.needsAttention(ms);
+  const chg=(c,p)=>{ const v=MarketerInsights.change(c,p); return v===null?'':`<span style="font-size:11px;color:${v>=0?'var(--success)':'var(--danger)'}">${v>=0?'▲':'▼'} ${Math.abs(v)}% عن الشهر اللي فات</span>`; };
+  const msg=a=>a.kind==='PENDING'?'':`أهلاً ${a.m.managerName||''}، بخصوص اشتراك "${a.m.businessName}" على على بابك، تحب نجدده؟`;
+  return `<div class="card" style="margin-bottom:14px"><b style="font-size:14px">ملخص الشهر ده</b>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:12.5px">
+      <div style="flex:1;min-width:120px"><div style="font-size:18px;font-weight:700">${sm.cur.orders}</div>طلبات مسلّمة<br>${chg(sm.cur.orders,sm.prev.orders)}</div>
+      <div style="flex:1;min-width:120px"><div style="font-size:18px;font-weight:700">${fmtMoney(sm.cur.gross)}</div>مبيعات محلاتي<br>${chg(sm.cur.gross,sm.prev.gross)}</div>
+      <div style="flex:1;min-width:120px"><div style="font-size:18px;font-weight:700">${sm.cur.newStores}</div>محلات سجّلتها<br><span style="font-size:11px;color:var(--ink-soft)">الشهر اللي فات: ${sm.prev.newStores}</span></div>
+    </div></div>
+    ${att.length?`<div class="card" style="margin-bottom:14px"><b style="font-size:14px">محلات محتاجة متابعة (${att.length})</b><div class="list-gap" style="margin-top:10px">${att.slice(0,8).map(a=>{const t=MK_ATTN[a.kind];return `<div class="row-between" style="font-size:12.5px"><span><b>${esc(a.m.businessName)}</b><br><span style="color:${t[1]}">${t[0]}${a.kind==='EXPIRED'?' من '+a.days+' يوم':a.kind==='EXPIRING'?' بعد '+a.days+' يوم':a.kind==='PENDING'&&a.days?' من '+a.days+' يوم':''}</span></span>${a.kind!=='PENDING'&&a.m.phone?`<a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" rel="noopener" href="${waLink(a.m.whatsappNumber||a.m.phone,msg(a))}"><i class="fa-brands fa-whatsapp"></i> كلّمه</a>`:''}</div>`;}).join('')}</div></div>`:''}`;
+}
 function renderMarketerDashboard(){
   if(Program.enabled()&&!Program.creditsReady())return '<div class="card">انتظر تحميل سجل الحوافز قبل عرض الرصيد.</div>';
   const t = mkMyTotals(); const ms = S.mkMerchants||[];
@@ -1983,6 +2065,8 @@ function renderMarketerDashboard(){
     ${AdSlots.adSlotHTML(S.settings,'mkDash',esc)}
     ${Program.incentive()}
     ${renderMarketerGrowth(S,esc)}
+    ${renderMarketerInsights()}
+    ${renderMarketerContestCard()}
     <div class="hint-box" style="margin-bottom:14px">${mkSource()!=='ORDERS'?'نسبتك بتتحسب من اشتراكات محلاتك اللي الإدارة اعتمدتها، حسب شروط كل باقة. ':''}${mkSource()!=='SUBSCRIPTIONS'?`${mkRate(S.profile)}% من عمولة المنصة على الطلبات المسلّمة حسب إعدادات الإدارة.`:''}</div>
     ${(()=>{ const tr = mkTier(ms.filter(m=>m.status==='ACTIVE').length); const tiers = mkTiers(); return `<div class="card" style="margin-bottom:14px">
       <div class="row-between"><b style="font-size:14px">مستواك: ${esc(tr.cur.name)}</b><span class="badge-chip">${tr.cur.bonus>0?'+'+tr.cur.bonus+'% على كل باقة':mkBaseRateLabel()}</span></div>
@@ -2001,11 +2085,15 @@ function renderMarketerDashboard(){
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openTelegramLink('marketer')"><i class="fa-brands fa-telegram"></i> إشعارات الطلبات على تليجرام</button>
     <div class="hint-box" style="margin-top:14px"><i class="fa-solid fa-circle-info"></i> المحل اللي تسجّله بيبقى «قيد المراجعة» لحد ما الإدارة توافق عليه وتربط حساب صاحبه. النسبة بتتحسب بعد ما الإدارة تعتمد الاشتراك (أو الطلب يوصل للعميل حسب إعدادات الإدارة).</div>`;
 }
+window.setMkFilter = k => { S.mkFilter=k; renderMain(); };
 function renderMarketerMerchants(){
-  const ms = S.mkMerchants||[]; const t = mkMyTotals();
+  const all = S.mkMerchants||[]; const t = mkMyTotals();
+  const insightsOn = FeatureFlags.isOn(S.settings,'marketerInsightsEnabled');
+  const ms = insightsOn ? MarketerInsights.filterByStatus(all,S.mkFilter) : all;
   const byId = {}; t.rows.forEach(r=>byId[r.m.id]=r);
   return `
     <button class="btn btn-primary" style="margin-bottom:14px" onclick="openMarketerMerchantForm()"><i class="fa-solid fa-plus"></i> تسجيل محل جديد</button>
+    ${insightsOn&&all.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${[['ALL','الكل'],['ACTIVE','نشط'],['PENDING','قيد المراجعة'],['SUSPENDED','موقوف']].map(([k,l])=>`<button class="btn btn-sm ${(S.mkFilter||'ALL')===k?'btn-primary':'btn-ghost'}" style="width:auto" onclick="setMkFilter('${k}')">${l} (${MarketerInsights.filterByStatus(all,k).length})</button>`).join('')}</div>`:''}
     ${ms.length? `<div class="list-gap">${ms.map(m=>{
       const st = MERCHANT_STATUS[m.status]||{}; const r = byId[m.id]||{orders:0,gross:0,earn:0};
       return `<div class="card"><div class="row-between"><b style="font-size:14px">${esc(m.businessName)}</b><span class="status-pill ${st.cls}"><i class="fa-solid ${m.status==='ACTIVE'?'fa-circle-check':m.status==='PENDING'?'fa-clock':'fa-ban'}"></i> ${st.label}</span></div>
@@ -2225,7 +2313,7 @@ function renderAdminMarketers(){
   const mks = S.allUsers.filter(u=>u.role==='MARKETER');
   if(!mks.length) return report+(isSuperAdmin()?Program.admin():'')+emptyState('fa-bullhorn','لا يوجد مسوّقون بعد','من «الأعضاء» اختر عضوًا واضغط «تعيين كمسوّق»');
   const pays = S.allMkPayouts||[];
-  return `${report}${isSuperAdmin()?Program.admin():''}${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
+  return `${report}${isSuperAdmin()?Program.admin():''}${renderContestAdmin()}${renderAdminWithdrawals()}<div class="hint-box" style="margin-bottom:14px"><i class="fa-solid fa-circle-info"></i> مصدر النسبة الحالي: <b>${({SUBSCRIPTIONS:'اشتراكات المحلات (نسبة كل باقة)',ORDERS:'عمولة الطلبات المسلّمة',BOTH:'الاشتراكات + عمولة الطلبات'})[mkSource()]}</b> — يتغير من «الاشتراكات والباقات».</div>
   <div class="list-gap">${mks.map(u=>{
     const ms = S.allMerchants.filter(m=>m.marketerId===u._id);
     const c = mkCalc(mkRate(u), ms, S.allSubOrders||[], S.allSubs||[], u._id);
@@ -2449,7 +2537,7 @@ function renderMain(){
     cart: renderCart, checkout: renderCheckout, orders: renderOrders, orderDetail: renderOrderDetail, orderDone: renderOrderDone,
     profile: renderProfile, marketerBenefits:()=>S.role==='customer'?marketerBenefits({enabled:Program.enabled()}):'', addresses: renderAddresses, notifications: renderNotifications, wishlist: renderWishlist, recurringOrders: renderRecurringOrders, groupBuys: renderGroupBuys,
     services: renderServices, myBookings: renderMyBookings, m_schedule: renderProviderSchedule,
-    m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports, m_statement:()=>renderMonthlyCommissionStatements(S.mySubOrders||[]),
+    m_dashboard: renderMerchantDashboard, m_products: renderMerchantProducts, m_orders: renderMerchantOrders, m_profile: renderMerchantProfile, m_reports: renderMerchantReports, m_ratings: renderMerchantRatings, m_statement:()=>renderMonthlyCommissionStatements(S.mySubOrders||[]),
     d_dashboard: renderDeliveryDashboard, d_history: renderDeliveryHistory, d_profile: renderDeliveryProfile,
     a_dashboard: renderAdminDashboard, a_new_orders: renderAdminNewOrders, a_merchants: renderAdminMerchants, a_providers: renderAdminProviders, a_categories: renderAdminCategories,
     a_products: renderAdminProducts, a_orders: renderAdminOrders, a_recurring: renderAdminRecurringOrders, a_users: renderAdminUsers,
@@ -2906,6 +2994,7 @@ function renderCustomerStores(){
   const areaPrompt=!pref?`<div class="card" style="margin-bottom:16px"><b style="font-size:14px">اختار منطقتك</b><p class="location-note" style="margin:6px 0 10px">عشان نشوفلك متاجر منطقتك الأول. اختيارك ده مش عنوان توصيل، والمطابقة حسب المحافظة والمنطقة المسجلة مش مسافة فعلية.</p><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openCustomerLocation()">اختار منطقتي</button></div>`:'';
   return `
     ${areaPrompt}
+    ${(()=>{ if(!favOn()) return ''; const fm=(S.favStores||[]).map(id=>(S.merchants||[]).find(x=>x.id===id)).filter(Boolean); return fm.length?`<div class="section-head"><h3>متاجري المفضلة</h3></div><div class="list-gap" style="margin-bottom:16px">${fm.map(merchantCard).join('')}</div>`:''; })()}
     <div class="section-head"><h3>المتاجر</h3></div>
     ${result.stores.length?`<div class="list-gap" style="margin-bottom:16px">${result.stores.map(merchantCard).join('')}</div>`:'<p class="location-note" style="margin-bottom:16px">لسه مفيش متاجر متاحة دلوقتي.</p>'}
   `;
@@ -2963,8 +3052,9 @@ function merchantCard(m){
   return `<div class="merchant-card" onclick="openMerchant('${m.id}')">
     <div class="logo">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-shop"></i>'}</div>
     <div class="info"><h4>${esc(m.businessName)}</h4>
-      <div class="meta"><i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · ${esc(typeLabel(m))} · <span style="color:${openNow?'var(--success)':'var(--danger)'}">${openNow?'مفتوح':'مغلق'}</span></div>
+      <div class="meta"><i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · ${esc(typeLabel(m))} · <span style="color:${openNow?'var(--success)':'var(--danger)'}">${openNow?'مفتوح':merchantClosedLabel(m)}</span></div>
     </div>
+    ${favStoreBtn(m.id)}
     <i class="fa-solid fa-chevron-left" style="color:var(--ink-soft)"></i>
   </div>`;
 }
@@ -3001,6 +3091,7 @@ window.submitBooking = async (mid,date,time)=>{
         batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date:d,time,slotMinutes:sch.slotMinutes,note,status:'PENDING',createdAt:t,updatedAt:t});
       });
       await batch.commit(); done+=Math.min(5,dates.length-i);
+      dates.slice(i,i+5).forEach(d=>syncReminder({id:Services.bookingId(mid,d,time),merchantId:mid,customerName:v.name,date:d,time,createdAt:t},'PENDING'));
     }
     try{localStorage.setItem('bk_phone_'+S.user.uid,v.phone);}catch(e){}
     if(!String(S.profile?.phone||'').trim()) updateDoc(doc(db,'users',S.user.uid),{phone:v.phone}).catch(()=>{});
@@ -3009,6 +3100,12 @@ window.submitBooking = async (mid,date,time)=>{
   }catch(e){ UI.toast(e.code==='permission-denied'?'الميعاد ده اتحجز، اختار ميعاد تاني':(e.message||'تعذر الحجز')); loadBookingData(mid); }
 };
 // إشعار مقدم الخدمة بحجز جديد: داخل التطبيق + تليجرام (لو ربط البوت). الفشل ما بيوقفش الحجز.
+const remindersOn=()=>FeatureFlags.isOn(S.settings,'providerRemindersEnabled');
+// مرآة الحجز للـ Worker عشان التذكيرات الموقوتة. بتشتغل بس لما المفتاح مفتوح، والفشل ما بيوقفش الحجز.
+function syncReminder(bk,status){
+  if(!remindersOn()||!bk) return;
+  try{ TelegramNotify.reminderSync([{id:bk.id,merchantId:bk.merchantId,customerName:bk.customerName||'',date:bk.date,time:bk.time,status,createdAt:bk.createdAt||nowMs()}]); }catch(e){}
+}
 function notifyProvider(mid,title,message){
   try{ pushNotification('MERCHANT',mid,title,message).catch(()=>{}); }catch(e){}
   try{ TelegramNotify.send([TelegramNotify.merchantKey(mid)],title,message); }catch(e){}
@@ -3016,10 +3113,10 @@ function notifyProvider(mid,title,message){
 window.cancelMyBooking = async (sid)=>{
   if(!confirm('تلغي الحجز؟')) return;
   const bk=(S.myBookings||[]).find(x=>x.id===sid);
-  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status:'CANCELLED',updatedAt:t}); b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('اتلغى الحجز'); if(bk) notifyProvider(bk.merchantId,'حجز اتلغى ❌',`${bk.customerName||'العميل'} لغى ميعاد ${bk.date} الساعة ${Services.fmtTime(bk.time)}.`); }catch(e){ UI.toast('تعذر الإلغاء'); }
+  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status:'CANCELLED',updatedAt:t}); b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('اتلغى الحجز'); if(bk) syncReminder(bk,'CANCELLED'); if(bk) notifyProvider(bk.merchantId,'حجز اتلغى ❌',`${bk.customerName||'العميل'} لغى ميعاد ${bk.date} الساعة ${Services.fmtTime(bk.time)}.`); }catch(e){ UI.toast('تعذر الإلغاء'); }
 };
 window.setBookingStatus = async (sid,status)=>{
-  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status,updatedAt:t}); if(status==='REJECTED') b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('تم'); }catch(e){ UI.toast('تعذر التحديث'); }
+  try{ const b=writeBatch(db),t=nowMs(); b.update(doc(db,'bookings',sid),{status,updatedAt:t}); if(status==='REJECTED') b.update(doc(db,'bookedSlots',sid),{active:false}); await b.commit(); UI.toast('تم'); syncReminder((S.providerBookings||[]).find(x=>x.id===sid),status); }catch(e){ UI.toast('تعذر التحديث'); }
 };
 let _closedDraft=null;
 const closedNow=()=>_closedDraft||Services.normalizeSchedule(S.mySchedule).closedDates;
@@ -3068,8 +3165,19 @@ function providerBookingsView(){
 }
 function renderProviderSchedule(){
   if(S.role!=='merchant'||!Services.isServiceProvider(S.myMerchant)) return '';
-  return `<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}`;
+  return `<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}${remindersOn()?reminderPrefsHTML():''}`;
 }
+const REM_PREFS=[['reminder1h','تذكير قبل الميعاد بساعة'],['unanswered2h','تنبيه لو حجز مستني ردك أكتر من ساعتين'],['tomorrowSummary','ملخص حجوزات بكرة الساعة 8 مساءً']];
+const remPref=k=>{ try{ return localStorage.getItem('rem_'+k+'_'+S.profile.merchantId)!=='0'; }catch(e){ return true; } };
+function reminderPrefsHTML(){
+  return `<div class="card" style="margin-top:16px"><b><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> تذكيرات تليجرام</b><p class="hint-box" style="padding:10px;margin:8px 0">بتوصلك على تليجرام بس لو رابط حسابك بالبوت.</p>${REM_PREFS.map(([k,l])=>`<label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="rp_${k}" ${remPref(k)?'checked':''} onchange="saveReminderPref('${k}',this.checked)"> ${l}</label>`).join('')}</div>`;
+}
+window.saveReminderPref = async (k,on)=>{
+  const mid=S.profile.merchantId; if(!mid) return;
+  const ok=await TelegramNotify.reminderPrefs(mid,{[k]:on});
+  if(ok){ try{ localStorage.setItem('rem_'+k+'_'+mid,on?'1':'0'); }catch(e){} UI.toast('تم'); }
+  else{ const e=document.getElementById('rp_'+k); if(e) e.checked=!on; UI.toast('تعذر الحفظ، جرّب تاني'); }
+};
 window.openMerchant = (mid)=>{ S.activeMerchantId=mid; const mm=getMerchant(mid); if(Services.isServiceProvider(mm)){ if(MerchantPlans.canOrder(mm,S.settings.subsEnforced)) loadBookingData(mid); } else if(MerchantPlans.canOrder(mm,S.settings.subsEnforced)) loadProductsFor('merchant',mid); go('merchantPage'); };
 
 /* ================= CUSTOMER: BROWSE ================= */
@@ -3121,12 +3229,15 @@ function renderMerchantPage(){
       <div style="display:flex;gap:12px;align-items:center">
         <div class="merchant-card" style="border:none;padding:0;flex:0"><div class="logo" style="width:64px;height:64px">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-shop"></i>'}</div></div>
         <div style="flex:1"><h3 style="margin:0 0 4px">${esc(m.businessName)}</h3>
-          <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · `}${esc(typeLabel(m))}</div>
+          <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8}${FeatureFlags.isOn(S.settings,'merchantRatingsEnabled')&&m.ratingCount>0?` (${m.ratingCount} تقييم)`:''} · `}${esc(typeLabel(m))}</div>
         </div>
-        ${isSvc?'':`<span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':'مغلق حاليًا'}</span>`}
+        ${favStoreBtn(m.id)}
+        ${isSvc?'':`<span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':merchantClosedLabel(m)}</span>`}
       </div>
       ${m.description?`<p style="font-size:13px;color:var(--ink-soft);margin:12px 0 0;line-height:1.7">${esc(m.description)}</p>`:''}
       ${!isSvc&&m.openTime&&m.closeTime?`<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0"><i class="fa-solid fa-clock"></i> ساعات العمل: ${esc(m.openTime)} — ${esc(m.closeTime)}</p>`:''}
+      ${!isSvc&&Array.isArray(m.closedDays)&&m.closedDays.length?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-calendar-xmark"></i> إجازة: ${m.closedDays.map(d=>StoreHours.DAY_NAMES[Number(d)]).filter(Boolean).map(esc).join('، ')}</p>`:''}
+      ${!isSvc&&m.temporarilyClosed===true?`<p class="hint-box" style="margin:10px 0 0">المتجر مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي.</p>`:''}
       ${!isSvc&&m.minOrderAmount>0?`<p style="font-size:12px;color:var(--ink-soft);margin:6px 0 0"><i class="fa-solid fa-circle-info"></i> الحد الأدنى للطلب من هذا المتجر: ${fmtMoney(m.minOrderAmount)}</p>`:''}
       <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, (isSvc?'مرحبًا، أريد الاستفسار عن خدماتكم في ':'مرحبًا، أريد الاستفسار عن منتجاتكم في ')+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
     </div>
@@ -3354,6 +3465,10 @@ window.submitOrder = async ()=>{
         return;
       }
     }
+    for(const mid of Object.keys(groups)){
+      const m = getMerchant(mid);
+      if(m && m.temporarilyClosed===true){ UI.toast(`${m.businessName} مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي، شيل منتجاته من السلة أو حاول بعدين`); return; }
+    }
     if(Object.keys(groups).length>DeliveryBatch.MAX_STORES_PER_ORDER){ UI.toast(`الحد الأقصى ${DeliveryBatch.MAX_STORES_PER_ORDER} متاجر في الطلب الواحد`); return; }
     const notes = document.getElementById('orderNotes').value.trim();
     const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
@@ -3380,6 +3495,7 @@ window.submitOrder = async ()=>{
       const merchantEntries=Object.entries(groups);
       const merchantSnaps=await Promise.all(merchantEntries.map(([mid])=>tx.get(doc(db,'merchants',mid))));
       merchantSnaps.forEach(d=>{if(!d.exists() || !MerchantPlans.canOrder(d.data(),S.settings.subsEnforced)) throw new Error('أحد المتاجر لا يستقبل طلبات حاليًا، راجع السلة');});
+      merchantSnaps.forEach(d=>{ if(d.data().temporarilyClosed===true) throw new Error(`${d.data().businessName||'أحد المتاجر'} مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي، شيل منتجاته من السلة أو حاول بعدين`); });
       priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
       if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
@@ -3555,6 +3671,7 @@ async function bumpAverageRating(collectionName, docId, newVal){
     await updateDoc(ref, {ratingCount:count, ratingSum:sum, rating:avg});
   }catch(e){ console.error('bumpAverageRating failed', e); }
 }
+const fmtTrackTime = ms => new Date(ms).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}) + ' · ' + new Date(ms).toLocaleDateString('ar-EG',{day:'numeric',month:'short'});
 function renderOrderDetail(){
   const o = S.myOrders.find(x=>x.id===S.viewOrderId);
   if(!o) return emptyState('fa-triangle-exclamation','الطلب غير موجود','');
@@ -3571,11 +3688,14 @@ function renderOrderDetail(){
       const stepIdx = CUSTOMER_TRACK_STEPS.findIndex(([k])=>k===s.status);
       const rejected = s.status==='REJECTED'||s.status==='CANCELLED';
       const myRating = (S.myRatings||[]).find(r=>r.subOrderId===(s._id||s.id));
+      const trackOn = FeatureFlags.isOn(S.settings,'trackingTimelineEnabled');
+      const courier = trackOn && !rejected && s.status!=='DELIVERED' ? OrderTimeline.courierInfo(s) : null;
       return `<div class="card" style="margin-top:12px">
         ${rejected? `<div class="status-pill status-suspended" style="display:inline-block">${ORDER_STATUS[s.status].label}</div>${s.cancelReason?`<p style="font-size:12.5px;color:var(--ink-soft);margin-top:8px"><i class="fa-solid fa-circle-info"></i> السبب: ${esc(s.cancelReason)}</p>`:''}` : `
         <div class="timeline">${CUSTOMER_TRACK_STEPS.map(([k,label],i)=>`
-          <div class="step ${i<=stepIdx?'done':''}"><div class="dot">${i<=stepIdx?'<i class=\"fa-solid fa-check\"></i>':''}</div><div class="lbl">${label}</div></div>
+          <div class="step ${i<=stepIdx?'done':''}"><div class="dot">${i<=stepIdx?'<i class=\"fa-solid fa-check\"></i>':''}</div><div class="lbl">${label}${trackOn&&i<=stepIdx&&OrderTimeline.stepTime(s,k)?`<small style="display:block;font-size:10.5px;color:var(--ink-soft)">${esc(fmtTrackTime(OrderTimeline.stepTime(s,k)))}</small>`:''}</div></div>
         `).join('')}</div>`}
+        ${courier?`<div class="hint-box" style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span><i class="fa-solid fa-motorcycle"></i> مندوب التوصيل: <b>${esc(courier.name)}</b></span>${courier.phone?`<a class="btn btn-ghost btn-sm" style="width:auto" href="tel:${courier.phone}"><i class="fa-solid fa-phone"></i> اتصل</a>`:''}</div>`:''}
         ${s.status==='OUT_FOR_DELIVERY'&&s.batchFlow?`<p class="part-pickup-line" style="font-size:12.5px;color:var(--teal);margin:8px 0 0"><i class="fa-solid ${s.pickedUpAt?'fa-box-open':'fa-hourglass-half'}"></i> ${s.pickedUpAt?'استلم المندوب هذا الجزء وفي الطريق إليك':'المندوب في الطريق لاستلام هذا الجزء'}</p>`:''}
         ${o.merchantCount>1?`<p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0">الجزء ${partIdx+1} من ${subs.length}</p>`:''}
         <div class="divider"></div>
@@ -3729,6 +3849,38 @@ function emptyState(icon,title,sub){
 }
 
 /* ================= MERCHANT VIEWS ================= */
+/* ===== تقييمات العملاء للتاجر (مفتوحة بمفتاح من الإدارة) ===== */
+function ensureRatingsSub(){
+  if(S._ratSub||!S.myMerchant?.id) return;
+  S._ratSub=true; S.myRatings=null;
+  S.unsubs.push(onSnapshot(query(collection(db,'ratings'), where('merchantId','==',S.myMerchant.id), limit(200)), snap=>{ S.myRatings = snap.docs.map(d=>({...d.data(),id:d.id})); render(); }, ()=>{ S.myRatings=[]; render(); }));
+}
+const starsRow = n => [1,2,3,4,5].map(v=>`<i class="fa-${v<=Math.round(n)?'solid':'regular'} fa-star" style="color:var(--gold);font-size:13px"></i>`).join('');
+function renderMerchantRatings(){
+  if(!FeatureFlags.isOn(S.settings,'merchantRatingsEnabled')) return emptyState('fa-star','الميزة مش مفتوحة لسه','');
+  ensureRatingsSub();
+  const back=`<button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>`;
+  if(S.myRatings===null||S.myRatings===undefined) return back+emptyState('fa-hourglass-half','جاري تحميل التقييمات','');
+  const sm=MerchantRatings.summarize(S.myRatings), list=MerchantRatings.sortRatings(S.myRatings);
+  if(!sm.count) return back+emptyState('fa-star','لسه مفيش تقييمات','التقييمات بتظهر هنا بعد ما العملاء يستلموا طلباتهم ويقيّموك');
+  return `${back}
+    <div class="card" style="margin-bottom:14px"><div class="row-between"><div><b style="font-size:26px">${sm.avg}</b> <span style="color:var(--ink-soft);font-size:12.5px">من ٥ · ${sm.count} تقييم</span><div>${starsRow(sm.avg)}</div></div>
+      <div style="font-size:12px;color:var(--ink-soft);text-align:left">${[5,4,3,2,1].map(v=>`${v}★ ${sm.dist[v]}`).join('<br>')}</div></div>
+      ${sm.waitingReply?`<p style="font-size:12.5px;color:var(--teal);margin:10px 0 0">${sm.waitingReply} تقييم مستني ردك</p>`:''}</div>
+    <div class="list-gap">${list.map(r=>`<div class="card">
+      <div class="row-between"><span>${starsRow(r.merchantRating)}</span><span style="font-size:11.5px;color:var(--ink-soft)">${r.createdAt?fmtDate(r.createdAt):''}</span></div>
+      ${r.comment?`<p style="font-size:13.5px;line-height:1.7;margin:8px 0 0">${esc(r.comment)}</p>`:'<p style="font-size:12px;color:var(--ink-soft);margin:8px 0 0">من غير تعليق</p>'}
+      ${r.merchantReply?`<div style="background:var(--teal-tint,#eafaf8);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:13px"><b>ردك:</b> ${esc(r.merchantReply)}</div>`
+        :`<div style="margin-top:8px"><textarea id="rr_${esc(r.id)}" rows="2" maxlength="${MerchantRatings.MAX_REPLY}" placeholder="اكتب ردك على العميل (اختياري)" style="width:100%"></textarea><button class="btn btn-primary btn-sm" style="width:auto;margin-top:6px" onclick="replyToRating('${esc(r.id)}')">إرسال الرد</button></div>`}
+    </div>`).join('')}</div>`;
+}
+window.replyToRating = async (id)=>{
+  const el=document.getElementById('rr_'+id); const txt=MerchantRatings.cleanReply(el&&el.value);
+  if(!txt){ UI.toast('اكتب رد من سطر لحد '+MerchantRatings.MAX_REPLY+' حرف'); return; }
+  const r=(S.myRatings||[]).find(x=>x.id===id); if(!r||r.merchantId!==S.myMerchant?.id) return;
+  try{ await updateDoc(doc(db,'ratings',id),{merchantReply:txt,merchantReplyAt:nowMs()}); UI.toast('تم إرسال ردك'); }
+  catch(e){ UI.toast('تعذر إرسال الرد'); }
+};
 function renderMerchantDashboard(){
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const m = S.myMerchant;
@@ -3800,6 +3952,7 @@ window.updateSubOrderStatus = async (subId, status, reason=null)=>{
   const wasDelivered = s.status==='DELIVERED';
   const extra = {status};
   if(status==='DELIVERED' && !s.deliveredAt) extra.deliveredAt=serverTimestamp();
+  if(FeatureFlags.isOn(S.settings,'trackingTimelineEnabled') && status!=='REJECTED' && status!=='CANCELLED') extra['statusTimes.'+status]=nowMs();
   if(reason){ extra.cancelReason = reason; extra.cancelledAt = nowMs(); }
   if(status==='REJECTED'||status==='CANCELLED'){
     // رفض/إلغاء: الحالة + رجوع المخزون (وبعد آخر طلب فرعي: الكوبون والنقاط) في Transaction واحدة، مرة واحدة فقط
@@ -3914,7 +4067,8 @@ window.confirmAssignAgent = async (subId)=>{
   const s = [...(S.mySubOrders||[]), ...(S.allSubOrders||[])].find(x=>(x._id||x.id)===subId);
   if(!s) return;
   await updateDoc(doc(db,'subOrders', s.id), {
-    status:'OUT_FOR_DELIVERY', deliveryAgentId:agentId, deliveryAgentName:agent?agent.name:'', deliveryAgentPhone:agent?agent.phone:''
+    status:'OUT_FOR_DELIVERY', deliveryAgentId:agentId, deliveryAgentName:agent?agent.name:'', deliveryAgentPhone:agent?agent.phone:'',
+    ...(FeatureFlags.isOn(S.settings,'trackingTimelineEnabled')?{'statusTimes.OUT_FOR_DELIVERY':nowMs()}:{})
   });
   await pushNotification('DELIVERY', agentId, 'طلب توصيل جديد 🛵', `لديك طلب جديد رقم #${s.parentOrderId} لتوصيله`, s.parentOrderId);
   TelegramNotify.send([TelegramNotify.agentKey(agentId)], 'طلب توصيل جديد 🛵', `لديك طلب جديد رقم #${s.parentOrderId} لتوصيله\nالتاجر: ${s.merchantName||''}\nالعميل: ${s.customerName||''} — ${s.customerPhone||''}\nالعنوان: ${s.deliveryAddress||''}`);
@@ -4098,6 +4252,7 @@ function renderMerchantProfile(){
     </div>
     ${storePageCard(m)}
     <button class="btn btn-ghost" style="margin-top:14px" onclick="openMerchantEdit()"><i class="fa-solid fa-pen"></i> تعديل بيانات المتجر</button>
+    ${FeatureFlags.isOn(S.settings,'merchantRatingsEnabled')&&!Services.isServiceProvider(m)?`<button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_ratings')"><i class="fa-solid fa-star"></i> تقييمات عملائي${m.ratingCount?' ('+m.ratingCount+')':''}</button>`:''}
     <button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')"><i class="fa-solid fa-gem"></i> اشتراكي وباقاتي</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openTelegramLink('merchant')"><i class="fa-brands fa-telegram"></i> إشعارات الطلبات على تليجرام</button>
     <button class="btn btn-ghost" style="margin-top:10px" onclick="openChangePassword()"><i class="fa-solid fa-key"></i> تغيير كلمة المرور</button>
@@ -4122,6 +4277,8 @@ window.openMerchantEdit = ()=>{
       <div class="field" style="flex:1"><label>وقت الفتح</label><input id="meOpen" type="time" value="${esc(m.openTime||'09:00')}"></div>
       <div class="field" style="flex:1"><label>وقت الغلق</label><input id="meClose" type="time" value="${esc(m.closeTime||'23:00')}"></div>
     </div>
+    <div class="field"><label>أيام الإجازة الأسبوعية</label><div id="meDays" style="display:flex;flex-wrap:wrap;gap:8px">${StoreHours.DAY_NAMES.map((n,i)=>`<label style="display:flex;align-items:center;gap:4px;font-size:12.5px"><input type="checkbox" value="${i}" ${(m.closedDays||[]).map(Number).includes(i)?'checked':''}> ${n}</label>`).join('')}</div></div>
+    <div class="field"><label>إغلاق مؤقت (المتجر مش هيستقبل طلبات لحد ما تفتحه)</label><select id="meTemp"><option value="0" ${m.temporarilyClosed===true?'':'selected'}>المتجر شغال</option><option value="1" ${m.temporarilyClosed===true?'selected':''}>مقفول مؤقتًا</option></select></div>
     <div class="field"><label>الحد الأدنى لقيمة الطلب (جنيه) — 0 يعني بدون حد أدنى</label><input id="meMinOrder" type="number" step="1" min="0" value="${m.minOrderAmount||0}"></div>`}
     <button class="btn btn-primary" onclick="saveMerchantEdit()">حفظ</button>
   `);
@@ -4139,6 +4296,8 @@ window.saveMerchantEdit = async ()=>{
     logoUrl: document.getElementById('meLogo').value.trim(),
     ...(document.getElementById('meOpen')?{openTime: document.getElementById('meOpen').value,
     closeTime: document.getElementById('meClose').value,
+    closedDays: [...document.querySelectorAll('#meDays input:checked')].map(x=>Number(x.value)),
+    temporarilyClosed: document.getElementById('meTemp').value==='1',
     minOrderAmount: Math.max(0, parseFloat(document.getElementById('meMinOrder').value)||0)}:{})
   });
   if(MerchantPlans.isNewMerchant(S.myMerchant)){
@@ -4272,8 +4431,34 @@ window.openTelegramLink = (kind)=>{
   UI.openModal(`
     <div class="modal-head"><h3><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> إشعارات تليجرام</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div id="tgLinkBody">${TelegramNotify.linkModalHTML('loading')}</div>
+    ${FeatureFlags.isOn(S.settings,'pushNotificationsEnabled')?`<div style="margin-top:18px;border-top:1px solid var(--line,#ddd);padding-top:14px"><h4 style="margin:0 0 10px"><i class="fa-solid fa-bell" style="color:var(--teal)"></i> إشعارات فورية على الموبايل</h4><div id="pushBody">${PushClient.modalHTML('loading')}</div></div>`:''}
   `);
   checkTelegramLink();
+  if(FeatureFlags.isOn(S.settings,'pushNotificationsEnabled')) refreshPush();
+};
+async function pushEnv(){
+  const hasSW='serviceWorker' in navigator, hasPush='PushManager' in window, hasNotification='Notification' in window;
+  let reg=null,subscribed=false;
+  if(hasSW){try{reg=await navigator.serviceWorker.ready;subscribed=!!(hasPush&&await reg.pushManager.getSubscription());}catch(e){}}
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const standalone=window.navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+  return {reg,state:PushClient.pushState({hasSW,hasPush,hasNotification,permission:hasNotification?Notification.permission:'denied',isIOS,standalone,subscribed})};
+}
+window.refreshPush = async ()=>{ const b=document.getElementById('pushBody'); if(!b) return; const e=await pushEnv(); b.innerHTML=PushClient.modalHTML(e.state); };
+window.enablePush = async ()=>{
+  const b=document.getElementById('pushBody'); if(!b) return;
+  b.innerHTML=PushClient.modalHTML('loading');
+  try{
+    const e=await pushEnv();
+    const kind=S.tgLinkKind;const keys=kind==='merchant'?[TelegramNotify.merchantKey(S.profile.merchantId)]:kind==='delivery'?[TelegramNotify.agentKey(S.profile.deliveryAgentId)]:kind==='admin'?[TelegramNotify.ADMIN_KEY]:[];
+    const r=await PushClient.enable({keys,reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o),requestPermission:()=>Notification.requestPermission()});
+    b.innerHTML=PushClient.modalHTML(r);
+  }catch(err){ b.innerHTML=PushClient.modalHTML('unavailable'); }
+};
+window.disablePush = async ()=>{
+  const b=document.getElementById('pushBody'); if(!b) return;
+  try{ const e=await pushEnv(); await PushClient.disable({reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o)}); UI.toast('اتوقفت الإشعارات الفورية على الجهاز ده'); }catch(err){}
+  refreshPush();
 };
 window.checkTelegramLink = async ()=>{
   const body = document.getElementById('tgLinkBody'); if(!body) return;
@@ -4308,6 +4493,41 @@ window.unlinkTelegram = async ()=>{
 
 /* ---- بث الأدمن على تليجرام ---- */
 // خطوتين: معاينة النص النهائي أولًا، وبعدين تأكيد صريح قبل الإرسال — البث بيتم باسم المنصة فلازم موافقة على النص بالظبط.
+function targetedBroadcastFields(){
+  const people=(S.allUsers||[]).slice(0,3000);
+  return `<div class="field"><label>الجمهور</label><select id="tgBcAudience" onchange="document.getElementById('tgBcOneBox').style.display=this.value==='ONE'?'block':'none'">${BcAud.AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
+      <div class="field" id="tgBcOneBox" style="display:none"><label>الشخص (اكتب الاسم أو الرقم واختار)</label><input id="tgBcPerson" list="tgBcPeople" autocomplete="off"><datalist id="tgBcPeople">${people.map(u=>`<option value="${esc(BcAud.personLabel(u))}">`).join('')}</datalist></div>
+      <div class="field"><label>نص الرسالة</label><textarea id="tgBcText" rows="4" maxlength="3000" placeholder="اكتب الرسالة اللي هتوصل..."></textarea></div>
+      <button class="btn btn-primary" onclick="previewTargetedBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>`;
+}
+function bcResolve(audience){
+  const personVal=(document.getElementById('tgBcPerson')||{}).value||'';
+  const person=(S.allUsers||[]).find(u=>BcAud.personLabel(u)===personVal);
+  return BcAud.resolve(audience,{users:S.allUsers||[],merchants:S.allMerchants||[],isProvider:m=>Services.isServiceProvider(m),personId:person?person._id:''});
+}
+window.previewTargetedBroadcast = ()=>{
+  const aud=(document.getElementById('tgBcAudience')||{}).value, txt=((document.getElementById('tgBcText')||{}).value||'').trim();
+  if(!txt){ UI.toast('اكتب نص الرسالة الأول'); return; }
+  const r=bcResolve(aud);
+  if(!r.keys.length){ UI.toast(aud==='ONE'?'اختار الشخص من القائمة':'مفيش حسابات في الفئة دي'); return; }
+  S.tgBroadcast={audience:aud,text:txt,keys:r.keys};
+  const who=aud==='ONE'?esc(r.names[0]):`${esc(BcAud.labelOf(aud))} (${r.keys.length} حساب)`;
+  UI.openModal(`<div class="modal-head"><h3><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> تأكيد البث</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="tgBcBody"><p style="font-size:13px;line-height:1.9;margin:0 0 10px">الرسالة هتتبعت كما هي بالظبط لـ: <b>${who}</b>. بتوصل بس لمين ربط تليجرام أو فعّل الإشعارات الفورية.</p>
+    <div class="hint-box" style="padding:12px;margin:0 0 14px;white-space:pre-wrap;line-height:1.9">${esc(txt)}</div>
+    <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="sendTargetedBroadcast()"><i class="fa-solid fa-paper-plane"></i> إرسال</button><button class="btn btn-ghost" onclick="UI.closeModal()">رجوع</button></div></div>`);
+};
+window.sendTargetedBroadcast = async ()=>{
+  const body=document.getElementById('tgBcBody'); const b=S.tgBroadcast; if(!body||!b||!b.keys) return;
+  body.innerHTML=TelegramNotify.linkModalHTML('loading'); S.tgBroadcast=null;
+  try{
+    const token=await S.user.getIdToken(); const parts=[];
+    for(const ks of BcAud.chunk(b.keys)) parts.push(await TelegramNotify.broadcastKeys(ks,b.text,token));
+    const t=BcAud.sumResults(parts);
+    body.innerHTML=t.ok?`<p class="hint-box" style="padding:12px;margin:0">تم ✅ — وصلت على تليجرام لـ ${t.sent}، وإشعار فوري لـ ${t.pushed}، من ${t.total} مربوط. الباقي مربطش أو وقف البوت.${t.failed?` فشل ${t.failed}.`:''}</p>`:'<p class="hint-box" style="padding:12px;margin:0">حصلت مشكلة أثناء الإرسال. جرّب تاني بعد شوية.</p>';
+    if(t.ok){ const x=document.getElementById('tgBcText'); if(x) x.value=''; }
+  }catch(e){ body.innerHTML=TelegramNotify.linkModalHTML('unavailable'); }
+};
 window.previewTelegramBroadcast = ()=>{
   const aud = document.getElementById('tgBcAudience');
   const txt = document.getElementById('tgBcText');
@@ -5346,9 +5566,9 @@ function renderAdminSettings(){
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> بث رسالة على تليجرام</h3>
       <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">ابعت رسالة لكل اللي ربطوا تليجرام بالبوت، أو لدور معيّن بس. الرسالة بتوصل للمربوطين فقط، واللي وقف الاشتراك مش بيوصله حاجة.</p>
-      <div class="field"><label>الجمهور</label><select id="tgBcAudience">${TelegramNotify.BROADCAST_AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
+      ${FeatureFlags.isOn(s,'broadcastTargetsEnabled')?targetedBroadcastFields():`<div class="field"><label>الجمهور</label><select id="tgBcAudience">${TelegramNotify.BROADCAST_AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
       <div class="field"><label>نص الرسالة</label><textarea id="tgBcText" rows="4" maxlength="3500" placeholder="اكتب الرسالة اللي هتوصل على تليجرام..."></textarea></div>
-      <button class="btn btn-primary" onclick="previewTelegramBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>
+      <button class="btn btn-primary" onclick="previewTelegramBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>`}
     </div>
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 14px;font-size:15px"><i class="fa-brands fa-whatsapp" style="color:var(--teal)"></i> الدعم الفني</h3>

@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';
+const B=await import('data:text/javascript;base64,'+Buffer.from(await readFile(new URL('./broadcast-audience.js',import.meta.url),'utf8')).toString('base64'));
+let n=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);n++;};
+const users=[{_id:'m1',role:'MERCHANT',merchantId:'s1',firstName:'أ'},{_id:'m2',role:'MERCHANT',merchantId:'c1'},{_id:'m3',role:'MERCHANT',merchantId:'s2',status:'BLOCKED'},{_id:'m4',role:'MERCHANT',merchantId:'gone'},{_id:'d1',role:'DELIVERY'},{_id:'k1',role:'MARKETER'},{_id:'c9',role:'CUSTOMER'}];
+const merchants=[{id:'s1',activityType:'سوبر ماركت'},{id:'c1',activityType:'عيادات'},{id:'s2',activityType:'مخبز'}];
+const isProvider=m=>m.activityType==='عيادات';const ctx={users,merchants,isProvider};
+eq(B.resolve('MERCHANTS',ctx).keys,['uid:m1'],'stores only, blocked and orphan skipped');
+eq(B.resolve('PROVIDERS',ctx).keys,['uid:m2']);eq(B.resolve('COURIERS',ctx).keys,['uid:d1']);eq(B.resolve('MARKETERS',ctx).keys,['uid:k1']);
+eq(B.resolve('ONE',{...ctx,personId:'c9'}).keys,['uid:c9']);eq(B.resolve('ONE',{...ctx,personId:'m3'}).keys,[],'blocked user not targeted');eq(B.resolve('ONE',ctx).keys,[]);eq(B.resolve('ALL',ctx).keys,[],'no everyone option');
+const big=Array.from({length:250},(_,i)=>'uid:'+i);eq(B.chunk(big).map(c=>c.length),[100,100,50]);
+eq(B.sumResults([{ok:true,total:2,sent:1,pushed:1,blocked:1,failed:0},{ok:true,total:1,sent:1,pushed:0,blocked:0,failed:0}]),{ok:true,total:3,sent:2,pushed:1,blocked:1,failed:0});
+eq(B.sumResults([{ok:true},null]).ok,false);eq(B.sumResults([]).ok,false);
+console.log('broadcast-audience tests ok',n);
