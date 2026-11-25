@@ -109,3 +109,22 @@ export function serviceListHTML(providers,type,esc){
   return `<div class="cat-scroll" style="margin-bottom:12px"><div class="cat-chip ${!type?'active':''}" onclick="setServiceType('')"><span>الكل</span></div>${SERVICE_TYPES.map(t=>`<div class="cat-chip ${type===t?'active':''}" onclick="setServiceType('${t}')"><span>${t}</span></div>`).join('')}</div>`
    +(list.length?`<div class="list-gap">${list.map(m=>`<div class="merchant-card" onclick="openMerchant('${esc(m.id)}')"><div class="logo">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-user-doctor"></i>'}</div><div class="info"><h4>${esc(m.businessName)}</h4><div class="meta">${esc(m.activityType)}${m.address?' · '+esc(m.address):''}</div></div></div>`).join('')}</div>`:'<p class="hint-box">مفيش مزودين فى القسم ده لسه.</p>');
 }
+
+// Wording for a service provider's own screens: the same merchant screens, with store words swapped for service words.
+export const PROVIDER_WORDS=[
+ ['بيانات المتجر','بيانات النشاط'],['صفحة متجرك','صفحتك'],['وحطه فى المحل','وحطه فى مكان شغلك'],
+ ['إشعارات الطلبات على تليجرام','إشعارات الحجوزات على تليجرام'],
+ ['اسم المتجر','اسم النشاط'],['نوع المتجر','نوع النشاط'],['وصف المتجر','وصف النشاط'],
+ ['متجرك مخفي','صفحتك مخفية'],['للمتاجر القديمة','للحسابات القديمة'],
+ ['مكان متجرك','مكان نشاطك'],['باقة الطلبات','باقة الحجوزات'],
+ ['صفحة لمتجرك','صفحة لنشاطك'],['تعرف الناس بمتجرك','تعرف الناس بنشاطك'],
+ ['عشان تستقبل طلبات','عشان تستقبل حجوزات'],
+ ['من غير عرض منتجات أو استقبال طلبات داخل التطبيق','من غير استقبال حجوزات داخل التطبيق'],
+ ['من غير منتجات أو طلبات داخل التطبيق','من غير حجوزات داخل التطبيق'],
+ ['وكمان تعرض منتجاتك وتستقبل الطلبات وتجهزها لاستلام المندوب','وكمان تستقبل حجوزات العملاء وتنظم مواعيدك'],
+ ['وكمان تعرض منتجاتك وتستقبل الطلبات وتجهزها للمندوب','وكمان تستقبل حجوزات العملاء وتنظم مواعيدك'],
+ ['بتضيف المنتجات واستقبال الطلبات وتجهيزها للمندوب','بتضيف استقبال حجوزات العملاء وتنظيم مواعيدك'],
+ ['لو عايز تعرض منتجات وتستقبل طلبات','لو عايز تستقبل حجوزات'],
+ ['من باقة الطلبات','من باقة الحجوزات'],
+];
+export const providerWords=html=>PROVIDER_WORDS.reduce((t,[a,b])=>t.split(a).join(b),String(html||''));

@@ -561,7 +561,7 @@ document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{requir
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
-import * as Services from '/services.js?v=svc-4';
+import * as Services from '/services.js?v=svc-5';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-2';
@@ -769,7 +769,7 @@ const UI = {
     clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), 2400);
   },
   openModal(html){
-    document.getElementById('modalSheet').innerHTML = html;
+    document.getElementById('modalSheet').innerHTML = (typeof S!=='undefined'&&S&&S.role==='merchant'&&Services.isServiceProvider(S.myMerchant)) ? Services.providerWords(html) : html;
     document.getElementById('modalRoot').classList.remove('hidden');
     // نضيف خطوة في تاريخ المتصفح عشان زرار الرجوع في الموبايل يقفل المودال بدل ما يقفل الصفحة أو يغيّر التاب
     try{ if(!history.state?.modal)history.pushState({...history.state,modal:true,localDepth:(history.state?.localDepth||0)+1}, ''); }catch(e){}
@@ -2300,7 +2300,7 @@ function renderShell(){
 
   let title = 'على بابك', sub = '';
   if(S.role==='customer'){ title='على بابك'; sub = 'مرحبًا، ' + (S.profile.firstName||''); }
-  if(S.role==='merchant'){ title = (S.myMerchant && S.myMerchant.businessName) || 'لوحة التاجر'; sub='إدارة متجرك'; }
+  if(S.role==='merchant'){ title = (S.myMerchant && S.myMerchant.businessName) || (Services.isServiceProvider(S.myMerchant)?'لوحة مقدم الخدمة':'لوحة التاجر'); sub=Services.isServiceProvider(S.myMerchant)?'إدارة نشاطك':'إدارة متجرك'; }
   if(S.role==='delivery'){ title = (S.myAgent && S.myAgent.name) || 'لوحة المندوب'; sub='مهام التوصيل'; }
   if(S.role==='marketer'){ title = 'لوحة المسوّق'; sub = 'مرحبًا، ' + (S.profile.firstName||''); }
   if(S.role==='admin'){ title='لوحة التحكم'; sub='إدارة منصة على بابك'; }
@@ -2368,6 +2368,7 @@ function renderShell(){
 window.goBack=()=>previousOr(routeURL(defaultTabForRole(),S.role,location.search)||'/');
 window.go = (tab, opts)=>{
   const previousTab=S.tab;
+  if(typeof Services!=='undefined'&&S.role==='merchant'&&Services.isServiceProvider(S.myMerchant)&&['m_products','m_orders','m_reports','m_statement'].includes(tab)) tab='m_dashboard'; // شاشات المتجر مش للمزود
   S.tab = tab;
   if(tab==='mk_tools' && MARKETING_CONFIG.backendEnabled) S.settings.marketerToolsBackend=true;
   if(tab!=='browse') S.searchQuery='';
@@ -2453,7 +2454,8 @@ function renderMain(){
     mk_dashboard: renderMarketerDashboard, mk_merchants: renderMarketerMerchants, mk_earnings: renderMarketerEarnings, mk_tools: ()=>MarketerTools.render()
   };
   const fn = routes[S.tab] || renderHome;
-  el.innerHTML = (S.role==='admin'?adminPageHeading(S.tab,isSuperAdmin()):'')+fn();
+  const pageHtml = (S.role==='admin'?adminPageHeading(S.tab,isSuperAdmin()):'')+fn();
+  el.innerHTML = (S.role==='merchant'&&Services.isServiceProvider(S.myMerchant)) ? Services.providerWords(pageHtml) : pageHtml;
   el.dataset.renderKey = renderKey;
   // Preserve each filter strip on selection and live refresh, then reveal only if needed.
   el.querySelectorAll('.seg').forEach((seg,index)=>{
@@ -4095,7 +4097,7 @@ window.saveMerchantEdit = async ()=>{
     try{const d=await getDoc(doc(db,'merchants',S.myMerchant.id));await setDoc(doc(db,'publicMerchantProfiles',S.myMerchant.id),publicMerchantData(d.data()));}
     catch(e){UI.toast('تم حفظ بيانات المتجر، لكن تحديث الصفحة العامة لم يكتمل. راجع صلاحيات النشر.');return;}
   }
-  UI.closeModal(); UI.toast('تم تحديث بيانات المتجر');
+  UI.closeModal(); UI.toast(Services.isServiceProvider(S.myMerchant)?'تم تحديث بيانات النشاط':'تم تحديث بيانات المتجر');
 };
 
 /* ================= DELIVERY AGENT VIEWS ================= */
