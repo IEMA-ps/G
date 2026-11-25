@@ -2624,7 +2624,7 @@ window.confirmRecurringOrder = async (id)=>{
         subOrderIds:[subId], isRecurring:true, createdAt: nowMs()
       });
       tx.set(doc(db,'subOrders',subId), {
-        id:subId, parentOrderId:orderId, merchantId:r.merchantId, merchantName:m?m.businessName:'', merchantWhatsapp:m?m.whatsappNumber:'',
+        id:subId, parentOrderId:orderId, merchantId:r.merchantId, merchantName:m?m.businessName:'', merchantWhatsapp:m?(m.whatsappNumber||''):'',
         subtotal:effPrice(p)*r.quantity,...MerchantPlans.feeSnapshot(m,effPrice(p)*r.quantity), status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
         customerId:S.user.uid, customerName:r.customerName, customerPhone:r.customerPhone,
         deliveryAddress:r.addressText, notes:'طلب أسبوعي ثابت', createdAt: nowMs(),
@@ -2779,7 +2779,7 @@ window.finalizeGroupBuy = async (gid)=>{
           subOrderIds:[subId], groupBuyId:gid, createdAt: nowMs()
         });
         tx.set(doc(db,'subOrders',subId), {
-          id:subId, parentOrderId:orderId, merchantId:g.merchantId, merchantName:m?m.businessName:g.merchantName, merchantWhatsapp:m?m.whatsappNumber:'',
+          id:subId, parentOrderId:orderId, merchantId:g.merchantId, merchantName:m?m.businessName:g.merchantName, merchantWhatsapp:m?(m.whatsappNumber||''):'',
           subtotal:g.groupPrice*part.quantity, ...MerchantPlans.feeSnapshot(m,g.groupPrice*part.quantity), status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
           customerId:part.customerId, customerName:part.customerName, customerPhone:part.phone,
           deliveryAddress:part.addressText, notes:'ضمن تجميعة جيران', createdAt: nowMs(),
@@ -3375,7 +3375,7 @@ window.submitOrder = async ()=>{
         const m = merchantSnaps[idx].data();
         const subId = subIds[idx];
         tx.set(doc(db,'subOrders',subId), {
-          id:subId, parentOrderId:orderId, merchantId:mid, merchantName:m?m.businessName:'', merchantWhatsapp:m?m.whatsappNumber:'',
+          id:subId, parentOrderId:orderId, merchantId:mid, merchantName:m?m.businessName:'', merchantWhatsapp:m?(m.whatsappNumber||''):'',
           subtotal: items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0),
           ...MerchantPlans.feeSnapshot(m,items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0)),
           status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
