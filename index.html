@@ -529,6 +529,8 @@ img{max-width:100%; display:block;}
 <script type="module">
 import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import * as AdSlots from '/ad-slots.js?v=ads-2';
+import * as Favorites from '/favorites.js?v=fav-1';
+import * as FeatureFlags from '/feature-flags.js?v=flags-1';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
@@ -722,6 +724,7 @@ const S = {
   notifications:[],
   settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
   cart:[], // {productId, quantity}
+  favStores:[], // [storeId, ...] — المتاجر المفضلة (بتتزامن مع الحساب لما الميزة تتفتح)
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
   browseSort:'DEFAULT', browsePageSize:12,
   tab:'home', selectedCategory:null, activeMerchantId:null, searchQuery:'', merchantNoLink:false,
@@ -734,7 +737,26 @@ window.S = S; // لازم تتعرض على window عشان أي onclick="S...."
 function saveCart(){ if(S.user) localStorage.setItem('mosh_cart_'+S.user.uid, JSON.stringify(S.cart)); }
 function loadCart(){ if(S.user){ try{ S.cart = JSON.parse(localStorage.getItem('mosh_cart_'+S.user.uid)||'[]'); }catch(e){ S.cart=[]; } } }
 function saveWishlist(){ if(S.user) localStorage.setItem('mosh_wishlist_'+S.user.uid, JSON.stringify(S.wishlist)); }
-function loadWishlist(){ if(S.user){ try{ S.wishlist = JSON.parse(localStorage.getItem('mosh_wishlist_'+S.user.uid)||'[]'); }catch(e){ S.wishlist=[]; } } }
+function loadWishlist(){ if(S.user){ try{ S.wishlist = JSON.parse(localStorage.getItem('mosh_wishlist_'+S.user.uid)||'[]'); }catch(e){ S.wishlist=[]; } try{ S.favStores = JSON.parse(localStorage.getItem('mosh_favstores_'+S.user.uid)||'[]'); }catch(e){ S.favStores=[]; } S._favSynced=false; syncFavoritesFromAccount(); } }
+/* المفضلة على الحساب: لما الميزة تتفتح من الإدارة، قائمة المتاجر والمنتجات بتتجمع مع اللي على الحساب وبتتحفظ فيه، فتتبعه على أي موبايل. */
+function favOn(){ return S.role==='customer' && FeatureFlags.isOn(S.settings,'favoriteStoresEnabled'); }
+function saveFavStores(){ if(S.user) localStorage.setItem('mosh_favstores_'+S.user.uid, JSON.stringify(S.favStores)); }
+async function pushFavoritesToAccount(){
+  if(!favOn()||!S.user) return;
+  try{
+    await updateDoc(doc(db,'users',S.user.uid), {favoriteMerchantIds:S.favStores, favoriteProductIds:S.wishlist});
+    S.profile={...S.profile, favoriteMerchantIds:S.favStores, favoriteProductIds:S.wishlist};
+  }catch(e){ console.warn('favorites sync failed', e.code||e); }
+}
+function syncFavoritesFromAccount(){
+  if(!favOn()||!S.user||S._favSynced||!S.profile) return;
+  S._favSynced=true;
+  const rs=S.profile.favoriteMerchantIds, rp=S.profile.favoriteProductIds;
+  S.favStores=Favorites.mergeIds(S.favStores,rs); S.wishlist=Favorites.mergeIds(S.wishlist,rp);
+  saveFavStores(); saveWishlist();
+  if(!Favorites.sameIds(S.favStores,rs)||!Favorites.sameIds(S.wishlist,rp)) pushFavoritesToAccount();
+  render();
+}
 function isWishlisted(pid){ return (S.wishlist||[]).includes(pid); }
 function sortProducts(list, sortKey){
   const arr = [...list];
@@ -757,11 +779,20 @@ async function logAudit(action, details){
     });
   }catch(e){ console.error('logAudit failed', e); }
 }
+window.toggleFavStore = (mid,ev)=>{
+  if(ev&&ev.stopPropagation) ev.stopPropagation();
+  if(!favOn()) return;
+  const r=Favorites.toggleId(S.favStores,mid); S.favStores=r.list;
+  UI.toast(r.added?'تمت إضافة المتجر لمفضلتك ❤️':'تمت إزالة المتجر من مفضلتك');
+  saveFavStores(); pushFavoritesToAccount(); renderMain(); renderShell();
+};
+const isFavStore = mid => (S.favStores||[]).includes(mid);
+const favStoreBtn = (mid,extra='') => favOn()?`<button class="fav-store-btn" aria-label="مفضلة" onclick="toggleFavStore('${mid}',event)" style="border:none;background:none;cursor:pointer;font-size:19px;padding:6px;color:${isFavStore(mid)?'var(--danger)':'var(--ink-soft)'};${extra}"><i class="fa-${isFavStore(mid)?'solid':'regular'} fa-heart"></i></button>`:'';
 window.toggleWishlist = (pid)=>{
   const i = (S.wishlist||[]).indexOf(pid);
   if(i>=0){ S.wishlist.splice(i,1); UI.toast('تمت الإزالة من المفضلة'); }
   else { S.wishlist = S.wishlist||[]; S.wishlist.push(pid); UI.toast('تمت الإضافة للمفضلة ❤️'); }
-  saveWishlist(); renderMain(); renderShell();
+  saveWishlist(); pushFavoritesToAccount(); renderMain(); renderShell();
 };
 
 /* ================= TOAST / MODAL ================= */
@@ -1182,6 +1213,7 @@ function subscribeShared(){
     const programWasEnabled=window.Program?.enabled();
     if(d.exists()) S.settings = {...S.settings, ...d.data()};
     if(window.Program?.enabled()!==programWasEnabled) window.Program.subscribe();
+    syncFavoritesFromAccount();
     if(S._rawMerchants) recomputeMerchants();
     render();
   }));
@@ -1764,6 +1796,7 @@ function renderAdminSubscriptions(){
         <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${x.upgrade?'<b style="color:var(--teal)">طلب ترقية</b> · ':''}${esc(x.planName)} · ${x.months} شهر${x.reference?` · مرجع: ${esc(x.reference)}`:''}${m.marketerId?` · مسوّق: ${esc(m.marketerName||'')}`:''}</div>
         ${sa?`<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveSubscription('${x._id}')">اعتماد</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="rejectSubscription('${x._id}')">رفض</button></div>`:''}</div>`; }).join('')}</div>`:''}
     ${sa?`<div class="card" style="margin-bottom:16px;border-color:var(--teal)"><b>النظام الجديد: تعريفية وطلبات</b><p style="font-size:13px;line-height:1.8">تعريفية: 200 / 400 / 600 جنيه. طلبات: 400 / 800 / 1200 جنيه + 2% على التاجر. المدد: 3 / 6 / 12 شهر. الاشتراكات والعمولات القديمة مش هتتغير.</p><button class="btn btn-ghost" onclick="previewMerchantPlans()">مراجعة الباقات الست قبل الإضافة</button></div>`:''}
+    ${sa?FeatureFlags.cardHTML(S.settings,esc):''}
     <div class="section-head"><h3>الباقات</h3></div>
     ${sa?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="openPlanForm()"><i class="fa-solid fa-plus"></i> إضافة باقة</button>`:''}
     ${!plans.length && sa ? `<button class="btn btn-ghost" style="margin-bottom:12px" onclick="seedDefaultPlans()"><i class="fa-solid fa-wand-magic-sparkles"></i> إنشاء 3 باقات جاهزة (أساسية / متوسطة / مميزة)</button>` : ''}
@@ -1788,6 +1821,12 @@ function renderAdminSubscriptions(){
     <div class="section-head"><h3>المشتركون الحاليون (${activeMerchants.length})</h3></div>
     ${activeMerchants.length?`<div class="list-gap">${activeMerchants.map(m=>`<div class="card row-between"><div><b style="font-size:13px">${esc(m.businessName)}</b><div style="font-size:11.5px;color:var(--ink-soft)">${esc(m.subPlanName||'')} · حتى ${fmtDay(m.subEndsAt)}</div></div></div>`).join('')}</div>`:emptyState('fa-store','لا يوجد مشتركون حاليًا','')}`;
 }
+window.saveFeatureFlags = async ()=>{
+  if(!isSuperAdmin()) return;
+  const flags=FeatureFlags.readFlags(id=>{const e=document.getElementById(id);return e?e.value:null;});
+  try{ await setDoc(doc(db,'settings','app'), flags, {merge:true}); await logAudit('تعديل المميزات الجديدة', JSON.stringify(flags)); UI.toast('تم الحفظ'); }
+  catch(e){ UI.toast('تعذر الحفظ: '+(e.code||e.message)); }
+};
 window.saveSubSettings = async ()=>{
   if(!isSuperAdmin()) return;
   const subsEnforced = document.getElementById('ssEnforce').value==='1';
@@ -2906,6 +2945,7 @@ function renderCustomerStores(){
   const areaPrompt=!pref?`<div class="card" style="margin-bottom:16px"><b style="font-size:14px">اختار منطقتك</b><p class="location-note" style="margin:6px 0 10px">عشان نشوفلك متاجر منطقتك الأول. اختيارك ده مش عنوان توصيل، والمطابقة حسب المحافظة والمنطقة المسجلة مش مسافة فعلية.</p><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openCustomerLocation()">اختار منطقتي</button></div>`:'';
   return `
     ${areaPrompt}
+    ${(()=>{ if(!favOn()) return ''; const fm=(S.favStores||[]).map(id=>(S.merchants||[]).find(x=>x.id===id)).filter(Boolean); return fm.length?`<div class="section-head"><h3>متاجري المفضلة</h3></div><div class="list-gap" style="margin-bottom:16px">${fm.map(merchantCard).join('')}</div>`:''; })()}
     <div class="section-head"><h3>المتاجر</h3></div>
     ${result.stores.length?`<div class="list-gap" style="margin-bottom:16px">${result.stores.map(merchantCard).join('')}</div>`:'<p class="location-note" style="margin-bottom:16px">لسه مفيش متاجر متاحة دلوقتي.</p>'}
   `;
@@ -2965,6 +3005,7 @@ function merchantCard(m){
     <div class="info"><h4>${esc(m.businessName)}</h4>
       <div class="meta"><i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · ${esc(typeLabel(m))} · <span style="color:${openNow?'var(--success)':'var(--danger)'}">${openNow?'مفتوح':'مغلق'}</span></div>
     </div>
+    ${favStoreBtn(m.id)}
     <i class="fa-solid fa-chevron-left" style="color:var(--ink-soft)"></i>
   </div>`;
 }
@@ -3123,6 +3164,7 @@ function renderMerchantPage(){
         <div style="flex:1"><h3 style="margin:0 0 4px">${esc(m.businessName)}</h3>
           <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8} · `}${esc(typeLabel(m))}</div>
         </div>
+        ${favStoreBtn(m.id)}
         ${isSvc?'':`<span class="status-pill ${openNow?'status-active':'status-suspended'}">${openNow?'مفتوح الآن':'مغلق حاليًا'}</span>`}
       </div>
       ${m.description?`<p style="font-size:13px;color:var(--ink-soft);margin:12px 0 0;line-height:1.7">${esc(m.description)}</p>`:''}
