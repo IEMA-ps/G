@@ -2,7 +2,7 @@
 export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية'];
 export const SLOT_OPTIONS=[15,20,30,45,60];
 export const DAY_NAMES=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
-export const STATUS_LABEL={PENDING:'مستني رد المزود',ACCEPTED:'مقبول',REJECTED:'مرفوض',CANCELLED:'ملغي',DONE:'تم',NO_SHOW:'لم يحضر'};
+export const STATUS_LABEL={PENDING:'مستني رد مقدم الخدمة',ACCEPTED:'مقبول',REJECTED:'مرفوض',CANCELLED:'ملغي',DONE:'تم',NO_SHOW:'لم يحضر'};
 export const isServiceProvider=m=>!!m&&SERVICE_TYPES.includes(String(m.activityType||'').trim());
 export const servicesEnabled=s=>s?.servicesEnabled===true;
 const HM=/^([01]\d|2[0-3]):[0-5]\d$/,DATE=/^\d{4}-\d{2}-\d{2}$/;
@@ -89,7 +89,7 @@ export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,wee
     <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(ph)}"></div></div>
     <div class="field"><label>ملاحظة (اختياري)</label><textarea id="bkNote" maxlength="300" placeholder="مثال: سبب الزيارة أو المادة أو العطل"></textarea></div>
     <button class="btn btn-primary" ${wk&&!okN?'disabled':''} onclick="submitBooking('${esc(m.id)}','${sel}','${time}')">${wk?`أرسل ${okN} طلبات حجز أسبوعية: ${fmtDay(sel)} ${fmtTime(time)}`:`أرسل طلب الحجز: ${fmtDay(sel)} ${fmtTime(time)}`}</button>
-    <p class="welcome-note">الطلب بيوصل للمزود وهو اللى بيأكد الميعاد. الدفع بينك وبينه مباشرة.</p>`:''}</div>`;
+    <p class="welcome-note">الطلب بيوصل لمقدم الخدمة وهو اللى بيأكد الميعاد. الدفع بينك وبينه مباشرة.</p>`:''}</div>`;
 }
 export function bookingCardHTML(b,esc,role){
   const st=b.status,prov=role==='provider',phone=(prov?b.customerPhone:b.merchantPhone)||'';
@@ -125,6 +125,14 @@ export const PROVIDER_WORDS=[
  ['وكمان تعرض منتجاتك وتستقبل الطلبات وتجهزها للمندوب','وكمان تستقبل حجوزات العملاء وتنظم مواعيدك'],
  ['بتضيف المنتجات واستقبال الطلبات وتجهيزها للمندوب','بتضيف استقبال حجوزات العملاء وتنظيم مواعيدك'],
  ['لو عايز تعرض منتجات وتستقبل طلبات','لو عايز تستقبل حجوزات'],
- ['من باقة الطلبات','من باقة الحجوزات'],
+ ['من باقة الطلبات','من باقة الحجوزات'],['منتجات وطلبات + 2% على التاجر','حجوزات وطلبات حجز بدون عمولة'],
+ ['العملاء بيتواصلوا مع متجرك مباشرة','العملاء بيتواصلوا معاك مباشرة'],['التواصل مع المتجر مباشرة','التواصل معاك مباشرة'],
 ];
-export const providerWords=html=>PROVIDER_WORDS.reduce((t,[a,b])=>t.split(a).join(b),String(html||''));
+// Providers pay no commission on bookings: commission sentences are cut from their screens.
+export const PROVIDER_CUTS=[
+ / فيها عمولة 2% على التاجر من قيمة المنتجات في الطلبات المسلّمة، من غير رسوم التوصيل، والدفع كاش بس\./g,
+ /<p class="welcome-fee">\+ 2% [^<]*<\/p>/g,
+ /<div class="plan-fee">\+ 2% [^<]*<\/div>/g,
+ /\. عمولة الطلبات 2% مستمرة خلال فترة العرض، وبعدها الأسعار العادية/g,
+];
+export const providerWords=html=>PROVIDER_CUTS.reduce((t,r)=>t.replace(r,''),PROVIDER_WORDS.reduce((t,[a,b])=>t.split(a).join(b),String(html||'')));
