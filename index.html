@@ -1020,6 +1020,7 @@ const Auth = {
         await sendEmailVerification(cred.user); Auth.verificationSentAt = Date.now();
         Auth.verificationNotice = 'بعتنا رابط التأكيد على بريدك. راجع Inbox وSpam.';
       }catch(e){ Auth.verificationNotice = 'الحساب اتعمل، لكن تعذّر إرسال رابط التأكيد. استخدم زر إرسال الرابط للمحاولة تاني.'; }
+      try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
       UI.toast('تم إنشاء حسابك بنجاح 🎉');
     }catch(err){
       Auth.showError(Auth.friendlyError(err));
@@ -1120,6 +1121,7 @@ async function bootAuthUser(user) {
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
     await saveTermsConsent(user.uid, 'google');
+    try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
     await window.Program?.recordSignup(googleSignupCode);
   }
   bootStage='profile-read-back';
@@ -2043,10 +2045,29 @@ window.refreshVerified = async ()=>{
   if(auth.currentUser && auth.currentUser.emailVerified){ UI.closeModal(); UI.toast('تم تأكيد بريدك ✅ ، كمّل طلبك'); render(); }
   else UI.toast('لسه ماتأكدش، افتح الرابط في بريدك الأول');
 };
+function referralMessage(code){
+  return 'سجّل في تطبيق على بابك بكود الدعوة «'+code+'» وهياخد كل واحد فينا نقاط ولاء هدية بعد أول طلب! 🎁\nhttps://3alababk.com/?ref='+encodeURIComponent(code);
+}
+// بعد التسجيل: شاشة "ادعو صاحبك" مرة واحدة، وتتخطى بسهولة.
+window.skipInviteStep = ()=>{ try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){} UI.closeModal(); };
+window.shareInviteStep = ()=>{ window.shareReferral(); try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){} UI.closeModal(); };
+function maybeShowInviteStep(){
+  let pending=false; try{ pending=sessionStorage.getItem('inviteStepPending')==='1'; }catch(e){}
+  if(!pending || S.role!=='customer' || !S.profile || !S.profile.referralCode) return;
+  try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){}
+  const pts=(S.settings&&S.settings.referralBonusPoints)||0;
+  setTimeout(()=>UI.openModal(`<div class="modal-head"><h3>ادعو صاحبك 🎁</h3><button class="modal-close" onclick="skipInviteStep()"><i class="fa-solid fa-xmark"></i></button></div>
+    <p style="line-height:1.9;margin:6px 0 12px">${pts>0?`ابعت كودك لصاحبك، ولما يطلب أول طلب يخدوا انتم الاتنين ${pts} نقطة ولاء.`:'ابعت كودك لصاحبك عشان يجرّب على بابك.'}</p>
+    <div class="profile-referral-code" dir="ltr" style="text-align:center;font-size:22px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:14px">${esc(S.profile.referralCode)}</div>
+    <button class="btn btn-primary" onclick="shareInviteStep()"><i class="fa-brands fa-whatsapp"></i> ابعت لصاحبك على واتساب</button>
+    <button class="btn btn-ghost" style="margin-top:8px" onclick="skipInviteStep()">تخطي</button>`),0);
+}
+// لينك الدعوة (?ref=CODE) بيملّا خانة كود الدعوة في التسجيل لوحده.
+try{ const _rp=(new URLSearchParams(location.search).get('ref')||'').trim().toUpperCase().slice(0,32); const _re=document.getElementById('regReferral'); if(_rp&&_re&&!_re.value) _re.value=_rp; }catch(e){}
 window.shareReferral = ()=>{
   const code = S.profile?.referralCode || '';
   if(!code) return UI.toast('كود الدعوة غير متاح، اطلب من الإدارة إصلاح بيانات الحساب');
-  window.open(waLink('', 'استخدم كود الدعوة ده «'+code+'» وسجّل في تطبيق على بابك، وهياخد كل واحد فينا نقاط ولاء هدية! 🎁'),'_blank');
+  window.open(waLink('', referralMessage(code)),'_blank');
   UI.toast('تم فتح واتساب للمشاركة 📤');
 };
 window.copyText = async (t)=>{ try{ await navigator.clipboard.writeText(t); UI.toast('تم النسخ ✅'); }catch(e){ UI.toast(t); } };
@@ -2516,6 +2537,7 @@ async function logSupportMiss(question){
 }
 function renderShell(){
   if(!S.profile) return;
+  maybeShowInviteStep();
   updateSupportBtn();
   const tb = document.getElementById('topbar');
   const bn = document.getElementById('bottomNav');
