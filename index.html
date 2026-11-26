@@ -2155,6 +2155,12 @@ function maybeShowInviteStep(){
 }
 // لينك الدعوة (?ref=CODE) بيملّا خانة كود الدعوة في التسجيل لوحده.
 try{ const _rp=(new URLSearchParams(location.search).get('ref')||'').trim().toUpperCase().slice(0,32); const _re=document.getElementById('regReferral'); if(_rp&&_re&&!_re.value) _re.value=_rp; }catch(e){}
+window.shareMerchantInvite = ()=>{
+  const code=S.profile&&S.profile.referralCode; if(!code) return;
+  const url=location.origin+'/?marketer='+encodeURIComponent(code);
+  const text='انضم لعلى بابك كتاجر أو مقدم خدمة واستقبل طلبات جديدة. سجّل من هنا: '+url;
+  window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');
+};
 window.shareReferral = ()=>{
   const code = myCode();
   if(!code) return UI.toast('كود الدعوة غير متاح، اطلب من الإدارة إصلاح بيانات الحساب');
@@ -4105,6 +4111,7 @@ function renderProfile(){
         <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(myCode())}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
       </div>
     </div>`:''}
+    ${S.role==='customer'&&S.profile.referralCode&&MarketerOffer.offer2Config(S.settings).on?(()=>{const o=MarketerOffer.offer2Config(S.settings);return `<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px"><i class="fa-solid fa-shop" style="color:var(--teal)"></i> ادعُ تاجر أو مقدم خدمة واكسب</h3><p style="font-size:13px;line-height:1.8;margin:0 0 10px">لما التاجر أو مقدم الخدمة ينضم بكودك ويدفع ${fmtMoney(o.fee)}، بتاخد ${fmtMoney(o.flat)} عنه. بتتضاف في رصيدك بعد ما الإدارة تأكد تسجيله. ولما توصل ${o.target} متاجر بتاخد مكافأة ${fmtMoney(o.bonus)} مرة واحدة (غير مفعّلة لحد ما توصل الهدف).</p><button class="btn btn-primary btn-sm" style="width:auto" onclick="shareMerchantInvite()"><i class="fa-brands fa-whatsapp"></i> ابعت دعوة لتاجر</button></div>`;})():''}
     ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3>${memberRequestStatusHTML()}<p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('service')">طلب الانضمام كمقدم خدمة</button>`:''}<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
     <div class="section-head"><h3>الحساب</h3></div>
     <div class="list-gap">
@@ -6085,7 +6092,14 @@ window.approveMemberRequest = async rid=>{
     if(r.kind==='service'&&!Services.SERVICE_TYPES.includes(input.activity)) throw Error('missing-store-details');
     if(input.marketerCode){
       const matches=await getDocs(query(collection(db,'users'),where('referralCode','==',input.marketerCode),limit(2)));
-      if(matches.docs.length===1&&matches.docs[0].data().role==='MARKETER') input.marketerId=matches.docs[0].id; else input.marketerCode='';
+      if(matches.docs.length===1&&matches.docs[0].data().role==='MARKETER') input.marketerId=matches.docs[0].id;
+      else if(matches.docs.length===1&&matches.docs[0].data().role==='CUSTOMER'&&MarketerOffer.offer2Config(S.settings).on&&!Program.enabled()&&isSuperAdmin()){
+        // العميل اللي جاب التاجر بكوده بيبقى مسوّق أوتوماتيك (عرض الإطلاق شغال وبرنامج المسوّقين الجديد مقفول)
+        const ref=matches.docs[0];
+        await updateDoc(doc(db,'users',ref.id),{role:'MARKETER',...userDefaults(ref.id,ref.data())});
+        await logAudit('تعيين مسوّق تلقائي (جاب تاجر)',ref.id);
+        input.marketerId=ref.id;
+      } else input.marketerCode='';
     }
     const recordId=(role==='MERCHANT'?'merch_':'agent_')+uid();
     await createMemberRecord({db,doc,runTransaction,actorId:auth.currentUser?.uid,userId:rid,recordId,role,input,now:nowMs(),status:'ACTIVE'});
