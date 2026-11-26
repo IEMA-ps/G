@@ -58,12 +58,70 @@ assert.equal(match('عايز الغي حجز الدكتور'), 'cancel-booking')
 assert.equal(match('ايه الخدمات اللي عندكم؟'), 'services-list');
 assert.equal(match('عايز اشوف الشروط والاحكام'), 'terms');
 assert.equal(match('عايز اغير رقم موبايلي'), 'edit-profile');
-assert.ok(SC.FAQ_SEED.length >= 50, 'التغطية اتوسعت: '+SC.FAQ_SEED.length);
+assert.ok(SC.FAQ_SEED.length >= 100, 'التغطية وصلت 100 سؤال: '+SC.FAQ_SEED.length);
 // المفاتيح الجديدة متكسّرش القديمة
 assert.equal(match('ازاي اسجل كمدرس'), 'provider-signup');
 assert.equal(match('ازاي احجز مدرس'), 'book-service');
 assert.equal(match('ازاي اسجل في الموقع'), 'signup');
 assert.equal(match('رسوم التوصيل كام؟'), 'delivery-fee');
+
+// --- توسعة الـ100 سؤال: تغطية كل جوانب الموقع ---
+assert.equal(match('فين خانة البحث'), 'search');
+assert.equal(match('ادور على منتج معين'), 'search');
+assert.equal(match('ازاي احفظ محل في المفضله'), 'favorites');
+assert.equal(match('المنتج غير متوفر حاليا'), 'out-of-stock');
+assert.equal(match('فين العروض والخصومات'), 'flash-sales');
+assert.equal(match('عايز اضيف عنوان توصيل جديد'), 'addresses');
+assert.equal(match('اكتب ملاحظه للمندوب'), 'order-notes');
+assert.equal(match('السله بتضيع لو قفلت التطبيق؟'), 'cart-saved');
+assert.equal(match('عايز اسجل خروج'), 'logout');
+assert.equal(match('ازاي اغير الباسورد وانا داخل'), 'change-password');
+assert.equal(match('ادخل باسم المستخدم'), 'username-login');
+assert.equal(match('طلب الانضمام لسه تحت المراجعه'), 'join-request-status');
+assert.equal(match('طلبي اترفض ليه'), 'join-request-rejected');
+assert.equal(match('ايه انواع الحسابات في المنصه'), 'roles-explain');
+assert.equal(match('بياناتي امنه ولا لأ'), 'privacy');
+assert.equal(match('اتصفح من غير ما اسجل'), 'guest-browse');
+assert.equal(match('انت بوت ولا انسان'), 'support-bot');
+assert.equal(match('عندي اقتراح للتطبيق'), 'suggest-feature');
+assert.equal(match('ازاي احدث التطبيق'), 'app-update');
+assert.equal(match('التطبيق مش بيحمل والنت ضعيف'), 'offline');
+assert.equal(match('شغال من الكمبيوتر؟'), 'browser-support');
+assert.equal(match('عايز اكلم التاجر'), 'contact-store');
+assert.equal(match('نسيت احط حاجه في الطلب عايز اعدله'), 'modify-order');
+assert.equal(match('المحل مفتوح دلوقتي؟'), 'store-open-now');
+assert.equal(match('نسيت الايميل اللي سجلت بيه'), 'forgot-email');
+assert.equal(match('اجيب كوبون خصم منين'), 'get-coupons');
+assert.equal(match('حجزي اتاكد ولا لأ'), 'booking-status');
+assert.equal(match('عايز اغير ميعاد الحجز'), 'reschedule-booking');
+assert.equal(match('افتح حسابي على موبايلين'), 'two-devices');
+assert.equal(match('ايه عرض التجار المؤسسين'), 'founding-offer');
+assert.equal(match('عندي مغسله ينفع اسجلها؟'), 'store-types');
+assert.equal(match('ايه الكتالوج المشترك'), 'catalog');
+assert.equal(match('ازاي اعدل سعر منتج'), 'product-edit');
+assert.equal(match('مخزون المنتج خلص'), 'stock-mgmt');
+assert.equal(match('التسويه الاسبوعيه بتتحسب ازاي'), 'merchant-settlement');
+assert.equal(match('فين تقييمات العملاء لمحلي'), 'merchant-ratings');
+assert.equal(match('ازاي اعمل عرض محدود على منتج'), 'flash-create');
+assert.equal(match('ازاي اقبل الطلب واجهزه'), 'merchant-orders');
+assert.equal(match('ايه مسابقة الشهر للمسوقين'), 'contest');
+assert.equal(match('فين تقرير الاحالات بتاعي'), 'referral-report');
+assert.equal(match('ازاي اقبل الحجوزات الجديده'), 'provider-bookings');
+assert.equal(match('عايز احجز مساحه اعلانيه'), 'advertise');
+assert.equal(match('ازاي اربط التليجرام'), 'telegram-link');
+assert.equal(match('عايز اوقف الطلب الاسبوعي الثابت'), 'weekly-manage');
+assert.equal(match('يعني ايه المندوب استلم'), 'order-states');
+assert.equal(match('اتوافق على طلبي ايه الجاي'), 'pending-approval-after');
+assert.equal(match('حسابي موقوف اعمل ايه'), 'account-suspended');
+assert.equal(match('فيه نسخه انجليزي؟'), 'language');
+assert.equal(match('عايز احجز درس كل اسبوع'), 'service-recurring');
+// مرادفات جديدة على أسئلة قديمة
+assert.equal(match('سجل طلباتي القديمه'), 'track-order');
+assert.equal(match('رصيد النقاط كام'), 'points');
+assert.equal(match('رقم واتساب الدعم'), 'human-support');
+// اتأكد إن الإضافات متكسّرش المطابقات الحساسة
+assert.equal(match('عايز اشتغل مندوب'), 'courier-join');
+assert.equal(match('ازاي اطلب اكل'), 'how-order');
 
 // --- الرد المتكرر: نفس السؤال ورا بعضه يرجع صياغة مختلفة ---
 const signupFaq = SC.FAQ_SEED.find(f => f.id === 'signup');
@@ -89,14 +147,14 @@ assert.equal(match(''), null);
 assert.equal(match('هههههه'), null);
 
 // --- الأدوار: شرائح الزائر لا تعرض أسئلة تسجيل محل بدون عميل؟ (المحل متاح للزائر، فين طلبي لا) ---
-const guestChips = SC.chipsFor('guest', SC.FAQ_SEED, 20);
+const guestChips = SC.chipsFor('guest', SC.FAQ_SEED, 200);
 assert.ok(guestChips.some(f => f.id === 'about'));
 assert.ok(guestChips.some(f => f.id === 'signup'));
 assert.ok(!guestChips.some(f => f.id === 'track-order'), 'track-order ليس للزائر');
 assert.ok(!guestChips.some(f => f.id === 'subscription-pay'), 'subscription-pay ليس للزائر');
-const custChips = SC.chipsFor('customer', SC.FAQ_SEED, 20);
+const custChips = SC.chipsFor('customer', SC.FAQ_SEED, 200);
 assert.ok(custChips.some(f => f.id === 'track-order'));
-const merchChips = SC.chipsFor('merchant', SC.FAQ_SEED, 20);
+const merchChips = SC.chipsFor('merchant', SC.FAQ_SEED, 200);
 assert.ok(merchChips.some(f => f.id === 'subscription-pay'));
 assert.ok(merchChips.length <= 6 || true);
 

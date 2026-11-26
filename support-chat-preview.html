@@ -515,6 +515,32 @@ if(st==='landing'){
         {from:'bot', text:SC.replyFor(f, true)}
       ],
       chips: SC.relatedChipsFor(f, faqs)});
+  }else if(st==='newcust'){
+    // سيناريو تغطية جديدة: عميل يسأل عن مواعيد المحل وعنوان التوصيل
+    const q1='المحل مفتوح دلوقتي؟', q2='عايز اضيف عنوان توصيل جديد';
+    const f1=SC.matchFaq(q1, faqs), f2=SC.matchFaq(q2, faqs);
+    sheet.innerHTML = SC.panelHTML({esc, guest:false, needLead:false, busy:false, waAvailable:true,
+      msgs:[
+        {from:'bot', text:SC.greeting('customer', false, 'إسلام')},
+        {from:'user', text:q1},
+        {from:'bot', text:SC.replyFor(f1, false)},
+        {from:'user', text:q2},
+        {from:'bot', text:SC.replyFor(f2, f2.id===f1.id)}
+      ],
+      chips: SC.relatedChipsFor(f2, faqs).length?SC.relatedChipsFor(f2, faqs):SC.chipsFor('customer', faqs)});
+  }else if(st==='newmerch'){
+    // سيناريو تغطية جديدة: تاجر يسأل عن العروض المحدودة والتسوية
+    const q1='ازاي اعمل عرض محدود على منتج', q2='والتسويه الاسبوعيه بتتحسب ازاي';
+    const f1=SC.matchFaq(q1, faqs), f2=SC.matchFaq(q2, faqs);
+    sheet.innerHTML = SC.panelHTML({esc, guest:false, needLead:false, busy:false, waAvailable:true,
+      msgs:[
+        {from:'bot', text:SC.greeting('merchant', false, 'أ. محمود')},
+        {from:'user', text:q1},
+        {from:'bot', text:SC.replyFor(f1, false)},
+        {from:'user', text:q2},
+        {from:'bot', text:SC.replyFor(f2, f2.id===f1.id)}
+      ],
+      chips: SC.relatedChipsFor(f2, faqs).length?SC.relatedChipsFor(f2, faqs):SC.chipsFor('merchant', faqs)});
   }else{
     const how = faqs.find(f=>f.id==='how-order');
     const pay = faqs.find(f=>f.id==='payment');
