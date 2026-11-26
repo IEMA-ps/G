@@ -1,6 +1,6 @@
 // Order transactions. The Firestore functions are passed in (api) so the same code runs in the page and in the emulator tests.
 
-// Mark a sub order DELIVERED and give loyalty points (and the first-order referral bonus) exactly once.
+// Mark a sub order DELIVERED and give loyalty points (and the first-order referral bonus, to the inviter only) exactly once.
 // Everything is read and written in one transaction, so two taps at the same time cannot pay twice.
 // Returns {awarded:boolean, pointsEarned, bonus, referrerId}.
 export async function deliverSubOrder(api, db, s, extra, {earnRate=0, loyaltyEnabled=true, bonusPoints=0, nowMs=Date.now()}={}){
@@ -22,7 +22,6 @@ export async function deliverSubOrder(api, db, s, extra, {earnRate=0, loyaltyEna
     if(refSnap && refSnap.exists() && refSnap.data().status==='PENDING'){
       referrerId = refSnap.data().referrerId;
       if(reward){
-        tx.update(doc(db,'users', sub.customerId), { loyaltyPoints: increment(bonusPoints) });
         tx.update(doc(db,'users', referrerId), { loyaltyPoints: increment(bonusPoints) });
       }
       tx.update(refRef, { status:'REWARDED', rewardedAt: nowMs });
