@@ -4497,7 +4497,7 @@ function targetedBroadcastFields(){
   const people=(S.allUsers||[]).slice(0,3000);
   return `<div class="field"><label>الجمهور</label><select id="tgBcAudience" onchange="document.getElementById('tgBcOneBox').style.display=this.value==='ONE'?'block':'none'">${BcAud.AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
       <div class="field" id="tgBcOneBox" style="display:none"><label>الشخص (اكتب الاسم أو الرقم واختار)</label><input id="tgBcPerson" list="tgBcPeople" autocomplete="off"><datalist id="tgBcPeople">${people.map(u=>`<option value="${esc(BcAud.personLabel(u))}">`).join('')}</datalist></div>
-      <div class="field"><label>نص الرسالة</label><textarea id="tgBcText" rows="4" maxlength="3000" placeholder="اكتب الرسالة اللي هتوصل..."></textarea></div>
+      <div class="field"><label>نص الإشعار</label><textarea id="tgBcText" rows="4" maxlength="3000" placeholder="اكتب نص الإشعار..."></textarea></div>
       <button class="btn btn-primary" onclick="previewTargetedBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>`;
 }
 function bcResolve(audience){
@@ -4512,7 +4512,7 @@ window.previewTargetedBroadcast = ()=>{
   if(!r.keys.length){ UI.toast(aud==='ONE'?'اختار الشخص من القائمة':'مفيش حسابات في الفئة دي'); return; }
   S.tgBroadcast={audience:aud,text:txt,keys:r.keys};
   const who=aud==='ONE'?esc(r.names[0]):`${esc(BcAud.labelOf(aud))} (${r.keys.length} حساب)`;
-  UI.openModal(`<div class="modal-head"><h3><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> تأكيد البث</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+  UI.openModal(`<div class="modal-head"><h3><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> تأكيد بث الإشعار</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div id="tgBcBody"><p style="font-size:13px;line-height:1.9;margin:0 0 10px">الرسالة هتتبعت كما هي بالظبط لـ: <b>${who}</b>. بتوصل بس لمين ربط تليجرام أو فعّل الإشعارات الفورية.</p>
     <div class="hint-box" style="padding:12px;margin:0 0 14px;white-space:pre-wrap;line-height:1.9">${esc(txt)}</div>
     <div style="display:flex;gap:8px"><button class="btn btn-primary" onclick="sendTargetedBroadcast()"><i class="fa-solid fa-paper-plane"></i> إرسال</button><button class="btn btn-ghost" onclick="UI.closeModal()">رجوع</button></div></div>`);
@@ -4536,7 +4536,7 @@ window.previewTelegramBroadcast = ()=>{
   if(!text){ UI.toast('اكتب نص الرسالة الأول'); return; }
   S.tgBroadcast = {audience: aud.value, text};
   UI.openModal(`
-    <div class="modal-head"><h3><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> تأكيد البث على تليجرام</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="modal-head"><h3><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> تأكيد بث الإشعار</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div id="tgBcBody">${TelegramNotify.broadcastPreviewHTML(aud.value, text)}</div>
   `);
 };
@@ -5564,10 +5564,10 @@ function renderAdminSettings(){
       <button class="btn btn-primary" onclick="openTelegramLink('admin')"><i class="fa-brands fa-telegram"></i> ربط تليجرام</button>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> بث رسالة على تليجرام</h3>
-      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">ابعت رسالة لكل اللي ربطوا تليجرام بالبوت، أو لدور معيّن بس. الرسالة بتوصل للمربوطين فقط، واللي وقف الاشتراك مش بيوصله حاجة.</p>
+      <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-bullhorn" style="color:var(--teal)"></i> بث إشعار للمستخدمين</h3>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">${FeatureFlags.isOn(s,'broadcastTargetsEnabled')?'ابعت إشعار على تليجرام وعلى الموبايل (لمن فعّل الإشعارات الفورية). بيوصل بس للمربوطين أو اللي فعّلوا الإشعارات، واللي وقف الاشتراك مش بيوصله حاجة.':'ابعت إشعار لكل اللي ربطوا تليجرام بالبوت، أو لدور معيّن بس. بيوصل للمربوطين فقط، واللي وقف الاشتراك مش بيوصله حاجة.'}</p>
       ${FeatureFlags.isOn(s,'broadcastTargetsEnabled')?targetedBroadcastFields():`<div class="field"><label>الجمهور</label><select id="tgBcAudience">${TelegramNotify.BROADCAST_AUDIENCES.map(a=>`<option value="${a.id}">${a.label}</option>`).join('')}</select></div>
-      <div class="field"><label>نص الرسالة</label><textarea id="tgBcText" rows="4" maxlength="3500" placeholder="اكتب الرسالة اللي هتوصل على تليجرام..."></textarea></div>
+      <div class="field"><label>نص الإشعار</label><textarea id="tgBcText" rows="4" maxlength="3500" placeholder="اكتب نص الإشعار..."></textarea></div>
       <button class="btn btn-primary" onclick="previewTelegramBroadcast()"><i class="fa-solid fa-eye"></i> معاينة قبل الإرسال</button>`}
     </div>
     <div class="card" style="margin-bottom:16px">
