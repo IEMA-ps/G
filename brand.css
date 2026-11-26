@@ -123,3 +123,12 @@ body>#pwaInstallBtn{background:#30251F!important;border:1px solid #30251F!import
   html:has(#authScreen:not(.hidden)){scrollbar-width:none}
   html:has(#authScreen:not(.hidden))::-webkit-scrollbar{display:none}
 }
+
+/* ---------- الكمبيوتر (من 1024px): زرار «دعم فني» وفقاعة «ثبّت على بابك» ----------
+   كانوا متظبطين على عمود موبايل 480px في نص الشاشة، فعلى الكمبيوتر بيقعدوا فوق القوائم ويغطوا بنود زي تسجيل الخروج.
+   دلوقتي بيتثبتوا في ركن الشاشة الشمال تحت، وفيه مسافة تحت المحتوى عشان آخر بند ما يتغطاش. */
+@media (min-width:1024px){
+  .support-btn{left:20px;bottom:20px}
+  body>#pwaInstallBtn{left:20px!important;bottom:72px!important}
+  body[data-role] #mainContent{padding-bottom:150px}
+}
