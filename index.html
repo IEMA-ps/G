@@ -2552,7 +2552,7 @@ function renderShell(){
     ['m_reports','fa-chart-pie','الأداء'], ['m_statement','fa-file-invoice','العمولة'],
     ['m_profile','fa-store','متجري']
   ];
-  if(S.role==='merchant' && Services.isServiceProvider(S.myMerchant) && MerchantPlans.modeOf(S.myMerchant)!=='PROFILE') navItems=[['m_dashboard','fa-calendar-check','الحجوزات',()=>Services.providerStats(S.providerBookings).pending],['m_schedule','fa-calendar-days','المواعيد'],['m_subscription','fa-gem','اشتراكي'],['m_profile','fa-store','صفحتي']];
+  if(S.role==='merchant' && Services.isServiceProvider(S.myMerchant)) navItems=[['m_dashboard','fa-calendar-check','الحجوزات',()=>Services.providerStats(S.providerBookings).pending],['m_schedule','fa-calendar-days','المواعيد'],['m_subscription','fa-gem','اشتراكي'],['m_profile','fa-store','صفحتي']];
   else if(S.role==='merchant' && MerchantPlans.modeOf(S.myMerchant)==='PROFILE') navItems=[['m_dashboard','fa-house','الرئيسية'],['m_subscription','fa-gem','اشتراكي'],['m_profile','fa-store','صفحتي']];
   if(S.role==='marketer') navItems = [
     ['mk_dashboard','fa-chart-line','الرئيسية'], ['mk_merchants','fa-shop','محلاتي', ()=>(S.mkMerchants||[]).filter(m=>m.status==='PENDING').length],
@@ -4021,7 +4021,6 @@ function renderMerchantDashboard(){
   if(m.status==='REJECTED') return `<div class="empty-state"><i class="fa-solid fa-circle-xmark"></i><h4>طلب انضمام المتجر مرفوض</h4><p>${esc(m.rejectionReason||'كلّم الإدارة عشان تعرف السبب وتطلب مراجعة تانية.')}</p></div>`;
   if(m.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>متجرك معلّق حاليًا</h4><p>كلّم الإدارة عشان تعرف السبب.</p></div>`;
   if(Services.isServiceProvider(m)){
-    if(MerchantPlans.modeOf(m)==='PROFILE') return `<div class="card"><h3>صفحتك التعريفية</h3><p style="line-height:1.8">العملاء يقدروا يشوفوا بياناتك وأرقامك. لو عايز تستقبل حجوزات وتنظم مواعيدك، اختار باقة الطلبات.</p>${merchantContactCard(m)}<button class="btn btn-primary" onclick="go('m_subscription')">اختيار باقة</button></div>`;
     return providerBookingsView();
   }
   if(MerchantPlans.modeOf(m)==='PROFILE') return `<div class="card"><h3>صفحتك التعريفية</h3><p style="line-height:1.8">العملاء يقدروا يشوفوا عنوانك واللوكيشن وأرقامك. لو عايز تعرض منتجات وتستقبل طلبات، اختار باقة الطلبات.</p>${merchantContactCard(m)}<button class="btn btn-primary" onclick="go('m_profile')">تعديل بيانات الصفحة</button><button class="btn btn-ghost" style="margin-top:10px" onclick="go('m_subscription')">اشتراكي والباقات</button></div>${storePageCard(m)}`;
