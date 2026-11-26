@@ -3407,7 +3407,7 @@ function renderCart(){
       ${deliveryFeeRows(quote)}
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(cartTotal()+fee)}</span></div>
     </div>
-    <button class="btn btn-primary" style="margin-top:14px" onclick="go('checkout')"><i class="fa-solid fa-arrow-left"></i> إتمام الطلب</button>
+    <button class="btn btn-primary" style="margin-top:14px" onclick="go('checkout')"><i class="fa-solid fa-arrow-left"></i> إتمام الطلب · ${fmtMoney(cartTotal()+fee)}</button>
   `;
 }
 
@@ -3449,6 +3449,12 @@ function renderCheckout(){
       ${belowMin.map(b=>`<div style="margin-top:6px">• ${esc(b.name)}: أضف ${fmtMoney(b.short)} كمان (الحد الأدنى ${fmtMoney(b.min)})</div>`).join('')}
     </div>` : ''}
 
+    <div class="section-head"><h3>طريقة الدفع</h3></div>
+    <div class="list-gap">${PAYMENT_METHODS.map(m=>`<label class="card ck-opt" style="align-items:center;${m.enabled?'cursor:pointer':'opacity:.55'}">
+      <input type="radio" name="payPick" ${m.id==='COD'?'checked':''} ${m.enabled?'':'disabled'} onchange="S.paymentMethod='${m.id}'"> <span style="font-size:13.5px">${esc(m.label)}${m.soon?' <small style="color:var(--ink-soft)">(قريبًا)</small>':''}</span></label>`).join('')}</div>
+
+    <details class="card ck-more" style="margin-top:14px" ${(coupon||pts||S.ckMoreOpen)?'open':''} ontoggle="S.ckMoreOpen=this.open">
+      <summary style="cursor:pointer;font-size:13.5px;font-weight:700"><i class="fa-solid fa-ticket" style="color:var(--teal)"></i> عندك كوبون أو نقاط أو ملاحظات؟</summary>
     <div class="section-head"><h3>كوبون الخصم</h3></div>
     <div class="card">
       ${coupon ? `
@@ -3480,12 +3486,10 @@ function renderCheckout(){
       `}
     </div>` : ''}
 
-    <div class="section-head"><h3>طريقة الدفع</h3></div>
-    <div class="list-gap">${PAYMENT_METHODS.map(m=>`<label class="card ck-opt" style="align-items:center;${m.enabled?'cursor:pointer':'opacity:.55'}">
-      <input type="radio" name="payPick" ${m.id==='COD'?'checked':''} ${m.enabled?'':'disabled'} onchange="S.paymentMethod='${m.id}'"> <span style="font-size:13.5px">${esc(m.label)}${m.soon?' <small style="color:var(--ink-soft)">(قريبًا)</small>':''}</span></label>`).join('')}</div>
-
     <div class="section-head"><h3>ملاحظات إضافية</h3></div>
     <textarea id="orderNotes" class="ck-input" style="min-height:70px;resize:vertical" placeholder="اذكر أي تفاصيل تخص طلبك (اختياري)"></textarea>
+
+    </details>
 
     <div class="card" style="margin-top:16px">
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
@@ -3495,7 +3499,7 @@ function renderCheckout(){
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(grandTotal)}</span></div>
     </div>
     ${!addr.length?`<div class="hint-box" style="margin-top:14px;border-color:var(--danger);background:var(--danger-tint);color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i> لازم تضيف عنوان توصيل الأول عشان تقدر تأكد الطلب. <button class="btn btn-primary btn-sm" style="width:auto;margin-top:8px" onclick="openAddressForm()">+ إضافة عنوان</button></div>`:''}
-    <button class="btn btn-primary" style="margin-top:14px" ${belowMin.length?'disabled':''} onclick="submitOrder()"><i class="fa-solid fa-check"></i> تأكيد الطلب (${esc(paymentLabel())})</button>
+    <button class="btn btn-primary" style="margin-top:14px" ${belowMin.length?'disabled':''} onclick="submitOrder()"><i class="fa-solid fa-check"></i> تأكيد الطلب · ${fmtMoney(grandTotal)} (${esc(paymentLabel())})</button>
   `;
 }
 window.applyLoyaltyPoints = ()=>{
@@ -3716,6 +3720,23 @@ function renderOrderDone(){
 }
 
 /* ================= CUSTOMER: ORDERS ================= */
+function orderSubItems(oid){ return S.mySubOrders.filter(x=>x.parentOrderId===oid).flatMap(x=>x.items||[]); }
+function orderItemsSummary(oid){ const it=orderSubItems(oid); if(!it.length) return ''; const names=it.slice(0,2).map(x=>x.productTitle+(x.quantity>1?' × '+x.quantity:'')); return names.join('، ')+(it.length>2?' و'+(it.length-2)+' كمان':''); }
+const TRACK_HEADLINE = {PENDING_ADMIN:'استلمنا طلبك وبنراجعه',SENT_TO_MERCHANT:'طلبك اتراجع وبيتبعت للتنفيذ',ACCEPTED:'طلبك اتقبل وهيبدأ التجهيز',PREPARING:'طلبك بيتجهز دلوقتي',OUT_FOR_DELIVERY:'طلبك في الطريق إليك',DELIVERED:'طلبك وصل، بالهنا والشفا'};
+function orderHeadline(subs){ const live=subs.filter(x=>x.status!=='REJECTED'&&x.status!=='CANCELLED'); if(!subs.length) return ''; if(!live.length) return 'الطلب اتلغى'; const idx=Math.min(...live.map(x=>CUSTOMER_TRACK_STEPS.findIndex(([k])=>k===x.status))); const k=CUSTOMER_TRACK_STEPS[Math.max(idx,0)][0]; return TRACK_HEADLINE[k]||''; }
+window.reorderOrder = (oid)=>{
+  const items=orderSubItems(oid); if(!items.length){ UI.toast('تفاصيل الطلب مش متاحة'); return; }
+  let added=0, skipped=0;
+  for(const it of items){
+    const p=getProduct(it.productId); const before=(S.cart.find(c=>c.productId===it.productId)||{}).quantity||0;
+    if(!p||!p.isActive||!MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)){ skipped++; continue; }
+    const _t=UI.toast; UI.toast=()=>{}; try{ window.addToCart(it.productId,it.quantity); } finally { UI.toast=_t; }
+    const after=(S.cart.find(c=>c.productId===it.productId)||{}).quantity||0;
+    if(after>before) added++; else skipped++;
+  }
+  UI.toast(added? (skipped?`أضفنا ${added} منتج للسلة، و${skipped} مش متاحين دلوقتي`:'أضفنا منتجات الطلب للسلة 🛒') : 'المنتجات دي مش متاحة دلوقتي');
+  if(added) go('cart');
+};
 function renderOrders(){
   if(!S.myOrders.length) return emptyState('fa-receipt','لا توجد طلبات بعد','ابدأ التسوق من المتاجر المتاحة');
   return `<div class="list-gap">${S.myOrders.map(o=>{
@@ -3723,8 +3744,10 @@ function renderOrders(){
     return `<div class="order-card" onclick="openOrderDetail('${o.id}')">
       <div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill status-${st.color==='success'?'active':st.color==='danger'?'suspended':'pending'}"><i class="fa-solid ${o.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':o.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':o.status==='PREPARING'?'fa-box-open':'fa-clock'}"></i> ${st.label}</span></div>
       <div class="date"><i class="fa-regular fa-calendar"></i> ${fmtDate(o.createdAt)} · ${o.merchantCount} متجر</div>
+      <div class="order-items-line" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px">${esc(orderItemsSummary(o.id))}</div>
       <div class="divider" style="margin:10px 0"></div>
       <div class="row-between"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="event.stopPropagation();reorderOrder('${o.id}')"><i class="fa-solid fa-rotate-right"></i> اطلب تاني</button>
     </div>`;
   }).join('')}</div>`;
 }
@@ -3815,6 +3838,7 @@ function renderOrderDetail(){
       <p style="font-size:12.5px;color:var(--ink-soft);margin:8px 0"><i class="fa-solid fa-location-dot"></i> ${esc(o.deliveryAddress)}</p>
       ${o.merchantCount>1?`<div class="hint-box multi-store-track" style="margin-top:8px"><i class="fa-solid fa-motorcycle"></i> طلبك من ${o.merchantCount} متاجر وبيوصلك مع مندوب واحد في توصيلة واحدة.${courierName?` المندوب: <b>${esc(courierName)}</b>`:''}<div style="margin-top:6px;font-size:12px">استلم المندوب ${subs.filter(x=>x.pickedUpAt||x.status==='DELIVERED').length} من ${subs.filter(x=>x.status!=='REJECTED'&&x.status!=='CANCELLED').length} أجزاء</div></div>`:''}
     </div>
+    ${orderHeadline(subs)?`<div class="card order-headline" style="margin-top:12px;text-align:center;font-weight:800;font-size:15px;color:var(--teal)">${orderHeadline(subs)}</div>`:''}
     ${subs.map((s,partIdx)=>{
       const stepIdx = CUSTOMER_TRACK_STEPS.findIndex(([k])=>k===s.status);
       const rejected = s.status==='REJECTED'||s.status==='CANCELLED';
@@ -3848,6 +3872,7 @@ function renderOrderDetail(){
       ${!o.couponDiscount && !o.pointsDiscount && o.discount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.discount)}</span></div>`:''}
       <div class="summary-row total"><span>الإجمالي الكلي</span><span>${fmtMoney(o.total)}</span></div>
     </div>
+    <button class="btn btn-primary" style="margin-top:14px" onclick="reorderOrder('${o.id}')"><i class="fa-solid fa-rotate-right"></i> اطلب تاني</button>
   `;
 }
 
