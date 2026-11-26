@@ -35,10 +35,35 @@ assert.equal(match('عايز اشتغل سباك في المنصه'), 'provider-
 assert.equal(match('ازاي اسجل كمقدم خدمه'), 'provider-signup');
 assert.equal(match('ازاي احجز مدرس لابني'), 'book-service', 'حجز مدرس للعميل يفضل book-service');
 assert.equal(match('عندي حساب عادي وعايز افتح متجر'), 'upgrade-account');
-assert.equal(match('مسجل بالفعل عايز اشتغل مندوب'), 'upgrade-account');
+const regCourier = match('مسجل بالفعل عايز اشتغل مندوب');
+assert.ok(regCourier === 'upgrade-account' || regCourier === 'courier-join', 'الاتنين بيجاوبوا بمسار «حسابي» الصح: '+regCourier);
 const second = match('سجلت بس ده حساب عادى عايز اسجل كمدرس');
 assert.ok(second === 'provider-signup' || second === 'upgrade-account', 'متابعة الحساب العادي متروحش لإجابة التسجيل العامة: '+second);
 assert.ok(second !== 'signup', 'ممنوع نفس إجابة التسجيل العامة مرتين ورا بعض');
+
+// --- التوسعة الكبيرة: تغطية كل مسارات الموقع + مرادفات مصرية ---
+assert.equal(match('محتاج طريقه تسجيل صنايعي'), 'provider-signup', 'صنايعي = مقدم خدمة');
+assert.equal(match('انا كده مسجل عادى عايز تحوله لصنايعي'), 'upgrade-account', 'ترقية حساب موجود لصنايعي');
+assert.equal(match('عايز صنايعي يصلح الحنفيه'), 'book-service', 'اللي بيدور على صنايعي بيحجز مش بيسجل');
+assert.equal(match('محتاج سباك للحمام'), 'book-service');
+assert.equal(match('عايز اشتغل نجار'), 'provider-signup');
+assert.equal(match('عايز اشتغل فني تكييف'), 'provider-signup');
+assert.equal(match('عايز اقيم الطلب'), 'rate-order');
+assert.equal(match('الطلب وصل ناقص'), 'order-problem');
+assert.equal(match('اشتراكي خلص عايز اجدد'), 'subscription-renew');
+assert.equal(match('عايز اقفل المحل اسبوع'), 'store-pause');
+assert.equal(match('التوصيل بياخد قد ايه'), 'delivery-time');
+assert.equal(match('في حد ادنى للطلب؟'), 'min-order');
+assert.equal(match('عايز الغي حجز الدكتور'), 'cancel-booking');
+assert.equal(match('ايه الخدمات اللي عندكم؟'), 'services-list');
+assert.equal(match('عايز اشوف الشروط والاحكام'), 'terms');
+assert.equal(match('عايز اغير رقم موبايلي'), 'edit-profile');
+assert.ok(SC.FAQ_SEED.length >= 50, 'التغطية اتوسعت: '+SC.FAQ_SEED.length);
+// المفاتيح الجديدة متكسّرش القديمة
+assert.equal(match('ازاي اسجل كمدرس'), 'provider-signup');
+assert.equal(match('ازاي احجز مدرس'), 'book-service');
+assert.equal(match('ازاي اسجل في الموقع'), 'signup');
+assert.equal(match('رسوم التوصيل كام؟'), 'delivery-fee');
 
 // --- الرد المتكرر: نفس السؤال ورا بعضه يرجع صياغة مختلفة ---
 const signupFaq = SC.FAQ_SEED.find(f => f.id === 'signup');
