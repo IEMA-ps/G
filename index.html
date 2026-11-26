@@ -608,7 +608,7 @@ import * as PushClient from '/push-client.js';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
-import * as SupportChat from '/support-chat.js?v=support-1';
+import * as SupportChat from '/support-chat.js?v=support-2';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
 import * as MerchantPlans from '/merchant-plans.js?v=offer2-1';
@@ -2426,10 +2426,10 @@ function updateSupportBtn(){
 }
 
 /* ================= مساعد على بابك (الدعم الذكي) ================= */
-const supportChat = {msgs:[], busy:false, leadError:''};
+const supportChat = {msgs:[], busy:false, leadError:'', chips:null, lastFaqId:null};
 function supportFaqAll(){ return SupportChat.mergeFaqs(SupportChat.FAQ_SEED, S.supportFaqRemote||[]); }
 window.openSupportChat = (prefill)=>{
-  supportChat.msgs=[]; supportChat.leadError='';
+  supportChat.msgs=[]; supportChat.leadError=''; supportChat.chips=null; supportChat.lastFaqId=null;
   renderSupportChat();
   const guest = !S.profile, guestOk = sessionStorage.getItem('supportLeadOk')==='1';
   if(!(guest && !guestOk)){
@@ -2449,7 +2449,7 @@ function renderSupportChat(){
   UI.openModal(SupportChat.panelHTML({
     esc, guest, needLead, leadError: supportChat.leadError,
     msgs: supportChat.msgs, busy: supportChat.busy,
-    chips: SupportChat.chipsFor(S.role||'guest', supportFaqAll()),
+    chips: supportChat.chips || SupportChat.chipsFor(S.role||'guest', supportFaqAll()),
     waAvailable: !!MerchantPlans.supportPhone(S.settings.supportWhatsapp)
   }));
   const body=document.getElementById('scBody'); if(body) body.scrollTop=body.scrollHeight;
@@ -2485,11 +2485,16 @@ async function sendSupportMessage(text){
   await new Promise(r=>setTimeout(r, 450));
   const faq = SupportChat.matchFaq(text, supportFaqAll());
   if(faq){
-    const m={from:'bot', text: faq.answer};
+    const repeated = supportChat.lastFaqId === faq.id;
+    const m={from:'bot', text: SupportChat.replyFor(faq, repeated)};
     if(faq.go && faq.go.label && faq.go.href && S.profile) m.go=faq.go;
     if(faq.goLabel && faq.goHref && S.profile) m.go={label:faq.goLabel, href:faq.goHref};
     supportChat.msgs.push(m);
+    const rel = SupportChat.relatedChipsFor(faq, supportFaqAll());
+    supportChat.chips = rel.length ? rel : null;
+    supportChat.lastFaqId = faq.id;
   }else{
+    supportChat.chips = null; supportChat.lastFaqId = null;
     const waAvail = !!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
     const m={from:'bot', text: waAvail ? SupportChat.MISS_TEXT : 'معلش، مش لاقي إجابة دقيقة لسؤالك لسه. سجّلته عند إدارة الموقع وهيتم الرد عليك قريب.'};
     if(waAvail) m.wa = text;
