@@ -617,6 +617,7 @@ import { needsEmailVerification, googleProfile, googleError, accountLoadError, I
 
 import * as MerchantPlans from '/merchant-plans.js?v=offer2-1';
 import * as DeliveryBatch from '/delivery-batch.js?v=multistore-1';
+import * as DeliverySub from '/delivery-sub.js?v=dsub-1';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE",
@@ -754,7 +755,7 @@ const S = {
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
   myAgent:null, myAgentSubOrders:[], agentNoLink:false, activeAgents:[], myRatings:[], appliedCoupon:null, appliedPoints:null,
   notifications:[],
-  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
+  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, deliverySubOn:false, deliverySubPrice:100, deliverySubDiscount:25, deliverySubMinOrder:150, deliverySubDays:30, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
   cart:[], // {productId, quantity}
   favStores:[], // [storeId, ...] — المتاجر المفضلة (بتتزامن مع الحساب لما الميزة تتفتح)
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
@@ -2741,12 +2742,21 @@ function activeProducts(){ return S.products.filter(p=>p.isActive && MerchantPla
 function cartLines(){ return S.cart.map(c=>({...c, product:getProduct(c.productId)})).filter(l=>l.product); }
 function cartTotal(){ return cartLines().reduce((a,l)=>a+effPrice(l.product)*l.quantity,0); }
 function cartMerchantCount(){ return new Set(cartLines().map(l=>l.product.merchantId)).size; }
-function cartDeliveryQuote(count){ return DeliveryBatch.deliveryQuote(count==null?cartMerchantCount():count, S.settings.defaultDeliveryFee||0, S.settings.multiStoreDeliveryDiscountPercent); }
+function cartDeliveryQuote(count){
+  const q = DeliveryBatch.deliveryQuote(count==null?cartMerchantCount():count, S.settings.defaultDeliveryFee||0, S.settings.multiStoreDeliveryDiscountPercent);
+  return DeliverySub.applySub(q, S.profile, S.settings, cartTotal(), nowMs());
+}
+function deliverySubRows(q){
+  if(q.subDiscount>0) return `<div class="summary-row" style="color:var(--success)"><span><i class="fa-solid fa-crown"></i> ${q.subFree?'اشتراك التوصيل: توصيل مجاني':'خصم اشتراك التوصيل'} (مرة كل 7 أيام)</span><span>-${fmtMoney(q.subDiscount)}</span></div>`;
+  const st=q.subState; if(st&&st.active&&st.usedThis) return `<div class="summary-row" style="color:var(--ink-soft);font-size:12px"><span>خصم اشتراك التوصيل اتستخدم، الجاي ${new Date(st.nextAt).toLocaleDateString('ar-EG')}</span><span></span></div>`;
+  if(st&&st.active&&st.cfg.minOrder>0) return `<div class="summary-row" style="color:var(--ink-soft);font-size:12px"><span>خصم اشتراك التوصيل بيبدأ من طلب ${fmtMoney(st.cfg.minOrder)}</span><span></span></div>`;
+  return '';
+}
 function deliveryFeeRows(q){
-  if(q.storeCount<2) return `<div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(q.net)}</span></div>`;
+  if(q.storeCount<2) return `<div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(q.net+(q.subDiscount||0))}</span></div>${deliverySubRows(q)}`;
   return `<div class="summary-row"><span>رسوم التوصيل (${q.storeCount} متاجر × ${fmtMoney(q.baseFee)})</span><span>${fmtMoney(q.gross)}</span></div>
       ${q.discount>0?`<div class="summary-row delivery-discount-row" style="color:var(--success)"><span>خصم توصيل متعدد المتاجر (${q.percent}%)</span><span>-${fmtMoney(q.discount)}</span></div>`:''}
-      <div class="summary-row"><span>رسوم التوصيل بعد الخصم (مندوب واحد)</span><span>${fmtMoney(q.net)}</span></div>`;
+      <div class="summary-row"><span>رسوم التوصيل بعد الخصم (مندوب واحد)</span><span>${fmtMoney(q.net+(q.subDiscount||0))}</span></div>${deliverySubRows(q)}`;
 }
 
 /* ================= RECURRING (WEEKLY) ORDERS ================= */
@@ -3627,6 +3637,14 @@ window.submitOrder = async ()=>{
       const merchantSnaps=await Promise.all(merchantEntries.map(([mid])=>tx.get(doc(db,'merchants',mid))));
       merchantSnaps.forEach(d=>{if(!d.exists() || !MerchantPlans.canOrder(d.data(),S.settings.subsEnforced)) throw new Error('أحد المتاجر لا يستقبل طلبات حاليًا، راجع السلة');});
       merchantSnaps.forEach(d=>{ if(d.data().temporarilyClosed===true) throw new Error(`${d.data().businessName||'أحد المتاجر'} مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي، شيل منتجاته من السلة أو حاول بعدين`); });
+      if(quote.subDiscount>0){
+        // نتأكد جوه الـ Transaction إن خصم الفترة دي ما اتاخدش قبل كده (مثلاً من تابين مفتوحين).
+        const us = await tx.get(doc(db,'users',S.user.uid));
+        const again = DeliverySub.applySub(DeliveryBatch.deliveryQuote(quote.storeCount, quote.baseFee, S.settings.multiStoreDeliveryDiscountPercent), us.data()||{}, S.settings, subtotalNow, nowMs());
+        if(again.subDiscount!==quote.subDiscount) throw new Error('خصم اشتراك التوصيل اتغير، افتح السلة تاني وراجع الإجمالي');
+        tx.update(doc(db,'users',S.user.uid), {deliverySubUsedPeriod: quote.subPeriod});
+        S.profile.deliverySubUsedPeriod = quote.subPeriod;
+      }
       priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
       if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
@@ -3634,7 +3652,7 @@ window.submitOrder = async ()=>{
         id:orderId, customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(),
         customerPhone:S.profile.phone, deliveryAddress:address.fullAddressText, notes,
         subtotal:subtotalNow, deliveryFee:fee, discount:priced.discount, couponCode: coupon?coupon.code:null, couponDiscount:priced.couponDiscount,
-        pointsRedeemed: priced.points, pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, total:priced.total,
+        pointsRedeemed: priced.points, pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, deliverySubDiscount:quote.subDiscount||0, deliverySubCourierPay:quote.courierComp||0, deliverySubPeriod:quote.subPeriod??-1, total:priced.total,
         status:'PENDING_ADMIN', paymentMethod:paymentLabel(), paymentMethodId:(S.paymentMethod||'COD'), merchantCount:Object.keys(groups).length,
         subOrderIds: subIds, createdAt: nowMs()
       });
@@ -3842,6 +3860,7 @@ function renderOrderDetail(){
     <div class="card" style="margin-top:12px">
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(o.subtotal)}</span></div>
       ${o.deliveryDiscount>0?`<div class="summary-row"><span>رسوم التوصيل (${o.merchantCount} متاجر)</span><span>${fmtMoney(o.deliveryFeeGross)}</span></div><div class="summary-row" style="color:var(--success)"><span>خصم توصيل متعدد المتاجر (${o.deliveryDiscountPercent}%)</span><span>-${fmtMoney(o.deliveryDiscount)}</span></div>`:''}
+      ${o.deliverySubDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>اشتراك التوصيل</span><span>-${fmtMoney(o.deliverySubDiscount)}</span></div>`:''}
       <div class="summary-row"><span>${o.deliveryDiscount>0?'رسوم التوصيل بعد الخصم':'رسوم التوصيل'}</span><span>${fmtMoney(o.deliveryFee)}</span></div>
       ${o.couponDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم الكوبون${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.couponDiscount)}</span></div>`:''}
       ${o.pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط الولاء (${o.pointsRedeemed} نقطة)</span><span>-${fmtMoney(o.pointsDiscount)}</span></div>`:''}
@@ -3925,6 +3944,11 @@ function renderProfile(){
       <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0">${esc(S.profile.email||'')}</p>
       ${S.settings.loyaltyEnabled!==false?`<div class="badge-chip" style="margin-top:10px;display:inline-flex;gap:6px"><i class="fa-solid fa-gift" style="color:var(--gold)"></i> ${points} نقطة ولاء${redeemValue?' (تساوي '+fmtMoney(roundMoney(points*redeemValue))+')':''}</div>`:''}
     </div>
+    ${S.settings.deliverySubOn&&S.role==='customer'?(()=>{const st=DeliverySub.subState(S.profile,S.settings,nowMs()),c=st.cfg;
+      const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، عايز أشترك في اشتراك التوصيل');
+      return `<div class="card" style="margin-top:12px"><p style="margin:0 0 6px;font-weight:700"><i class="fa-solid fa-crown" style="color:var(--gold)"></i> اشتراك التوصيل</p>`+
+      (st.active?`<p style="margin:0;font-size:13px;line-height:1.8">شغال حتى ${new Date(S.profile.deliverySubUntil).toLocaleDateString('ar-EG')}. ${st.usedThis?'خصم الأسبوع ده اتستخدم، الجاي '+new Date(st.nextAt).toLocaleDateString('ar-EG')+'.':'توصيلة الأسبوع ده متاحة دلوقتي.'}</p>`
+      :`<p style="margin:0 0 10px;font-size:13px;line-height:1.8">${fmtMoney(c.price)} في ${c.days} يوم: توصيل مجاني مرة كل 7 أيام للطلب من متجر واحد (أو خصم ${fmtMoney(c.discount)} لو من أكتر من متجر)، للطلبات من ${fmtMoney(c.minOrder)}. الدفع كاش.</p>${href?`<a class="btn btn-primary btn-sm" style="width:auto" href="${href}" target="_blank" rel="noopener">اشترك عن طريق الدعم</a>`:''}`)+`</div>`;})():''}
     ${S.profile.referralCode?`<div class="card" style="margin-top:12px;text-align:center">
       <p style="font-size:13px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-user-group" style="color:var(--teal)"></i> ادعُ صديقك وخدوا نقاط مع بعض</p>
       <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(S.profile.referralCode)}</div>
@@ -5676,6 +5700,16 @@ function renderAdminSettings(){
     </div>
 
     <div class="card" style="margin-top:16px">
+      <h3 style="margin:0 0 14px;font-size:15px">اشتراك التوصيل</h3>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="setDsubOn" ${s.deliverySubOn?'checked':''}> الاشتراك شغال (مقفول افتراضيًا)</label>
+      <div class="field"><label>سعر الاشتراك (جنيه)</label><input id="setDsubPrice" type="number" min="0" value="${esc(String(s.deliverySubPrice??100))}"></div>
+      <div class="field"><label>مبلغ المنصة للمندوب (جنيه): متجر واحد = توصيل مجاني والمنصة تدفع المبلغ ده للمندوب، أكتر من متجر = يتخصم من الإجمالي. مرة كل 7 أيام</label><input id="setDsubDiscount" type="number" min="0" value="${esc(String(s.deliverySubDiscount??25))}"></div>
+      <div class="field"><label>أقل قيمة للطلب عشان الخصم يشتغل (جنيه)</label><input id="setDsubMin" type="number" min="0" value="${esc(String(s.deliverySubMinOrder??150))}"></div>
+      <div class="field"><label>مدة الاشتراك (يوم)</label><input id="setDsubDays" type="number" min="1" value="${esc(String(s.deliverySubDays||30))}"></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> الدفع كاش. بعد ما تستلم فلوس العميل، فعّل اشتراكه من قايمة المستخدمين (زرار «تفعيل اشتراك التوصيل»).</p>
+      <button class="btn btn-primary" onclick="saveDeliverySubSettings()">حفظ</button>
+    </div>
+    <div class="card" style="margin-top:16px">
       <h3 style="margin:0 0 14px;font-size:15px">دعوة صديق</h3>
       <div class="field"><label>عدد النقاط اللي ياخدها كل من الصديقين (الداعي والمدعو)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
       <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، الاتنين ياخدوا نفس عدد النقاط دي تلقائيًا.</p>
@@ -5722,6 +5756,24 @@ function renderAdminSettings(){
     `:''}
   `;
 }
+window.saveDeliverySubSettings = async ()=>{
+  const n=(id,d)=>{ const v=parseFloat(document.getElementById(id).value); return Number.isFinite(v)&&v>=0?v:d; };
+  const v={deliverySubOn:!!document.getElementById('setDsubOn').checked, deliverySubPrice:n('setDsubPrice',100), deliverySubDiscount:n('setDsubDiscount',25), deliverySubMinOrder:n('setDsubMin',150), deliverySubDays:Math.max(1,Math.floor(n('setDsubDays',30)))};
+  await setDoc(doc(db,'settings','app'), v, {merge:true});
+  await logAudit('تعديل إعدادات اشتراك التوصيل', JSON.stringify(v));
+  UI.toast('تم حفظ إعدادات اشتراك التوصيل ✅');
+};
+window.activateDeliverySub = async (uid)=>{
+  const u=(S.allUsers||[]).find(x=>x._id===uid); if(!u) return;
+  const cfg=DeliverySub.subSettings(S.settings), now=nowMs();
+  const active=DeliverySub.subPeriod(u,now)>=0;
+  if(!confirm(active?`تمديد اشتراك التوصيل ${cfg.days} يوم؟`:`تفعيل اشتراك التوصيل ${cfg.days} يوم؟ اتأكد إنك استلمت ${cfg.price} جنيه.`)) return;
+  const patch = active ? {deliverySubUntil:Number(u.deliverySubUntil)+cfg.days*86400000}
+    : {deliverySubStartedAt:now, deliverySubUntil:now+cfg.days*86400000, deliverySubUsedPeriod:-1};
+  await updateDoc(doc(db,'users',uid), patch);
+  await logAudit('تفعيل اشتراك التوصيل', `${u.email||uid}`);
+  Object.assign(u, patch); UI.toast('تم تفعيل الاشتراك ✅'); go(S.tab);
+};
 window.saveReferralSettings = async ()=>{
   const referralBonusPoints = Math.max(0, parseInt(document.getElementById('setReferralBonus').value)||0);
   await setDoc(doc(db,'settings','app'), {referralBonusPoints}, {merge:true});
@@ -5830,6 +5882,7 @@ function renderAdminUsers(){
           <div><b style="font-size:13.5px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b>
             <div class="admin-member-contact">${esc(u.email||'')} ${u.phone?' · '+esc(u.phone):''}</div>
             <div class="admin-code" dir="ltr">${esc(u.referralCode||'')}</div>
+            ${u.role==='CUSTOMER'&&S.settings.deliverySubOn?`<div style="margin-top:6px;font-size:12px">${DeliverySub.subPeriod(u,nowMs())>=0?'<span style="color:var(--success)">اشتراك توصيل حتى '+new Date(u.deliverySubUntil).toLocaleDateString('ar-EG')+'</span> ':''}<button class="btn btn-ghost btn-sm" style="width:auto;font-size:11px;padding:4px 8px" onclick="activateDeliverySub('${u._id}')"><i class="fa-solid fa-crown"></i> ${DeliverySub.subPeriod(u,nowMs())>=0?'تمديد':'تفعيل'} اشتراك التوصيل</button></div>`:''}
           </div>
           <span class="badge-chip">${roleLabel}</span>
         </div>
