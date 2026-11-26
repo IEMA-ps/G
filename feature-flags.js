@@ -7,7 +7,8 @@ export const FLAGS = [
   {key:'pushNotificationsEnabled', label:'الإشعارات الفورية على الموبايل (تحتاج Worker الإشعارات المحدّث)'},
   {key:'providerRemindersEnabled', label:'تذكيرات مقدمي الخدمة على تليجرام (قبل الميعاد بساعة، حجز مستني ساعتين، ملخص بكرة) (تحتاج Worker #115)'},
   {key:'broadcastTargetsEnabled', label:'بث الأدمن لفئة معينة (تجار، مناديب، مقدمي خدمة، مسوقين، أو شخص واحد) على تليجرام والإشعارات الفورية (يحتاج Worker المحدّث)'},
-  {key:'marketerContestEnabled', label:'مسابقة المسوّقين الشهرية (ترتيب بأول اشتراك مدفوع، الجوائز يدويًا)'}
+  {key:'marketerContestEnabled', label:'مسابقة المسوّقين الشهرية (ترتيب بأول اشتراك مدفوع، الجوائز يدويًا)'},
+  {key:'smartSupportEnabled', label:'مساعد على بابك: شات دعم ذكي بردود تلقائية جوه الموقع وعلى صفحة البداية (الزائر يسجّل اسمه ورقمه الأول)'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;
 
@@ -21,3 +22,4 @@ export function readFlags(get){
   for(const f of FLAGS){ const v = get('ff_' + f.key); if(v !== null && v !== undefined) out[f.key] = v === '1'; }
   return out;
 }
+

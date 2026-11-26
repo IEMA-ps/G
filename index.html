@@ -270,6 +270,35 @@ img{max-width:100%; display:block;}
 
 .support-btn{position:fixed; bottom:98px; left:max(12px, calc(50% - 228px)); z-index:18; display:flex; align-items:center; gap:6px; background:var(--whatsapp); color:#fff; border:none; border-radius:999px; padding:9px 14px; font-size:12.5px; font-weight:700; box-shadow:var(--shadow);}
 .support-btn.hidden{display:none;}
+.sc-panel{display:flex;flex-direction:column;max-height:82vh}
+.sc-head{display:flex;justify-content:space-between;align-items:center;padding:4px 2px 10px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.sc-head b{font-size:15px;display:flex;align-items:center;gap:8px;color:var(--teal)}
+.sc-close{border:none;background:var(--surface-2);color:var(--ink-soft);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:13px}
+.sc-body{overflow-y:auto;min-height:120px;max-height:52vh;padding:6px 2px;display:flex;flex-direction:column;gap:8px}
+.sc-msg{display:flex}
+.sc-user{justify-content:flex-start}
+.sc-bot{justify-content:flex-end}
+.sc-bubble{max-width:85%;padding:9px 12px;border-radius:14px;font-size:13.5px;line-height:1.9;white-space:pre-wrap;word-break:break-word}
+.sc-user .sc-bubble{background:var(--teal);color:#fff;border-bottom-left-radius:4px}
+.sc-bot .sc-bubble{background:var(--surface-2);color:var(--ink);border-bottom-right-radius:4px}
+.sc-go{display:flex;width:fit-content;align-items:center;gap:5px;margin-top:8px;font-size:12.5px;font-weight:700;color:var(--teal)}
+.sc-bot .sc-go{color:var(--teal)}
+.sc-wa{display:flex;width:fit-content;align-items:center;gap:6px;margin-top:8px;border:none;background:var(--whatsapp);color:#fff;border-radius:999px;padding:7px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+.sc-chips{display:flex;gap:6px;flex-wrap:wrap;padding:8px 2px;border-top:1px solid var(--line)}
+.sc-chip{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 11px;font-size:12px;cursor:pointer}
+.sc-input{display:flex;gap:8px;padding-top:8px;border-top:1px solid var(--line)}
+.sc-input input{flex:1;border:1px solid var(--line);border-radius:999px;padding:9px 14px;font-size:13.5px;background:var(--surface);color:var(--ink)}
+.sc-send{border:none;background:var(--teal);color:#fff;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:14px;flex-shrink:0}
+.sc-foot{text-align:center;padding-top:8px}
+.sc-foot a{font-size:12px;color:var(--ink-soft)}
+.sc-note{font-size:11.5px;color:var(--ink-soft);line-height:1.8;margin:8px 0 0}
+.sc-err{background:var(--danger-tint);color:var(--danger);border-radius:10px;padding:8px 10px;font-size:12.5px;margin-top:8px}
+.sc-typing{display:flex;gap:4px;padding:12px 14px}
+.sc-typing span{width:6px;height:6px;border-radius:50%;background:var(--ink-soft);animation:scBlink 1s infinite}
+.sc-typing span:nth-child(2){animation-delay:.2s}.sc-typing span:nth-child(3){animation-delay:.4s}
+@keyframes scBlink{0%,100%{opacity:.25}50%{opacity:1}}
+.sc-admin-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--line);padding:8px 0}
+.sc-admin-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
 
 /* ---------- ديسكتوب: لوحة الأدمن (من 1024px). الموبايل والتابلت ما بيتأثروش ---------- */
 .nav-extra{display:none;}
@@ -579,6 +608,7 @@ import * as PushClient from '/push-client.js';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
+import * as SupportChat from '/support-chat.js?v=support-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
 import * as MerchantPlans from '/merchant-plans.js?v=offer2-1';
@@ -1050,8 +1080,9 @@ function showSignedOut(){
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appShell').classList.add('hidden');
   document.getElementById('verifyScreen').classList.add('hidden');
-  document.getElementById('supportBtn').classList.add('hidden');
   document.getElementById('accountRecovery').classList.add('hidden');
+  // المساعد الذكي متاح للزائر على صفحة البداية — نجيب الإعدادات العامة (قراءة عامة) عشان نعرف لو المفتاح مفتوح
+  getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings={...S.settings,...d.data()}; } updateSupportBtn(); }).catch(()=>updateSupportBtn());
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab(authRoute(location));
@@ -1219,6 +1250,8 @@ function subscribeShared(){
     S.categories = snap.docs.map(d=>d.data()).sort((a,b)=>(a.displayOrder||0)-(b.displayOrder||0));
     render();
   }));
+  // أسئلة مساعد الدعم اللي الأدمن بيضيفها (قراءة عامة، وبتفشل بهدوء لو القواعد لسه مش منشورة)
+  S.unsubs.push(onSnapshot(collection(db,'supportFaq'), snap=>{ S.supportFaqRemote=snap.docs.map(d=>({...d.data(),_id:d.id})); }, ()=>{ S.supportFaqRemote=[]; }));
   S.unsubs.push(onSnapshot(query(collection(db,'merchants'), where('status','==','ACTIVE')), snap=>{
     S._rawMerchants = snap.docs.map(d=>d.data());
     recomputeMerchants();
@@ -1342,6 +1375,9 @@ function subscribeAdmin(){
   S.unsubs.push(onSnapshot(collection(db,'marketerPayouts'), snap=>{ S.allMkPayouts = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'coupons'), snap=>{ S.allCoupons = snap.docs.map(d=>d.data()); render(); }));
   if(isSuperAdmin()) S.unsubs.push(onSnapshot(query(collection(db,'auditLogs'), orderBy('createdAt','desc'), limit(150)), snap=>{ S.allAuditLogs = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
+  // مساعد الدعم الذكي: الأسئلة المجهولة وزوار صفحة البداية (إدارة الموقع بس)
+  if(isSuperAdmin()) S.unsubs.push(onSnapshot(query(collection(db,'supportUnanswered'), orderBy('createdAt','desc'), limit(200)), snap=>{ S.supportUnanswered=snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }, ()=>{ S.supportUnanswered=[]; }));
+  if(isSuperAdmin()) S.unsubs.push(onSnapshot(query(collection(db,'supportGuestLeads'), orderBy('createdAt','desc'), limit(200)), snap=>{ S.supportGuestLeads=snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }, ()=>{ S.supportGuestLeads=[]; }));
   S.unsubs.push(onSnapshot(query(collection(db,'notifications'), where('targetType','==','ADMIN')), snap=>{
     S.notifications = snap.docs.map(d=>({...d.data(), _id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render();
   }));
@@ -2376,12 +2412,98 @@ window.waLink = waLink;
 function unreadCount(){ return S.notifications.filter(n=>!n.isRead).length; }
 
 window.openSupport = (msg)=>{
+  if(smartSupportOn()){ openSupportChat(msg); return; }
   const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,msg||'مرحبًا، أحتاج مساعدة');
   if(href) window.open(href,'_blank','noopener');
 };
+function smartSupportOn(){ return FeatureFlags.isOn(S.settings, SupportChat.SMART_SUPPORT_FLAG); }
 function updateSupportBtn(){
   const b=document.getElementById('supportBtn'); if(!b) return;
-  b.classList.toggle('hidden', !(S.profile && MerchantPlans.supportHref(S.settings.supportWhatsapp,'x')));
+  // مع المساعد الذكي الزرار بيظهر للزائر على صفحة البداية وللمسجّل. من غيره يفضل زي ما كان: للمسجّل بس ولما يكون فيه رقم دعم.
+  const smart = smartSupportOn();
+  b.classList.toggle('hidden', !(smart || (S.profile && MerchantPlans.supportHref(S.settings.supportWhatsapp,'x'))));
+  const i=b.querySelector('i'); if(i) i.className = smart ? 'fa-solid fa-headset' : 'fa-brands fa-whatsapp';
+}
+
+/* ================= مساعد على بابك (الدعم الذكي) ================= */
+const supportChat = {msgs:[], busy:false, leadError:''};
+function supportFaqAll(){ return SupportChat.mergeFaqs(SupportChat.FAQ_SEED, S.supportFaqRemote||[]); }
+window.openSupportChat = (prefill)=>{
+  supportChat.msgs=[]; supportChat.leadError='';
+  renderSupportChat();
+  const guest = !S.profile, guestOk = sessionStorage.getItem('supportLeadOk')==='1';
+  if(!(guest && !guestOk)){
+    const name = guest ? (sessionStorage.getItem('supportLeadName')||'') : (S.profile?.firstName||'');
+    supportChat.msgs.push({from:'bot', text: SupportChat.greeting(S.role, guest, name)});
+    renderSupportChat();
+    if(prefill) sendSupportMessage(prefill);
+  }
+  // للزائر: نحاول نجيب أسئلة الأدمن المضافة مرة واحدة (قراءة عامة، وبتفشل بهدوء لو القواعد لسه مش منشورة)
+  if(guest && !S.supportFaqRemote){
+    getDocs(collection(db,'supportFaq')).then(snap=>{ S.supportFaqRemote=snap.docs.map(d=>({...d.data(),_id:d.id})); }).catch(()=>{});
+  }
+};
+function renderSupportChat(){
+  const guest = !S.profile;
+  const needLead = guest && sessionStorage.getItem('supportLeadOk')!=='1';
+  UI.openModal(SupportChat.panelHTML({
+    esc, guest, needLead, leadError: supportChat.leadError,
+    msgs: supportChat.msgs, busy: supportChat.busy,
+    chips: SupportChat.chipsFor(S.role||'guest', supportFaqAll()),
+    waAvailable: !!MerchantPlans.supportPhone(S.settings.supportWhatsapp)
+  }));
+  const body=document.getElementById('scBody'); if(body) body.scrollTop=body.scrollHeight;
+}
+window.supportLeadSubmit = async ()=>{
+  const name=(document.getElementById('slName')?.value||'').trim();
+  const rawPhone=document.getElementById('slPhone')?.value||'';
+  const v=SupportChat.validateLead(name, rawPhone);
+  if(!v.ok){ supportChat.leadError=v.error; renderSupportChat(); return; }
+  try{
+    await setDoc(doc(db,'supportGuestLeads', v.phone), SupportChat.leadPayload({name:v.name, phone:v.phone, createdAt: serverTimestamp()}));
+  }catch(e){ /* الرقم مسجّل قبل كده أو القواعد لسه مش منشورة — نكمل عادي */ }
+  sessionStorage.setItem('supportLeadOk','1');
+  sessionStorage.setItem('supportLeadPhone', v.phone);
+  sessionStorage.setItem('supportLeadName', v.name);
+  supportChat.msgs=[{from:'bot', text: SupportChat.greeting('guest', true, v.name)}];
+  renderSupportChat();
+};
+window.supportChipAsk = (id)=>{ const f=supportFaqAll().find(x=>x.id===id); if(f) sendSupportMessage(f.q); };
+window.supportSend = ()=>{
+  const inp=document.getElementById('scInput'); const t=(inp?.value||'').trim();
+  if(!t || supportChat.busy) return;
+  sendSupportMessage(t);
+};
+window.supportWa = (q)=>{
+  const href=MerchantPlans.supportHref(S.settings.supportWhatsapp, q||'مرحبًا، أحتاج مساعدة');
+  if(href) window.open(href,'_blank','noopener');
+};
+window.supportGo = (href)=>{ if(!/^\/[a-z0-9\/_-]*$/i.test(href||'')) return; UI.closeModal(); location.href=href; };
+async function sendSupportMessage(text){
+  supportChat.msgs.push({from:'user', text});
+  supportChat.busy=true; renderSupportChat();
+  await new Promise(r=>setTimeout(r, 450));
+  const faq = SupportChat.matchFaq(text, supportFaqAll());
+  if(faq){
+    const m={from:'bot', text: faq.answer};
+    if(faq.go && faq.go.label && faq.go.href && S.profile) m.go=faq.go;
+    if(faq.goLabel && faq.goHref && S.profile) m.go={label:faq.goLabel, href:faq.goHref};
+    supportChat.msgs.push(m);
+  }else{
+    const waAvail = !!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
+    const m={from:'bot', text: waAvail ? SupportChat.MISS_TEXT : 'معلش، مش لاقي إجابة دقيقة لسؤالك لسه. سجّلته عند إدارة الموقع وهيتم الرد عليك قريب.'};
+    if(waAvail) m.wa = text;
+    supportChat.msgs.push(m);
+    logSupportMiss(text);
+  }
+  supportChat.busy=false; renderSupportChat();
+}
+async function logSupportMiss(question){
+  try{
+    const base={question, role: S.role||'guest', createdAt: serverTimestamp()};
+    if(S.user) await addDoc(collection(db,'supportUnanswered'), SupportChat.unansweredPayload({...base, uid: S.user.uid}));
+    else { const p=sessionStorage.getItem('supportLeadPhone'); if(p) await addDoc(collection(db,'supportUnanswered'), SupportChat.unansweredPayload({...base, leadPhone: p})); }
+  }catch(e){ /* التسجيل مساعد، ميعطلش الشات */ }
 }
 function renderShell(){
   if(!S.profile) return;
@@ -5604,6 +5726,7 @@ function renderAdminSettings(){
       </div>`;}).join('')}
       <button class="btn btn-primary" style="margin-top:14px" onclick="saveAdSlots()">حفظ الإعلانات</button>
     </div>`:''}
+    ${SupportChat.adminCardHTML({esc, faqs: S.supportFaqRemote||[], unanswered: S.supportUnanswered||[], leads: S.supportGuestLeads||[], waPhone: MerchantPlans.supportPhone(s.supportWhatsapp), fmtDay})}
     `:''}
     ${sec==='ops'?`
     <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام داخل التطبيق</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setMemberRequests" ${s.memberRequestsEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">طلبات التاجر ومقدم الخدمة والمندوب تظهر في قائمة الأعضاء وتستنى موافقتك. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveMemberRequestsSwitch()">حفظ</button></div>
@@ -5643,6 +5766,40 @@ window.saveSupportPhone = async ()=>{
   await setDoc(doc(db,'settings','app'), {supportWhatsapp:clean}, {merge:true});
   await logAudit('تعديل رقم الدعم الفني', `من: ${before} — إلى: ${clean||'—'}`);
   UI.toast('تم حفظ رقم الدعم ✅');
+};
+
+/* ---- إدارة مساعد الدعم الذكي (إدارة الموقع بس) ---- */
+window.supportFaqAdd = async ()=>{
+  if(!isSuperAdmin()){ UI.toast('إضافة الأسئلة لإدارة الموقع فقط'); return; }
+  const q=document.getElementById('sfQ').value, answer=document.getElementById('sfAnswer').value;
+  const keys=document.getElementById('sfKeys').value.split(/[،,]/).map(k=>k.trim()).filter(Boolean);
+  const v=SupportChat.validFaqInput({q, keys, answer});
+  if(!v.ok){ UI.toast(v.error); return; }
+  const goRaw=(document.getElementById('sfGo').value||'').trim();
+  let goLabel='', goHref='';
+  if(goRaw){ const parts=goRaw.split('|'); if(parts.length===2 && /^\/[a-z0-9\/_-]*$/i.test(parts[1].trim())){ goLabel=parts[0].trim(); goHref=parts[1].trim(); } else { UI.toast('صيغة الزرار: اسم الزرار|/مسار-الصفحة'); return; } }
+  try{
+    await addDoc(collection(db,'supportFaq'), SupportChat.faqPayload({q, keys: v.keys, answer, goLabel, goHref, createdAt: serverTimestamp()}));
+    await logAudit('إضافة سؤال لمساعد الدعم', String(q).slice(0,80));
+    UI.toast('اتضاف السؤال ✅');
+  }catch(e){ UI.toast('تعذّرت الإضافة: '+(e.code||e.message)); }
+};
+window.supportFaqDelete = async (id)=>{
+  if(!isSuperAdmin()) return;
+  try{ await deleteDoc(doc(db,'supportFaq', id)); await logAudit('حذف سؤال من مساعد الدعم', id); UI.toast('اتحذف'); }
+  catch(e){ UI.toast('تعذّر الحذف: '+(e.code||e.message)); }
+};
+window.supportMissClear = async (ids)=>{
+  if(!isSuperAdmin()) return;
+  try{ for(const id of String(ids).split(',')) if(id) await deleteDoc(doc(db,'supportUnanswered', id)); UI.toast('اتمسح'); }
+  catch(e){ UI.toast('تعذّر المسح: '+(e.code||e.message)); }
+};
+window.supportAnswerPrefill = (question)=>{
+  const q=document.getElementById('sfQ'); if(!q) return;
+  q.value=question;
+  document.getElementById('sfKeys').value=question;
+  document.getElementById('sfAnswer').focus();
+  UI.toast('اكتب الإجابة ودوس «إضافة السؤال»');
 };
 window.saveAppSettings = async ()=>{
   const platformCommissionPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('setCommission').value)||0));
@@ -5839,3 +5996,4 @@ if('serviceWorker' in navigator){
 <script type="module" src="/pwa-install.js"></script>
 </body>
 </html>
+
