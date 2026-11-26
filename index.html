@@ -601,6 +601,7 @@ import * as Services from '/services.js?v=svc-6';
 import * as OrderMoney from '/order-money.js?v=money-1';
 import * as StoreHours from '/store-hours.js?v=hours-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
+import * as PointsTx from '/order-points-tx.js?v=points-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as BcAud from '/broadcast-audience.js';
@@ -732,7 +733,7 @@ async function recomputeOrderStatus(orderId){
       status = ORDER_STEP_SEQUENCE[minIdx];
     }
     await updateDoc(doc(db,'orders',orderId), {status});
-  }catch(e){ console.error('recomputeOrderStatus failed', e); }
+  }catch(e){ console.error('recomputeOrderStatus failed', e); UI.toast('تم تحديث الطلب الفرعي لكن حالة الطلب الأساسي ماتحدّثتش، حدّث الصفحة وحاول تاني'); }
 }
 const MERCHANT_STATUS = {
   PENDING:{label:'قيد المراجعة', cls:'status-pending'},
@@ -4076,49 +4077,29 @@ const OT_API = {doc, runTransaction, increment};
 window.updateSubOrderStatus = async (subId, status, reason=null)=>{
   const s = [...(S.mySubOrders||[]), ...(S.allSubOrders||[]), ...(S.myAgentSubOrders||[])].find(x=>(x._id||x.id)===subId);
   if(!s) return;
-  const wasDelivered = s.status==='DELIVERED';
   const extra = {status};
   if(status==='DELIVERED' && !s.deliveredAt) extra.deliveredAt=serverTimestamp();
   if(FeatureFlags.isOn(S.settings,'trackingTimelineEnabled') && status!=='REJECTED' && status!=='CANCELLED') extra['statusTimes.'+status]=nowMs();
   if(reason){ extra.cancelReason = reason; extra.cancelledAt = nowMs(); }
+  let award = null;
   if(status==='REJECTED'||status==='CANCELLED'){
     // رفض/إلغاء: الحالة + رجوع المخزون (وبعد آخر طلب فرعي: الكوبون والنقاط) في Transaction واحدة، مرة واحدة فقط
     try{ await OrderTx.cancelSubOrderWithRestore(OT_API, db, s, extra); }
     catch(err){ console.error('cancel+restore failed', err); UI.toast('تعذّر الإلغاء وإرجاع المخزون: '+(err&&err.message?err.message:err)); return; }
+  } else if(status==='DELIVERED'){
+    // تسليم: الحالة + نقاط الولاء + مكافأة دعوة الصديق في Transaction واحدة، فمستحيل تتدفع مرتين لو ضغطتين مع بعض
+    try{ award = await PointsTx.deliverSubOrder(OT_API, db, s, extra, {earnRate:S.settings.loyaltyEarnRate||0, loyaltyEnabled:S.settings.loyaltyEnabled!==false, bonusPoints:S.settings.referralBonusPoints||0}); }
+    catch(err){ console.error('deliver+points failed', err); UI.toast('تعذّر تحديث الحالة: '+(err&&err.message?err.message:err)); return; }
   } else {
     await updateDoc(doc(db,'subOrders', s.id), extra);
   }
   const msg = reason ? `للأسف تم إلغاء طلبك رقم #${s.parentOrderId}. السبب: ${reason}` : `طلبك رقم #${s.parentOrderId} الآن: ${ORDER_STATUS[status].label}`;
   await pushNotification('CUSTOMER', s.customerId, 'تحديث حالة طلبك', msg, s.parentOrderId);
   await recomputeOrderStatus(s.parentOrderId);
-  // منح نقاط ولاء للعميل عند أول تسليم فعلي فقط (تحقق من الحالة السابقة لمنع منح مضاعف)
-  if(status==='DELIVERED' && !wasDelivered && S.settings.loyaltyEnabled!==false){
-    const rate = S.settings.loyaltyEarnRate || 0;
-    const pointsEarned = Math.floor((s.subtotal||0) * rate);
-    if(pointsEarned>0){
-      await updateDoc(doc(db,'users', s.customerId), { loyaltyPoints: increment(pointsEarned) });
-      await pushNotification('CUSTOMER', s.customerId, 'حصلت على نقاط ولاء 🎁', `أضفنا لك ${pointsEarned} نقطة بعد استلام طلبك رقم #${s.parentOrderId}.`, s.parentOrderId);
-    }
-  }
-  // مكافأة دعوة الصديق: تُمنح لكل من الصديق المُحيل والعميل المُحال عند أول طلب مكتمل للعميل المُحال فقط
-  if(status==='DELIVERED' && !wasDelivered){
-    try{
-      const refSnap = await getDoc(doc(db,'referrals', s.customerId));
-      if(refSnap.exists() && refSnap.data().status==='PENDING'){
-        const priorDelivered = await getDocs(query(collection(db,'subOrders'), where('customerId','==', s.customerId), where('status','==','DELIVERED')));
-        if(priorDelivered.size<=1){ // هذا الطلب هو أول طلب مكتمل للعميل
-          const bonus = S.settings.referralBonusPoints || 0;
-          const referrerId = refSnap.data().referrerId;
-          if(bonus>0){
-            await updateDoc(doc(db,'users', s.customerId), { loyaltyPoints: increment(bonus) });
-            await updateDoc(doc(db,'users', referrerId), { loyaltyPoints: increment(bonus) });
-            await pushNotification('CUSTOMER', s.customerId, 'مكافأة دعوة صديق 🎉', `حصلت على ${bonus} نقطة إضافية بعد أول طلب ليك!`, s.parentOrderId);
-            await pushNotification('CUSTOMER', referrerId, 'مكافأة دعوة صديق 🎉', `صديقك اللي دعيته أكمل أول طلب، خدت ${bonus} نقطة! 🎁`, s.parentOrderId);
-          }
-          await updateDoc(doc(db,'referrals', s.customerId), { status:'REWARDED', rewardedAt: nowMs() });
-        }
-      }
-    }catch(e){ console.error('referral reward check failed', e); }
+  if(award && award.pointsEarned>0) await pushNotification('CUSTOMER', s.customerId, 'حصلت على نقاط ولاء 🎁', `أضفنا لك ${award.pointsEarned} نقطة بعد استلام طلبك رقم #${s.parentOrderId}.`, s.parentOrderId);
+  if(award && award.bonus>0){
+    await pushNotification('CUSTOMER', s.customerId, 'مكافأة دعوة صديق 🎉', `حصلت على ${award.bonus} نقطة إضافية بعد أول طلب ليك!`, s.parentOrderId);
+    await pushNotification('CUSTOMER', award.referrerId, 'مكافأة دعوة صديق 🎉', `صديقك اللي دعيته أكمل أول طلب، خدت ${award.bonus} نقطة! 🎁`, s.parentOrderId);
   }
   UI.toast('تم تحديث حالة الطلب');
 };
