@@ -2,7 +2,10 @@
 let deferred;
 const standalone=()=>window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 const button=document.createElement('button');button.id='pwaInstallBtn';button.type='button';button.textContent='ثبّت على بابك على موبايلك';button.style.cssText='position:fixed;bottom:150px;left:max(16px, calc((100vw - 480px)/2 + 16px));z-index:40;max-width:260px;border:1px solid #EAB94F;border-radius:16px;padding:12px 18px;background:#CC3D1B;color:white;font:700 13px "IBM Plex Sans Arabic",sans-serif;box-shadow:0 4px 16px #0003;cursor:pointer';
-function refresh(){button.hidden=standalone();}
+// صفحات الدخول والتسجيل وتأكيد البريد والتحميل: الفقاعة كانت بتغطي أزرار الدخول وجوجل على الموبايل
+// وبتغطي ليبل في فورم التسجيل على الديسكتوب، فبتختفي عليهم وترجع تظهر بعد الدخول.
+const coveredScreens=()=>['loadingScreen','authScreen','verifyScreen'].some(id=>{const el=document.getElementById(id);return el&&!el.classList.contains('hidden');});
+function refresh(){button.hidden=standalone()||coveredScreens();}
 button.addEventListener('click',async()=>{
  if(deferred){const prompt=deferred;deferred=null;await prompt.prompt();await prompt.userChoice;refresh();return;}
  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -15,3 +18,4 @@ button.addEventListener('click',async()=>{
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;refresh();});
 window.addEventListener('appinstalled',()=>{deferred=null;button.hidden=true;});
 document.body.append(button);refresh();
+['loadingScreen','authScreen','verifyScreen'].forEach(id=>{const el=document.getElementById(id);if(el)new MutationObserver(refresh).observe(el,{attributes:true,attributeFilter:['class']});});
