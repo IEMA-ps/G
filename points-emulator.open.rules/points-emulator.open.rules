@@ -1,3 +1,0 @@
-rules_version = '2';
-// Logic test only: rules are open on purpose. The real rules are published from the Firebase console.
-service cloud.firestore { match /databases/{d}/documents { match /{doc=**} { allow read, write: if true; } } }
