@@ -503,7 +503,9 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
         <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" required></div>
         <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" required minlength="8" autocomplete="new-password" aria-describedby="regPasswordHint regPasswordChecks" oninput="updatePasswordChecklist(this,'regPasswordChecks')" placeholder="8 أحرف على الأقل"><p id="regPasswordHint" class="password-hint">8 أحرف على الأقل، حرف إنجليزي كبير وصغير ورقم. الرموز مسموحة ومش إلزامية.</p><div id="regPasswordChecks"></div></div>
         <p class="location-note">اختار منطقتك لعرض المتاجر المسجلة في نفس المنطقة، مش حسب مسافة فعلية. عنوان التوصيل بالتفصيل تضيفه بعد الدخول.</p><div id="regLocation"></div>
-        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase"></div>
+        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase" oninput="previewInvite(this.value)">
+        <div id="inviteBy" class="hidden" style="font-size:12.5px;color:var(--teal);margin-top:6px"></div>
+        <div id="inviteGate" class="hidden" style="font-size:12.5px;line-height:1.8;margin-top:6px;color:var(--ink-soft)">التسجيل دلوقتي بالدعوة بس. اطلب كود من صاحب ليه حساب، أو <a href="#" onclick="openWaitlist();return false" style="color:var(--teal);font-weight:700">انضم لقائمة الانتظار</a>.</div></div>
 
         <div class="terms-check"><input type="checkbox" id="regTerms" required aria-describedby="regTermsHint"><label for="regTerms">أوافق على <a href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a></label></div>
         <p id="regTermsHint" class="terms-hint">افتح الشروط وراجعها قبل الموافقة. الصفحة بتفتح في تبويب جديد من غير ما تضيع بيانات التسجيل.</p>
@@ -617,6 +619,7 @@ import { needsEmailVerification, googleProfile, googleError, accountLoadError, I
 
 import * as MerchantPlans from '/merchant-plans.js?v=offer2-1';
 import * as DeliveryBatch from '/delivery-batch.js?v=multistore-1';
+import * as DeliverySub from '/delivery-sub.js?v=dsub-1';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE",
@@ -649,6 +652,17 @@ catch(e){ db = getFirestore(fbApp); }
 const uid = () => crypto.randomUUID();
 // 12 uniform base32 characters provide 60 random bits without I, O, 0 or 1.
 // All checkout paths use this generator; existing order IDs stay unchanged.
+// قبول الطلبات تلقائيًا: لما الأدمن يشغّل الإعداد، الطلب الجديد بيروح للتاجر على طول من غير مراجعة الإدارة.
+// الإعداد مقفول افتراضيًا (settings/app.autoApproveOrders) ومحتاج تحديث قواعد Firestore (firestore.auto-approve.proposed.rules).
+const autoApprove = () => !!(window.S && window.S.settings && window.S.settings.autoApproveOrders===true);
+const orderInit = () => autoApprove()
+  ? {status:'SENT_TO_MERCHANT', sub:{merchantContactStatus:'AUTO', merchantContactedAt:Date.now(), sentByAdminId:'AUTO'}}
+  : {status:'PENDING_ADMIN', sub:{merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null}};
+async function notifyMerchantAuto(orderId, merchantId, text){
+  if(!autoApprove()) return;
+  try{ await pushNotification('MERCHANT', merchantId, 'لديك طلب جديد من على بابك', text||`رقم الطلب: #${orderId}`, orderId); }catch(e){}
+  try{ TelegramNotify.send([TelegramNotify.merchantKey(merchantId)], 'لديك طلب جديد من على بابك 🔔', text||`رقم الطلب: #${orderId}`); }catch(e){}
+}
 const newOrderId = () => {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = crypto.getRandomValues(new Uint8Array(12));
@@ -754,7 +768,7 @@ const S = {
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
   myAgent:null, myAgentSubOrders:[], agentNoLink:false, activeAgents:[], myRatings:[], appliedCoupon:null, appliedPoints:null,
   notifications:[],
-  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
+  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, deliverySubOn:false, deliverySubPrice:100, deliverySubDiscount:25, deliverySubMinOrder:150, deliverySubDays:30, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50, inviteOnly:false, inviteLimit:10 },
   cart:[], // {productId, quantity}
   favStores:[], // [storeId, ...] — المتاجر المفضلة (بتتزامن مع الحساب لما الميزة تتفتح)
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
@@ -979,6 +993,13 @@ const Auth = {
       const first = document.getElementById('regFirst').value.trim();
       const last = document.getElementById('regLast').value.trim();
       const phone = document.getElementById('regPhone').value.trim();
+      const inviteInput = document.getElementById('regReferral').value.trim().toUpperCase();
+      const IG = window.InviteGate;
+      const inv = (IG && inviteInput) ? await IG.lookup(inviteInput) : null;
+      if(IG && IG.on() && (!inv || inv.full)){
+        applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden');
+        Auth.showError(inv&&inv.full ? 'كود الدعوة ده خلّص دعواته. اطلب كود تاني أو انضم لقائمة الانتظار.' : 'التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح أو انضم لقائمة الانتظار.'); return;
+      }
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: (first+' '+last).trim() });
       Auth.verificationNotice = '';
@@ -999,7 +1020,9 @@ const Auth = {
 
       // معالجة كود دعوة الصديق لو العميل الجديد دخل واحد
       const referralInput = document.getElementById('regReferral').value.trim().toUpperCase();
-      if(referralInput){
+      if(inv && !inv.full){
+        try{ await window.InviteGate.redeem(cred.user.uid, inv, first); }catch(e){ console.error('invite redeem failed', e); }
+      } else if(referralInput){
         try{
           const q = await getDocs(query(collection(db,'users'), where('referralCode','==',referralInput)));
           if(!q.empty){
@@ -1020,6 +1043,7 @@ const Auth = {
         await sendEmailVerification(cred.user); Auth.verificationSentAt = Date.now();
         Auth.verificationNotice = 'بعتنا رابط التأكيد على بريدك. راجع Inbox وSpam.';
       }catch(e){ Auth.verificationNotice = 'الحساب اتعمل، لكن تعذّر إرسال رابط التأكيد. استخدم زر إرسال الرابط للمحاولة تاني.'; }
+      try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
       UI.toast('تم إنشاء حسابك بنجاح 🎉');
     }catch(err){
       Auth.showError(Auth.friendlyError(err));
@@ -1086,7 +1110,7 @@ function showSignedOut(){
   document.getElementById('verifyScreen').classList.add('hidden');
   document.getElementById('accountRecovery').classList.add('hidden');
   // المساعد الذكي متاح للزائر على صفحة البداية — نجيب الإعدادات العامة (قراءة عامة) عشان نعرف لو المفتاح مفتوح
-  getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings={...S.settings,...d.data()}; } updateSupportBtn(); }).catch(()=>updateSupportBtn());
+  getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings={...S.settings,...d.data()}; } updateSupportBtn(); applyInviteUi(); }).catch(()=>updateSupportBtn());
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab(authRoute(location));
@@ -1110,6 +1134,11 @@ async function bootAuthUser(user) {
   if(!psnap.exists()){
     if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+    let gInv=null;
+    if(window.InviteGate?.on()){
+      gInv = await window.InviteGate.lookup(googleSignupCode);
+      if(!gInv || gInv.full){ await signOut(auth); resetSession(); showSignedOut(); applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden'); Auth.showError('التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح في الخانة قبل ما تكمل بجوجل، أو انضم لقائمة الانتظار.'); return; }
+    }
     const consented = await TermsConsent.askGoogleConsent();
     if(!consented){ await signOut(auth); resetSession(); showSignedOut(); return; }
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
@@ -1120,6 +1149,8 @@ async function bootAuthUser(user) {
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
     await saveTermsConsent(user.uid, 'google');
+    try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
+    if(gInv){ try{ await window.InviteGate.redeem(user.uid, gInv, user.displayName||''); }catch(e){ console.error('invite redeem failed', e); } }
     await window.Program?.recordSignup(googleSignupCode);
   }
   bootStage='profile-read-back';
@@ -2043,10 +2074,91 @@ window.refreshVerified = async ()=>{
   if(auth.currentUser && auth.currentUser.emailVerified){ UI.closeModal(); UI.toast('تم تأكيد بريدك ✅ ، كمّل طلبك'); render(); }
   else UI.toast('لسه ماتأكدش، افتح الرابط في بريدك الأول');
 };
+/* ===== التسجيل بالدعوة فقط (مقفول افتراضيًا، الأدمن بيفتحه من الإعدادات) ===== */
+const inviteOn = ()=>!!(S.settings&&S.settings.inviteOnly);
+const inviteLimit = ()=>Math.max(1, parseInt(S.settings&&S.settings.inviteLimit)||10);
+async function lookupInvite(raw){
+  const code=String(raw||'').trim().toUpperCase();
+  if(!/^[A-Z0-9]{6}$/.test(code)) return null;
+  try{ const d=await getDoc(doc(db,'inviteCodes',code)); if(!d.exists()) return null;
+    const v=d.data(); return {code, ownerId:v.ownerId, ownerName:v.ownerName||'', used:v.used||0, full:(v.used||0)>=inviteLimit()};
+  }catch(e){ return null; }
+}
+window.InviteGate = {on:inviteOn, lookup:lookupInvite, redeem:redeemInvite};
+window.applyInviteUi = ()=>{
+  const g=document.getElementById('inviteGate'); if(g) g.classList.toggle('hidden', !inviteOn());
+  const l=document.querySelector('#regReferral')?.closest('.field')?.querySelector('label');
+  if(l) l.textContent = inviteOn() ? 'كود الدعوة (مطلوب)' : 'كود دعوة صديق (اختياري)';
+};
+window.previewInvite = async (v)=>{
+  const el=document.getElementById('inviteBy'); if(!el) return;
+  const code=String(v||'').trim().toUpperCase();
+  if(code.length!==6){ el.classList.add('hidden'); return; }
+  const inv=await lookupInvite(code);
+  if(inv && !inv.full){ el.textContent='دعوة من '+(inv.ownerName||'صديق')+' ✅'; el.classList.remove('hidden'); }
+  else if(inv){ el.textContent='الكود ده خلّص دعواته'; el.classList.remove('hidden'); }
+  else el.classList.add('hidden');
+};
+async function redeemInvite(uid, inv, name){
+  // الدفعة دي بتسجل استخدام واحد للحساب ده وتزوّد عداد الكود، والقواعد بتمنع أي عدّ من غير الاتنين مع بعض.
+  const b=writeBatch(db);
+  b.set(doc(db,'inviteUses',uid),{code:inv.code, ownerId:inv.ownerId, ownerName:inv.ownerName, createdAt:nowMs()});
+  b.update(doc(db,'inviteCodes',inv.code),{used:increment(1)});
+  await b.commit();
+  try{
+    await updateDoc(doc(db,'users',uid),{referredBy:inv.ownerId, invitedByName:inv.ownerName||''});
+    await setDoc(doc(db,'referrals',uid),{refereeId:uid, referrerId:inv.ownerId, status:'PENDING', createdAt:nowMs()});
+  }catch(e){ console.error('invite referral link failed', e); }
+}
+window.openWaitlist = ()=>{
+  UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <p style="line-height:1.9;margin:6px 0 12px">سيب اسمك ورقمك وهنبعتلك دعوة أول ما يفتح مكان.</p>
+    <div class="field"><label>الاسم</label><input id="wlName" maxlength="60"></div>
+    <div class="field"><label>رقم الموبايل</label><input id="wlPhone" type="tel" dir="ltr" maxlength="20"></div>
+    <button class="btn btn-primary" onclick="submitWaitlist()">انضم</button>`);
+};
+window.submitWaitlist = async ()=>{
+  const name=document.getElementById('wlName').value.trim().slice(0,60), phone=document.getElementById('wlPhone').value.replace(/[^0-9+]/g,'').slice(0,20);
+  if(name.length<2||phone.replace(/\D/g,'').length<10) return UI.toast('اكتب اسمك ورقم موبايل صحيح');
+  try{ await setDoc(doc(collection(db,'waitlist')),{name,phone,createdAt:nowMs()}); UI.closeModal(); UI.toast('تمام، سجلناك في قائمة الانتظار ✅'); }
+  catch(e){ UI.toast('تعذّر التسجيل دلوقتي، جرّب بعد شوية'); }
+};
+// كود الدعوة الشخصي: 6 حروف من حسابه. بيتعمل أول مرة العميل يدخل لما التسجيل بالدعوة يكون مفتوح.
+async function ensureInviteCode(){
+  if(!S.profile || S.role!=='customer' || !S.user) return;
+  const code=S.user.uid.slice(-6).toUpperCase();
+  if(S.inviteCode===code) return;
+  try{
+    const r=doc(db,'inviteCodes',code); const d=await getDoc(r);
+    if(!d.exists()) await setDoc(r,{ownerId:S.user.uid, ownerName:S.profile.firstName||'', used:0, createdAt:nowMs()});
+    S.inviteCode=code; S.inviteUsed=d.exists()?(d.data().used||0):0;
+  }catch(e){ console.warn('invite code unavailable', e.code); }
+}
+const myCode = ()=> (inviteOn() && S.inviteCode) || S.profile?.referralCode || '';
+function referralMessage(code){
+  return 'سجّل في تطبيق على بابك بكود الدعوة «'+code+'» وهياخد كل واحد فينا نقاط ولاء هدية بعد أول طلب! 🎁\nhttps://3alababk.com/?ref='+encodeURIComponent(code);
+}
+// بعد التسجيل: شاشة "ادعو صاحبك" مرة واحدة، وتتخطى بسهولة.
+window.skipInviteStep = ()=>{ try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){} UI.closeModal(); };
+window.shareInviteStep = ()=>{ window.shareReferral(); try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){} UI.closeModal(); };
+function maybeShowInviteStep(){
+  let pending=false; try{ pending=sessionStorage.getItem('inviteStepPending')==='1'; }catch(e){}
+  if(!pending || S.role!=='customer' || !S.profile || !S.profile.referralCode) return;
+  if(inviteOn() && !S.inviteCode){ ensureInviteCode().then(()=>{ if(S.inviteCode) renderShell(); }); return; }
+  try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){}
+  const pts=(S.settings&&S.settings.referralBonusPoints)||0;
+  setTimeout(()=>UI.openModal(`<div class="modal-head"><h3>ادعو صاحبك 🎁</h3><button class="modal-close" onclick="skipInviteStep()"><i class="fa-solid fa-xmark"></i></button></div>
+    <p style="line-height:1.9;margin:6px 0 12px">${pts>0?`ابعت كودك لصاحبك، ولما يطلب أول طلب يخدوا انتم الاتنين ${pts} نقطة ولاء.`:'ابعت كودك لصاحبك عشان يجرّب على بابك.'}</p>
+    <div class="profile-referral-code" dir="ltr" style="text-align:center;font-size:22px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:14px">${esc(myCode())}</div>
+    <button class="btn btn-primary" onclick="shareInviteStep()"><i class="fa-brands fa-whatsapp"></i> ابعت لصاحبك على واتساب</button>
+    <button class="btn btn-ghost" style="margin-top:8px" onclick="skipInviteStep()">تخطي</button>`),0);
+}
+// لينك الدعوة (?ref=CODE) بيملّا خانة كود الدعوة في التسجيل لوحده.
+try{ const _rp=(new URLSearchParams(location.search).get('ref')||'').trim().toUpperCase().slice(0,32); const _re=document.getElementById('regReferral'); if(_rp&&_re&&!_re.value) _re.value=_rp; }catch(e){}
 window.shareReferral = ()=>{
-  const code = S.profile?.referralCode || '';
+  const code = myCode();
   if(!code) return UI.toast('كود الدعوة غير متاح، اطلب من الإدارة إصلاح بيانات الحساب');
-  window.open(waLink('', 'استخدم كود الدعوة ده «'+code+'» وسجّل في تطبيق على بابك، وهياخد كل واحد فينا نقاط ولاء هدية! 🎁'),'_blank');
+  window.open(waLink('', referralMessage(code)),'_blank');
   UI.toast('تم فتح واتساب للمشاركة 📤');
 };
 window.copyText = async (t)=>{ try{ await navigator.clipboard.writeText(t); UI.toast('تم النسخ ✅'); }catch(e){ UI.toast(t); } };
@@ -2516,6 +2628,8 @@ async function logSupportMiss(question){
 }
 function renderShell(){
   if(!S.profile) return;
+  maybeShowInviteStep();
+  if(inviteOn() && !S.inviteCode) ensureInviteCode();
   updateSupportBtn();
   const tb = document.getElementById('topbar');
   const bn = document.getElementById('bottomNav');
@@ -2741,12 +2855,21 @@ function activeProducts(){ return S.products.filter(p=>p.isActive && MerchantPla
 function cartLines(){ return S.cart.map(c=>({...c, product:getProduct(c.productId)})).filter(l=>l.product); }
 function cartTotal(){ return cartLines().reduce((a,l)=>a+effPrice(l.product)*l.quantity,0); }
 function cartMerchantCount(){ return new Set(cartLines().map(l=>l.product.merchantId)).size; }
-function cartDeliveryQuote(count){ return DeliveryBatch.deliveryQuote(count==null?cartMerchantCount():count, S.settings.defaultDeliveryFee||0, S.settings.multiStoreDeliveryDiscountPercent); }
+function cartDeliveryQuote(count){
+  const q = DeliveryBatch.deliveryQuote(count==null?cartMerchantCount():count, S.settings.defaultDeliveryFee||0, S.settings.multiStoreDeliveryDiscountPercent);
+  return DeliverySub.applySub(q, S.profile, S.settings, cartTotal(), nowMs());
+}
+function deliverySubRows(q){
+  if(q.subDiscount>0) return `<div class="summary-row" style="color:var(--success)"><span><i class="fa-solid fa-crown"></i> ${q.subFree?'اشتراك التوصيل: توصيل مجاني':'خصم اشتراك التوصيل'} (مرة كل 7 أيام)</span><span>-${fmtMoney(q.subDiscount)}</span></div>`;
+  const st=q.subState; if(st&&st.active&&st.usedThis) return `<div class="summary-row" style="color:var(--ink-soft);font-size:12px"><span>خصم اشتراك التوصيل اتستخدم، الجاي ${new Date(st.nextAt).toLocaleDateString('ar-EG')}</span><span></span></div>`;
+  if(st&&st.active&&st.cfg.minOrder>0) return `<div class="summary-row" style="color:var(--ink-soft);font-size:12px"><span>خصم اشتراك التوصيل بيبدأ من طلب ${fmtMoney(st.cfg.minOrder)}</span><span></span></div>`;
+  return '';
+}
 function deliveryFeeRows(q){
-  if(q.storeCount<2) return `<div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(q.net)}</span></div>`;
+  if(q.storeCount<2) return `<div class="summary-row"><span>رسوم التوصيل</span><span>${fmtMoney(q.net+(q.subDiscount||0))}</span></div>${deliverySubRows(q)}`;
   return `<div class="summary-row"><span>رسوم التوصيل (${q.storeCount} متاجر × ${fmtMoney(q.baseFee)})</span><span>${fmtMoney(q.gross)}</span></div>
       ${q.discount>0?`<div class="summary-row delivery-discount-row" style="color:var(--success)"><span>خصم توصيل متعدد المتاجر (${q.percent}%)</span><span>-${fmtMoney(q.discount)}</span></div>`:''}
-      <div class="summary-row"><span>رسوم التوصيل بعد الخصم (مندوب واحد)</span><span>${fmtMoney(q.net)}</span></div>`;
+      <div class="summary-row"><span>رسوم التوصيل بعد الخصم (مندوب واحد)</span><span>${fmtMoney(q.net+(q.subDiscount||0))}</span></div>${deliverySubRows(q)}`;
 }
 
 /* ================= RECURRING (WEEKLY) ORDERS ================= */
@@ -2845,12 +2968,12 @@ window.confirmRecurringOrder = async (id)=>{
         deliveryAddress:r.addressText, notes:'طلب أسبوعي ثابت',
         subtotal:effPrice(p)*r.quantity, deliveryFee:S.settings.defaultDeliveryFee||0, discount:0, couponCode:null, couponDiscount:0,
         pointsRedeemed:0, pointsDiscount:0, total:(effPrice(p)*r.quantity)+(S.settings.defaultDeliveryFee||0),
-        status:'PENDING_ADMIN', paymentMethod:'الدفع نقدًا عند الاستلام (COD)', merchantCount:1,
+        status:orderInit().status, paymentMethod:'الدفع نقدًا عند الاستلام (COD)', merchantCount:1,
         subOrderIds:[subId], isRecurring:true, createdAt: nowMs()
       });
       tx.set(doc(db,'subOrders',subId), {
         id:subId, parentOrderId:orderId, merchantId:r.merchantId, merchantName:m?m.businessName:'', merchantWhatsapp:m?(m.whatsappNumber||''):'',
-        subtotal:effPrice(p)*r.quantity,...MerchantPlans.feeSnapshot(m,effPrice(p)*r.quantity), status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
+        subtotal:effPrice(p)*r.quantity,...MerchantPlans.feeSnapshot(m,effPrice(p)*r.quantity), status:orderInit().status, ...orderInit().sub,
         customerId:S.user.uid, customerName:r.customerName, customerPhone:r.customerPhone,
         deliveryAddress:r.addressText, notes:'طلب أسبوعي ثابت', createdAt: nowMs(),
         items:[{productId:r.productId, productTitle:r.productTitle, price:effPrice(p), quantity:r.quantity}]
@@ -2858,6 +2981,7 @@ window.confirmRecurringOrder = async (id)=>{
       tx.update(pRef, { stock: increment(-r.quantity) });
       tx.update(doc(db,'recurringOrders',id), { lastHandledWeek: currentWeekKey() });
     });
+    notifyMerchantAuto(orderId, r.merchantId);
     UI.toast('تم تأكيد طلبك الأسبوعي ✅');
   }catch(err){ UI.toast(err && err.message ? err.message : 'حصل خطأ أثناء تأكيد الطلب'); }
 };
@@ -3000,12 +3124,12 @@ window.finalizeGroupBuy = async (gid)=>{
           deliveryAddress:part.addressText, notes:'ضمن تجميعة جيران',
           subtotal:g.groupPrice*part.quantity, deliveryFee:S.settings.defaultDeliveryFee||0, discount:0, couponCode:null, couponDiscount:0,
           pointsRedeemed:0, pointsDiscount:0, total:(g.groupPrice*part.quantity)+(S.settings.defaultDeliveryFee||0),
-          status:'PENDING_ADMIN', paymentMethod:'الدفع نقدًا عند الاستلام (COD)', merchantCount:1,
+          status:orderInit().status, paymentMethod:'الدفع نقدًا عند الاستلام (COD)', merchantCount:1,
           subOrderIds:[subId], groupBuyId:gid, createdAt: nowMs()
         });
         tx.set(doc(db,'subOrders',subId), {
           id:subId, parentOrderId:orderId, merchantId:g.merchantId, merchantName:m?m.businessName:g.merchantName, merchantWhatsapp:m?(m.whatsappNumber||''):'',
-          subtotal:g.groupPrice*part.quantity, ...MerchantPlans.feeSnapshot(m,g.groupPrice*part.quantity), status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
+          subtotal:g.groupPrice*part.quantity, ...MerchantPlans.feeSnapshot(m,g.groupPrice*part.quantity), status:orderInit().status, ...orderInit().sub,
           customerId:part.customerId, customerName:part.customerName, customerPhone:part.phone,
           deliveryAddress:part.addressText, notes:'ضمن تجميعة جيران', createdAt: nowMs(),
           items:[{productId:g.productId, productTitle:g.productTitle, price:g.groupPrice, quantity:part.quantity}]
@@ -3014,6 +3138,7 @@ window.finalizeGroupBuy = async (gid)=>{
       tx.update(pRef, { stock: increment(-totalQty) });
       tx.update(gRef, { status:'SUCCEEDED', finalizedAt: nowMs(), subOrderIds });
     });
+    try{ const gb=(S.openGroupBuys||[]).find(x=>x._id===gid)||(S.myGroupBuys||[]).find(x=>x._id===gid); if(gb&&gb.merchantId) notifyMerchantAuto(gid, gb.merchantId, 'تجميعة جيران جديدة اتنفذت، افتح الطلبات.'); }catch(e){}
     UI.toast('تم تنفيذ التجميعة وإرسال الطلبات لكل المشاركين ✅');
   }catch(err){ UI.toast(err && err.message ? err.message : 'حصل خطأ أثناء تنفيذ التجميعة'); }
 };
@@ -3407,7 +3532,7 @@ function renderCart(){
       ${deliveryFeeRows(quote)}
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(cartTotal()+fee)}</span></div>
     </div>
-    <button class="btn btn-primary" style="margin-top:14px" onclick="go('checkout')"><i class="fa-solid fa-arrow-left"></i> إتمام الطلب</button>
+    <button class="btn btn-primary" style="margin-top:14px" onclick="go('checkout')"><i class="fa-solid fa-arrow-left"></i> إتمام الطلب · ${fmtMoney(cartTotal()+fee)}</button>
   `;
 }
 
@@ -3449,6 +3574,12 @@ function renderCheckout(){
       ${belowMin.map(b=>`<div style="margin-top:6px">• ${esc(b.name)}: أضف ${fmtMoney(b.short)} كمان (الحد الأدنى ${fmtMoney(b.min)})</div>`).join('')}
     </div>` : ''}
 
+    <div class="section-head"><h3>طريقة الدفع</h3></div>
+    <div class="list-gap">${PAYMENT_METHODS.map(m=>`<label class="card ck-opt" style="align-items:center;${m.enabled?'cursor:pointer':'opacity:.55'}">
+      <input type="radio" name="payPick" ${m.id==='COD'?'checked':''} ${m.enabled?'':'disabled'} onchange="S.paymentMethod='${m.id}'"> <span style="font-size:13.5px">${esc(m.label)}${m.soon?' <small style="color:var(--ink-soft)">(قريبًا)</small>':''}</span></label>`).join('')}</div>
+
+    <details class="card ck-more" style="margin-top:14px" ${(coupon||pts||S.ckMoreOpen)?'open':''} ontoggle="S.ckMoreOpen=this.open">
+      <summary style="cursor:pointer;font-size:13.5px;font-weight:700"><i class="fa-solid fa-ticket" style="color:var(--teal)"></i> عندك كوبون أو نقاط أو ملاحظات؟</summary>
     <div class="section-head"><h3>كوبون الخصم</h3></div>
     <div class="card">
       ${coupon ? `
@@ -3480,12 +3611,10 @@ function renderCheckout(){
       `}
     </div>` : ''}
 
-    <div class="section-head"><h3>طريقة الدفع</h3></div>
-    <div class="list-gap">${PAYMENT_METHODS.map(m=>`<label class="card ck-opt" style="align-items:center;${m.enabled?'cursor:pointer':'opacity:.55'}">
-      <input type="radio" name="payPick" ${m.id==='COD'?'checked':''} ${m.enabled?'':'disabled'} onchange="S.paymentMethod='${m.id}'"> <span style="font-size:13.5px">${esc(m.label)}${m.soon?' <small style="color:var(--ink-soft)">(قريبًا)</small>':''}</span></label>`).join('')}</div>
-
     <div class="section-head"><h3>ملاحظات إضافية</h3></div>
     <textarea id="orderNotes" class="ck-input" style="min-height:70px;resize:vertical" placeholder="اذكر أي تفاصيل تخص طلبك (اختياري)"></textarea>
+
+    </details>
 
     <div class="card" style="margin-top:16px">
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
@@ -3495,7 +3624,7 @@ function renderCheckout(){
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(grandTotal)}</span></div>
     </div>
     ${!addr.length?`<div class="hint-box" style="margin-top:14px;border-color:var(--danger);background:var(--danger-tint);color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i> لازم تضيف عنوان توصيل الأول عشان تقدر تأكد الطلب. <button class="btn btn-primary btn-sm" style="width:auto;margin-top:8px" onclick="openAddressForm()">+ إضافة عنوان</button></div>`:''}
-    <button class="btn btn-primary" style="margin-top:14px" ${belowMin.length?'disabled':''} onclick="submitOrder()"><i class="fa-solid fa-check"></i> تأكيد الطلب (${esc(paymentLabel())})</button>
+    <button class="btn btn-primary" style="margin-top:14px" ${belowMin.length?'disabled':''} onclick="submitOrder()"><i class="fa-solid fa-check"></i> تأكيد الطلب · ${fmtMoney(grandTotal)} (${esc(paymentLabel())})</button>
   `;
 }
 window.applyLoyaltyPoints = ()=>{
@@ -3627,6 +3756,14 @@ window.submitOrder = async ()=>{
       const merchantSnaps=await Promise.all(merchantEntries.map(([mid])=>tx.get(doc(db,'merchants',mid))));
       merchantSnaps.forEach(d=>{if(!d.exists() || !MerchantPlans.canOrder(d.data(),S.settings.subsEnforced)) throw new Error('أحد المتاجر لا يستقبل طلبات حاليًا، راجع السلة');});
       merchantSnaps.forEach(d=>{ if(d.data().temporarilyClosed===true) throw new Error(`${d.data().businessName||'أحد المتاجر'} مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي، شيل منتجاته من السلة أو حاول بعدين`); });
+      if(quote.subDiscount>0){
+        // نتأكد جوه الـ Transaction إن خصم الفترة دي ما اتاخدش قبل كده (مثلاً من تابين مفتوحين).
+        const us = await tx.get(doc(db,'users',S.user.uid));
+        const again = DeliverySub.applySub(DeliveryBatch.deliveryQuote(quote.storeCount, quote.baseFee, S.settings.multiStoreDeliveryDiscountPercent), us.data()||{}, S.settings, subtotalNow, nowMs());
+        if(again.subDiscount!==quote.subDiscount) throw new Error('خصم اشتراك التوصيل اتغير، افتح السلة تاني وراجع الإجمالي');
+        tx.update(doc(db,'users',S.user.uid), {deliverySubUsedPeriod: quote.subPeriod});
+        S.profile.deliverySubUsedPeriod = quote.subPeriod;
+      }
       priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
       if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
@@ -3634,8 +3771,8 @@ window.submitOrder = async ()=>{
         id:orderId, customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(),
         customerPhone:S.profile.phone, deliveryAddress:address.fullAddressText, notes,
         subtotal:subtotalNow, deliveryFee:fee, discount:priced.discount, couponCode: coupon?coupon.code:null, couponDiscount:priced.couponDiscount,
-        pointsRedeemed: priced.points, pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, total:priced.total,
-        status:'PENDING_ADMIN', paymentMethod:paymentLabel(), paymentMethodId:(S.paymentMethod||'COD'), merchantCount:Object.keys(groups).length,
+        pointsRedeemed: priced.points, pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, deliverySubDiscount:quote.subDiscount||0, deliverySubCourierPay:quote.courierComp||0, deliverySubPeriod:quote.subPeriod??-1, total:priced.total,
+        status:orderInit().status, paymentMethod:paymentLabel(), paymentMethodId:(S.paymentMethod||'COD'), merchantCount:Object.keys(groups).length,
         subOrderIds: subIds, createdAt: nowMs()
       });
       // ملاحظة: الخصم (كوبون أو نقاط) بيتحمّله المنصة على مستوى الطلب فقط — subtotal كل SubOrder (المستخدم في حساب مستحقات التاجر) بيفضل كامل بدون تأثر
@@ -3646,7 +3783,7 @@ window.submitOrder = async ()=>{
           id:subId, parentOrderId:orderId, merchantId:mid, merchantName:m?m.businessName:'', merchantWhatsapp:m?(m.whatsappNumber||''):'',
           subtotal: items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0),
           ...MerchantPlans.feeSnapshot(m,items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0)),
-          status:'PENDING_ADMIN', merchantContactStatus:null, merchantContactedAt:null, sentByAdminId:null,
+          status:orderInit().status, ...orderInit().sub,
           customerId:S.user.uid,
           customerName:(S.profile.firstName+' '+S.profile.lastName).trim(), customerPhone:S.profile.phone,
           deliveryAddress:address.fullAddressText, notes, createdAt: nowMs(),
@@ -3671,11 +3808,13 @@ window.submitOrder = async ()=>{
         await pushNotification('MERCHANT', l.product.merchantId, 'مخزون منخفض ⚠️', `منتج "${l.product.title}" باقي منه ${newStock} قطع بس، وقتها تجهّز كمية جديدة.`, l.productId);
       }
     }
-    // ❌ ممنوع تمامًا: لا يصل أي إشعار للتاجر عند إنشاء الطلب.
+    // لو قبول الطلبات التلقائي شغّال، التاجر بيتنبه فورًا. لو مقفول: ممنوع أي إشعار للتاجر قبل ما الأدمن يرسل.
+    for(const mid of Object.keys(groups)) await notifyMerchantAuto(orderId, mid);
+    // ❌ ممنوع تمامًا (وقت المراجعة اليدوية): لا يصل أي إشعار للتاجر عند إنشاء الطلب.
     // ✅ إشعار الأدمن فقط، ليراجع الطلب ويرسله للتاجر المناسب يدويًا.
-    await pushNotification('ADMIN', 'ALL', 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}، في انتظار المراجعة والإرسال للتاجر.`, orderId);
+    await pushNotification('ADMIN', 'ALL', 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}${autoApprove()?'، واتبعت للتاجر تلقائيًا.':'، في انتظار المراجعة والإرسال للتاجر.'}`, orderId);
     // إشعار تليجرام للإدارة بنفس نص إشعار التطبيق (fire-and-forget — فشله مش بيأثر على الطلب)
-    TelegramNotify.send([TelegramNotify.ADMIN_KEY], 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}، في انتظار المراجعة والإرسال للتاجر.`);
+    TelegramNotify.send([TelegramNotify.ADMIN_KEY], 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}${autoApprove()?'، واتبعت للتاجر تلقائيًا.':'، في انتظار المراجعة والإرسال للتاجر.'}`);
     S.lastOrderSummary = { id:orderId, total:priced.total, fee, discount:priced.discount, address:address.fullAddressText, payment:paymentLabel(),
       items: lines.map(l=>({title:l.product.title, qty:l.quantity, price:effPrice(l.product)})) };
     S.tab = 'orderDone';   // قبل clearCart عشان شاشة الدفع الفاضية ماترجّعش للسلة
@@ -3716,6 +3855,23 @@ function renderOrderDone(){
 }
 
 /* ================= CUSTOMER: ORDERS ================= */
+function orderSubItems(oid){ return S.mySubOrders.filter(x=>x.parentOrderId===oid).flatMap(x=>x.items||[]); }
+function orderItemsSummary(oid){ const it=orderSubItems(oid); if(!it.length) return ''; const names=it.slice(0,2).map(x=>x.productTitle+(x.quantity>1?' × '+x.quantity:'')); return names.join('، ')+(it.length>2?' و'+(it.length-2)+' كمان':''); }
+const TRACK_HEADLINE = {PENDING_ADMIN:'استلمنا طلبك وبنراجعه',SENT_TO_MERCHANT:'طلبك اتراجع وبيتبعت للتنفيذ',ACCEPTED:'طلبك اتقبل وهيبدأ التجهيز',PREPARING:'طلبك بيتجهز دلوقتي',OUT_FOR_DELIVERY:'طلبك في الطريق إليك',DELIVERED:'طلبك وصل، بالهنا والشفا'};
+function orderHeadline(subs){ const live=subs.filter(x=>x.status!=='REJECTED'&&x.status!=='CANCELLED'); if(!subs.length) return ''; if(!live.length) return 'الطلب اتلغى'; const idx=Math.min(...live.map(x=>CUSTOMER_TRACK_STEPS.findIndex(([k])=>k===x.status))); const k=CUSTOMER_TRACK_STEPS[Math.max(idx,0)][0]; return TRACK_HEADLINE[k]||''; }
+window.reorderOrder = (oid)=>{
+  const items=orderSubItems(oid); if(!items.length){ UI.toast('تفاصيل الطلب مش متاحة'); return; }
+  let added=0, skipped=0;
+  for(const it of items){
+    const p=getProduct(it.productId); const before=(S.cart.find(c=>c.productId===it.productId)||{}).quantity||0;
+    if(!p||!p.isActive||!MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)){ skipped++; continue; }
+    const _t=UI.toast; UI.toast=()=>{}; try{ window.addToCart(it.productId,it.quantity); } finally { UI.toast=_t; }
+    const after=(S.cart.find(c=>c.productId===it.productId)||{}).quantity||0;
+    if(after>before) added++; else skipped++;
+  }
+  UI.toast(added? (skipped?`أضفنا ${added} منتج للسلة، و${skipped} مش متاحين دلوقتي`:'أضفنا منتجات الطلب للسلة 🛒') : 'المنتجات دي مش متاحة دلوقتي');
+  if(added) go('cart');
+};
 function renderOrders(){
   if(!S.myOrders.length) return emptyState('fa-receipt','لا توجد طلبات بعد','ابدأ التسوق من المتاجر المتاحة');
   return `<div class="list-gap">${S.myOrders.map(o=>{
@@ -3723,8 +3879,10 @@ function renderOrders(){
     return `<div class="order-card" onclick="openOrderDetail('${o.id}')">
       <div class="top-row"><span class="oid">#${o.id}</span><span class="status-pill status-${st.color==='success'?'active':st.color==='danger'?'suspended':'pending'}"><i class="fa-solid ${o.status==='DELIVERED'?'fa-circle-check':(st.color==='danger')?'fa-circle-xmark':o.status==='OUT_FOR_DELIVERY'?'fa-motorcycle':o.status==='PREPARING'?'fa-box-open':'fa-clock'}"></i> ${st.label}</span></div>
       <div class="date"><i class="fa-regular fa-calendar"></i> ${fmtDate(o.createdAt)} · ${o.merchantCount} متجر</div>
+      <div class="order-items-line" style="font-size:12.5px;color:var(--ink-soft);margin-top:6px">${esc(orderItemsSummary(o.id))}</div>
       <div class="divider" style="margin:10px 0"></div>
       <div class="row-between"><span style="font-size:13px;color:var(--ink-soft)">الإجمالي</span><b>${fmtMoney(o.total)}</b></div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="event.stopPropagation();reorderOrder('${o.id}')"><i class="fa-solid fa-rotate-right"></i> اطلب تاني</button>
     </div>`;
   }).join('')}</div>`;
 }
@@ -3815,6 +3973,7 @@ function renderOrderDetail(){
       <p style="font-size:12.5px;color:var(--ink-soft);margin:8px 0"><i class="fa-solid fa-location-dot"></i> ${esc(o.deliveryAddress)}</p>
       ${o.merchantCount>1?`<div class="hint-box multi-store-track" style="margin-top:8px"><i class="fa-solid fa-motorcycle"></i> طلبك من ${o.merchantCount} متاجر وبيوصلك مع مندوب واحد في توصيلة واحدة.${courierName?` المندوب: <b>${esc(courierName)}</b>`:''}<div style="margin-top:6px;font-size:12px">استلم المندوب ${subs.filter(x=>x.pickedUpAt||x.status==='DELIVERED').length} من ${subs.filter(x=>x.status!=='REJECTED'&&x.status!=='CANCELLED').length} أجزاء</div></div>`:''}
     </div>
+    ${orderHeadline(subs)?`<div class="card order-headline" style="margin-top:12px;text-align:center;font-weight:800;font-size:15px;color:var(--teal)">${orderHeadline(subs)}</div>`:''}
     ${subs.map((s,partIdx)=>{
       const stepIdx = CUSTOMER_TRACK_STEPS.findIndex(([k])=>k===s.status);
       const rejected = s.status==='REJECTED'||s.status==='CANCELLED';
@@ -3842,12 +4001,14 @@ function renderOrderDetail(){
     <div class="card" style="margin-top:12px">
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(o.subtotal)}</span></div>
       ${o.deliveryDiscount>0?`<div class="summary-row"><span>رسوم التوصيل (${o.merchantCount} متاجر)</span><span>${fmtMoney(o.deliveryFeeGross)}</span></div><div class="summary-row" style="color:var(--success)"><span>خصم توصيل متعدد المتاجر (${o.deliveryDiscountPercent}%)</span><span>-${fmtMoney(o.deliveryDiscount)}</span></div>`:''}
+      ${o.deliverySubDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>اشتراك التوصيل</span><span>-${fmtMoney(o.deliverySubDiscount)}</span></div>`:''}
       <div class="summary-row"><span>${o.deliveryDiscount>0?'رسوم التوصيل بعد الخصم':'رسوم التوصيل'}</span><span>${fmtMoney(o.deliveryFee)}</span></div>
       ${o.couponDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم الكوبون${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.couponDiscount)}</span></div>`:''}
       ${o.pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط الولاء (${o.pointsRedeemed} نقطة)</span><span>-${fmtMoney(o.pointsDiscount)}</span></div>`:''}
       ${!o.couponDiscount && !o.pointsDiscount && o.discount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.discount)}</span></div>`:''}
       <div class="summary-row total"><span>الإجمالي الكلي</span><span>${fmtMoney(o.total)}</span></div>
     </div>
+    <button class="btn btn-primary" style="margin-top:14px" onclick="reorderOrder('${o.id}')"><i class="fa-solid fa-rotate-right"></i> اطلب تاني</button>
   `;
 }
 
@@ -3925,12 +4086,19 @@ function renderProfile(){
       <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0">${esc(S.profile.email||'')}</p>
       ${S.settings.loyaltyEnabled!==false?`<div class="badge-chip" style="margin-top:10px;display:inline-flex;gap:6px"><i class="fa-solid fa-gift" style="color:var(--gold)"></i> ${points} نقطة ولاء${redeemValue?' (تساوي '+fmtMoney(roundMoney(points*redeemValue))+')':''}</div>`:''}
     </div>
+    ${S.settings.deliverySubOn&&S.role==='customer'?(()=>{const st=DeliverySub.subState(S.profile,S.settings,nowMs()),c=st.cfg;
+      const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، عايز أشترك في اشتراك التوصيل');
+      return `<div class="card" style="margin-top:12px"><p style="margin:0 0 6px;font-weight:700"><i class="fa-solid fa-crown" style="color:var(--gold)"></i> اشتراك التوصيل</p>`+
+      (st.active?`<p style="margin:0;font-size:13px;line-height:1.8">شغال حتى ${new Date(S.profile.deliverySubUntil).toLocaleDateString('ar-EG')}. ${st.usedThis?'خصم الأسبوع ده اتستخدم، الجاي '+new Date(st.nextAt).toLocaleDateString('ar-EG')+'.':'توصيلة الأسبوع ده متاحة دلوقتي.'}</p>`
+      :`<p style="margin:0 0 10px;font-size:13px;line-height:1.8">${fmtMoney(c.price)} في ${c.days} يوم: توصيل مجاني مرة كل 7 أيام للطلب من متجر واحد (أو خصم ${fmtMoney(c.discount)} لو من أكتر من متجر)، للطلبات من ${fmtMoney(c.minOrder)}. الدفع كاش.</p>${href?`<a class="btn btn-primary btn-sm" style="width:auto" href="${href}" target="_blank" rel="noopener">اشترك عن طريق الدعم</a>`:''}`)+`</div>`;})():''}
     ${S.profile.referralCode?`<div class="card" style="margin-top:12px;text-align:center">
       <p style="font-size:13px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-user-group" style="color:var(--teal)"></i> ادعُ صديقك وخدوا نقاط مع بعض</p>
-      <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(S.profile.referralCode)}</div>
+      <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(myCode())}</div>
+      ${inviteOn()&&S.inviteCode?`<p style="font-size:12.5px;margin:0 0 10px;color:var(--ink-soft)">استخدمت ${S.inviteUsed||0} من ${inviteLimit()} دعوة</p>`:''}
+      ${S.profile.invitedByName?`<p style="font-size:12.5px;margin:0 0 10px;color:var(--teal)">اتدعيت بواسطة ${esc(S.profile.invitedByName)}</p>`:''}
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" style="width:auto" onclick="shareReferral()"><i class="fa-brands fa-whatsapp"></i> شارك كودك</button>
-        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
+        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(myCode())}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
       </div>
     </div>`:''}
     ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3>${memberRequestStatusHTML()}<p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('service')">طلب الانضمام كمقدم خدمة</button>`:''}<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
@@ -5676,9 +5844,22 @@ function renderAdminSettings(){
     </div>
 
     <div class="card" style="margin-top:16px">
+      <h3 style="margin:0 0 14px;font-size:15px">اشتراك التوصيل</h3>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="setDsubOn" ${s.deliverySubOn?'checked':''}> الاشتراك شغال (مقفول افتراضيًا)</label>
+      <div class="field"><label>سعر الاشتراك (جنيه)</label><input id="setDsubPrice" type="number" min="0" value="${esc(String(s.deliverySubPrice??100))}"></div>
+      <div class="field"><label>مبلغ المنصة للمندوب (جنيه): متجر واحد = توصيل مجاني والمنصة تدفع المبلغ ده للمندوب، أكتر من متجر = يتخصم من الإجمالي. مرة كل 7 أيام</label><input id="setDsubDiscount" type="number" min="0" value="${esc(String(s.deliverySubDiscount??25))}"></div>
+      <div class="field"><label>أقل قيمة للطلب عشان الخصم يشتغل (جنيه)</label><input id="setDsubMin" type="number" min="0" value="${esc(String(s.deliverySubMinOrder??150))}"></div>
+      <div class="field"><label>مدة الاشتراك (يوم)</label><input id="setDsubDays" type="number" min="1" value="${esc(String(s.deliverySubDays||30))}"></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> الدفع كاش. بعد ما تستلم فلوس العميل، فعّل اشتراكه من قايمة المستخدمين (زرار «تفعيل اشتراك التوصيل»).</p>
+      <button class="btn btn-primary" onclick="saveDeliverySubSettings()">حفظ</button>
+    </div>
+    <div class="card" style="margin-top:16px">
       <h3 style="margin:0 0 14px;font-size:15px">دعوة صديق</h3>
       <div class="field"><label>عدد النقاط اللي ياخدها كل من الصديقين (الداعي والمدعو)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
       <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، الاتنين ياخدوا نفس عدد النقاط دي تلقائيًا.</p>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:10px 0"><input type="checkbox" id="setInviteOnly" ${s.inviteOnly?'checked':''}> التسجيل بالدعوة فقط (مقفول افتراضيًا)</label>
+      <div class="field"><label>عدد الدعوات لكل عميل</label><input id="setInviteLimit" type="number" step="1" min="1" value="${esc(String(s.inviteLimit||10))}"></div>
+      <button class="btn btn-ghost btn-sm" style="width:auto;margin-bottom:10px" onclick="showWaitlist()"><i class="fa-solid fa-list"></i> قائمة الانتظار</button><br>
       <button class="btn btn-primary" onclick="saveReferralSettings()">حفظ</button>
     </div>
     `:''}
@@ -5719,12 +5900,47 @@ function renderAdminSettings(){
     ${sec==='ops'?`
     <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام داخل التطبيق</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setMemberRequests" ${s.memberRequestsEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">طلبات التاجر ومقدم الخدمة والمندوب تظهر في قائمة الأعضاء وتستنى موافقتك. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveMemberRequestsSwitch()">حفظ</button></div>
     <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-calendar-check" style="color:var(--teal)"></i> قسم الخدمات (حجز مواعيد)</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setServices" ${s.servicesEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">عيادات ومدرسين وصيانة منزلية. مقدم الخدمة تاجر بنوع خدمات، بيشترك بنفس الباقات، وبيدير مواعيده وحجوزاته من لوحته. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveServicesSwitch()">حفظ</button></div>
+    <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-bolt" style="color:var(--teal)"></i> قبول الطلبات تلقائيًا</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setAutoApprove" ${s.autoApproveOrders===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">لما يكون شغّال، الطلب الجديد بيوصل للتاجر مباشرة من غير ما الإدارة تراجعه وتبعته. الإدارة لسه بتشوفه وتقدر تلغيه. لازم قواعد Firestore تكون متحدّثة الأول وإلا الطلبات هتفشل. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveAutoApproveSwitch()">حفظ</button></div>
     `:''}
   `;
 }
+window.saveAutoApproveSwitch = async ()=>{
+  if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
+  const autoApproveOrders=document.getElementById('setAutoApprove').checked;
+  await setDoc(doc(db,'settings','app'),{autoApproveOrders},{merge:true});
+  await logAudit('تعديل قبول الطلبات تلقائيًا',autoApproveOrders?'تشغيل':'إيقاف');
+  UI.toast(autoApproveOrders?'الطلبات هتروح للتاجر مباشرة ✅':'الطلبات هترجع لمراجعة الإدارة');
+};
+window.showWaitlist = async ()=>{
+  try{
+    const q=await getDocs(query(collection(db,'waitlist'),orderBy('createdAt','desc'),limit(100)));
+    const rows=q.docs.map(d=>d.data()).map(w=>`<div class="card" style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px"><span>${esc(w.name||'')}</span><a dir="ltr" href="${waLink(w.phone||'','')}" target="_blank" rel="noopener">${esc(w.phone||'')}</a></div>`).join('');
+    UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار (${q.size})</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>${rows||'<p>لسه مفيش حد.</p>'}`);
+  }catch(e){ UI.toast('تعذّر تحميل القائمة (محتاج قواعد Firebase الجديدة)'); }
+};
+window.saveDeliverySubSettings = async ()=>{
+  const n=(id,d)=>{ const v=parseFloat(document.getElementById(id).value); return Number.isFinite(v)&&v>=0?v:d; };
+  const v={deliverySubOn:!!document.getElementById('setDsubOn').checked, deliverySubPrice:n('setDsubPrice',100), deliverySubDiscount:n('setDsubDiscount',25), deliverySubMinOrder:n('setDsubMin',150), deliverySubDays:Math.max(1,Math.floor(n('setDsubDays',30)))};
+  await setDoc(doc(db,'settings','app'), v, {merge:true});
+  await logAudit('تعديل إعدادات اشتراك التوصيل', JSON.stringify(v));
+  UI.toast('تم حفظ إعدادات اشتراك التوصيل ✅');
+};
+window.activateDeliverySub = async (uid)=>{
+  const u=(S.allUsers||[]).find(x=>x._id===uid); if(!u) return;
+  const cfg=DeliverySub.subSettings(S.settings), now=nowMs();
+  const active=DeliverySub.subPeriod(u,now)>=0;
+  if(!confirm(active?`تمديد اشتراك التوصيل ${cfg.days} يوم؟`:`تفعيل اشتراك التوصيل ${cfg.days} يوم؟ اتأكد إنك استلمت ${cfg.price} جنيه.`)) return;
+  const patch = active ? {deliverySubUntil:Number(u.deliverySubUntil)+cfg.days*86400000}
+    : {deliverySubStartedAt:now, deliverySubUntil:now+cfg.days*86400000, deliverySubUsedPeriod:-1};
+  await updateDoc(doc(db,'users',uid), patch);
+  await logAudit('تفعيل اشتراك التوصيل', `${u.email||uid}`);
+  Object.assign(u, patch); UI.toast('تم تفعيل الاشتراك ✅'); go(S.tab);
+};
 window.saveReferralSettings = async ()=>{
   const referralBonusPoints = Math.max(0, parseInt(document.getElementById('setReferralBonus').value)||0);
-  await setDoc(doc(db,'settings','app'), {referralBonusPoints}, {merge:true});
+  const inviteOnly = !!document.getElementById('setInviteOnly')?.checked;
+  const inviteLimit = Math.min(1000, Math.max(1, parseInt(document.getElementById('setInviteLimit')?.value)||10));
+  await setDoc(doc(db,'settings','app'), {referralBonusPoints, inviteOnly, inviteLimit}, {merge:true});
   await logAudit('تعديل إعدادات دعوة الصديق', `نقاط المكافأة: ${referralBonusPoints}`);
   UI.toast('تم حفظ إعدادات دعوة الصديق ✅');
 };
@@ -5830,6 +6046,7 @@ function renderAdminUsers(){
           <div><b style="font-size:13.5px">${esc((u.firstName||'')+' '+(u.lastName||''))}</b>
             <div class="admin-member-contact">${esc(u.email||'')} ${u.phone?' · '+esc(u.phone):''}</div>
             <div class="admin-code" dir="ltr">${esc(u.referralCode||'')}</div>
+            ${u.role==='CUSTOMER'&&S.settings.deliverySubOn?`<div style="margin-top:6px;font-size:12px">${DeliverySub.subPeriod(u,nowMs())>=0?'<span style="color:var(--success)">اشتراك توصيل حتى '+new Date(u.deliverySubUntil).toLocaleDateString('ar-EG')+'</span> ':''}<button class="btn btn-ghost btn-sm" style="width:auto;font-size:11px;padding:4px 8px" onclick="activateDeliverySub('${u._id}')"><i class="fa-solid fa-crown"></i> ${DeliverySub.subPeriod(u,nowMs())>=0?'تمديد':'تفعيل'} اشتراك التوصيل</button></div>`:''}
           </div>
           <span class="badge-chip">${roleLabel}</span>
         </div>
