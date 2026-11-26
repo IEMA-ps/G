@@ -61,7 +61,7 @@ img{max-width:100%; display:block;}
 .auth-hero .logo{font-size:34px; font-weight:800;}
 .auth-hero .logo i{color:var(--gold);}
 .auth-hero p{color:var(--on-teal-soft); margin-top:8px; font-size:14.5px;}
-.auth-card{background:var(--paper); color:var(--ink); border-radius:26px 26px 0 0; padding:28px 22px 40px; flex:1; box-shadow:var(--shadow);}
+.auth-card{background:var(--paper); color:var(--ink); border-radius:26px 26px 0 0; padding:28px 22px 120px; flex:1; box-shadow:var(--shadow);} /* الحشوة السفلية الزيادة بتخلي آخر الفورم يعدّي فوق زرار الدعم العائم */
 .auth-tabs{display:flex; background:var(--teal-tint); border-radius:999px; padding:4px; margin-bottom:22px;}
 .auth-tab{flex:1; text-align:center; padding:10px 0; border:none; background:transparent; border-radius:999px; font-weight:700; font-size:14px; color:var(--ink-soft); transition:.2s;}
 .auth-tab.active{background:var(--teal); color:#fff;}
@@ -270,6 +270,9 @@ img{max-width:100%; display:block;}
 
 .support-btn{position:fixed; bottom:98px; left:max(12px, calc(50% - 228px)); z-index:18; display:flex; align-items:center; gap:6px; background:var(--whatsapp); color:#fff; border:none; border-radius:999px; padding:9px 14px; font-size:12.5px; font-weight:700; box-shadow:var(--shadow);}
 .support-btn.hidden{display:none;}
+/* على شاشة الدخول الزرار بينزل لآخر الشاشة عشان ميغطيش زرار الدخول ولا زرار جوجل على الموبايل */
+body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
+@media(min-width:600px){ body:has(#authScreen:not(.hidden)) .support-btn{left:12px;} } /* على الشاشات العريضة يروح لركن الشاشة بره الكارت خالص */
 .sc-panel{display:flex;flex-direction:column;max-height:82vh}
 .sc-head{display:flex;justify-content:space-between;align-items:center;padding:4px 2px 10px;border-bottom:1px solid var(--line);margin-bottom:8px}
 .sc-head b{font-size:15px;display:flex;align-items:center;gap:8px;color:var(--teal)}
