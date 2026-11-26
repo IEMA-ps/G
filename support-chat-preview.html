@@ -488,6 +488,19 @@ if(st==='landing'){
         {from:'bot', text:SC.replyFor(f2, f2.id===f1.id)}
       ],
       chips: SC.relatedChipsFor(f2, faqs)});
+  }else if(st==='artisan'){
+    // سيناريو إسلام التاني: صنايعي عايز يسجل وعنده حساب عادي
+    const q1='محتاج طريقه تسجيل صنايعي', q2='انا كده مسجل عادى عايز تحوله لصنايعي';
+    const f1=SC.matchFaq(q1, faqs), f2=SC.matchFaq(q2, faqs);
+    sheet.innerHTML = SC.panelHTML({esc, guest:true, needLead:false, busy:false, waAvailable:true,
+      msgs:[
+        {from:'bot', text:SC.greeting('guest', true, 'محمد')},
+        {from:'user', text:q1},
+        {from:'bot', text:SC.replyFor(f1, false)},
+        {from:'user', text:q2},
+        {from:'bot', text:SC.replyFor(f2, f2.id===f1.id)}
+      ],
+      chips: SC.relatedChipsFor(f2, faqs)});
   }else if(st==='repeat'){
     // سيناريو التكرار: نفس السؤال مرتين ورا بعض، التالتة بيدور على دعم بشري
     const q='عندي حساب عادي وعايز افتح متجر';
