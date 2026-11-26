@@ -112,11 +112,14 @@ body>#pwaInstallBtn{background:#30251F!important;border:1px solid #30251F!import
 @media (min-width:900px){
   body:has(#authScreen:not(.hidden)){background:#E75025}
   body:has(#authScreen:not(.hidden)) #appRoot{max-width:none;margin:0;box-shadow:none;background:#E75025}
-  #authScreen{display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,520px);align-items:center;min-height:100vh;column-gap:clamp(24px,5vw,96px);padding:32px clamp(24px,6vw,120px)}
+  #authScreen{box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1fr) minmax(420px,520px);align-items:center;min-height:100vh;column-gap:clamp(24px,5vw,96px);padding:32px clamp(24px,6vw,120px)}
   #authScreen #teamLanding{grid-column:1/-1;max-width:760px;margin:0 auto 16px;color:var(--ink)}
   #authScreen .auth-hero{padding:0;align-self:center}
   #authScreen .auth-hero .logo{font-size:56px}
   #authScreen .auth-hero .logo img{width:120px!important;height:120px!important;margin-bottom:20px!important}
   #authScreen .auth-hero p{font-size:20px;margin-top:12px}
-  #authScreen .auth-card{flex:none;border-radius:28px;padding:32px 32px 28px;box-shadow:0 18px 50px rgba(0,0,0,.18);max-height:calc(100vh - 64px);overflow-y:auto}
+  #authScreen .auth-card{flex:none;border-radius:28px;padding:32px 32px 28px;box-shadow:0 18px 50px rgba(0,0,0,.18)}
+  /* من غير شريط سكرول ظاهر جنب شاشة الدخول. السكرول بالماوس والكيبورد شغال عادي */
+  html:has(#authScreen:not(.hidden)){scrollbar-width:none}
+  html:has(#authScreen:not(.hidden))::-webkit-scrollbar{display:none}
 }
