@@ -2148,7 +2148,7 @@ function maybeShowInviteStep(){
   try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){}
   const pts=(S.settings&&S.settings.referralBonusPoints)||0;
   setTimeout(()=>UI.openModal(`<div class="modal-head"><h3>ادعو صاحبك 🎁</h3><button class="modal-close" onclick="skipInviteStep()"><i class="fa-solid fa-xmark"></i></button></div>
-    <p style="line-height:1.9;margin:6px 0 12px">${pts>0?`ابعت كودك لصاحبك، ولما يطلب أول طلب يخدوا انتم الاتنين ${pts} نقطة ولاء.`:'ابعت كودك لصاحبك عشان يجرّب على بابك.'}</p>
+    <p style="line-height:1.9;margin:6px 0 12px">${pts>0?`ابعت كودك لصاحبك، ولما يطلب أول طلب ليه هتاخد ${pts} نقطة ولاء.`:'ابعت كودك لصاحبك عشان يجرّب على بابك.'}</p>
     <div class="profile-referral-code" dir="ltr" style="text-align:center;font-size:22px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:14px">${esc(myCode())}</div>
     <button class="btn btn-primary" onclick="shareInviteStep()"><i class="fa-brands fa-whatsapp"></i> ابعت لصاحبك على واتساب</button>
     <button class="btn btn-ghost" style="margin-top:8px" onclick="skipInviteStep()">تخطي</button>`),0);
@@ -3809,7 +3809,11 @@ window.submitOrder = async ()=>{
       }
     }
     // لو قبول الطلبات التلقائي شغّال، التاجر بيتنبه فورًا. لو مقفول: ممنوع أي إشعار للتاجر قبل ما الأدمن يرسل.
-    for(const mid of Object.keys(groups)) await notifyMerchantAuto(orderId, mid);
+    for(const [mid, items] of Object.entries(groups)){
+      const sub = items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0);
+      const full = `طلب #${orderId}\n`+items.map(l=>`• ${l.product.title} × ${l.quantity} = ${fmtMoney(effPrice(l.product)*l.quantity)}`).join('\n')+`\nإجمالي المنتجات: ${fmtMoney(sub)}\nالعميل: ${(S.profile.firstName+' '+S.profile.lastName).trim()}${S.profile.phone?' — '+S.profile.phone:''}\nالعنوان: ${address.fullAddressText}${notes?'\nملاحظات: '+notes:''}\nالدفع: ${paymentLabel()}`;
+      await notifyMerchantAuto(orderId, mid, full);
+    }
     // ❌ ممنوع تمامًا (وقت المراجعة اليدوية): لا يصل أي إشعار للتاجر عند إنشاء الطلب.
     // ✅ إشعار الأدمن فقط، ليراجع الطلب ويرسله للتاجر المناسب يدويًا.
     await pushNotification('ADMIN', 'ALL', 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}${autoApprove()?'، واتبعت للتاجر تلقائيًا.':'، في انتظار المراجعة والإرسال للتاجر.'}`, orderId);
@@ -5855,8 +5859,8 @@ function renderAdminSettings(){
     </div>
     <div class="card" style="margin-top:16px">
       <h3 style="margin:0 0 14px;font-size:15px">دعوة صديق</h3>
-      <div class="field"><label>عدد النقاط اللي ياخدها كل من الصديقين (الداعي والمدعو)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
-      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، الاتنين ياخدوا نفس عدد النقاط دي تلقائيًا.</p>
+      <div class="field"><label>عدد النقاط اللي ياخدها العميل الداعي (الصديق الجديد مبياخدش)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
+      <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، العميل الداعي بس ياخد النقاط دي تلقائيًا.</p>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:10px 0"><input type="checkbox" id="setInviteOnly" ${s.inviteOnly?'checked':''}> التسجيل بالدعوة فقط (مقفول افتراضيًا)</label>
       <div class="field"><label>عدد الدعوات لكل عميل</label><input id="setInviteLimit" type="number" step="1" min="1" value="${esc(String(s.inviteLimit||10))}"></div>
       <button class="btn btn-ghost btn-sm" style="width:auto;margin-bottom:10px" onclick="showWaitlist()"><i class="fa-solid fa-list"></i> قائمة الانتظار</button><br>
