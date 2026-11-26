@@ -503,7 +503,9 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
         <div class="field"><label>البريد الإلكتروني</label><input type="email" id="regEmail" required></div>
         <div class="field"><label>كلمة المرور</label><input type="password" id="regPassword" required minlength="8" autocomplete="new-password" aria-describedby="regPasswordHint regPasswordChecks" oninput="updatePasswordChecklist(this,'regPasswordChecks')" placeholder="8 أحرف على الأقل"><p id="regPasswordHint" class="password-hint">8 أحرف على الأقل، حرف إنجليزي كبير وصغير ورقم. الرموز مسموحة ومش إلزامية.</p><div id="regPasswordChecks"></div></div>
         <p class="location-note">اختار منطقتك لعرض المتاجر المسجلة في نفس المنطقة، مش حسب مسافة فعلية. عنوان التوصيل بالتفصيل تضيفه بعد الدخول.</p><div id="regLocation"></div>
-        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase"></div>
+        <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase" oninput="previewInvite(this.value)">
+        <div id="inviteBy" class="hidden" style="font-size:12.5px;color:var(--teal);margin-top:6px"></div>
+        <div id="inviteGate" class="hidden" style="font-size:12.5px;line-height:1.8;margin-top:6px;color:var(--ink-soft)">التسجيل دلوقتي بالدعوة بس. اطلب كود من صاحب ليه حساب، أو <a href="#" onclick="openWaitlist();return false" style="color:var(--teal);font-weight:700">انضم لقائمة الانتظار</a>.</div></div>
 
         <div class="terms-check"><input type="checkbox" id="regTerms" required aria-describedby="regTermsHint"><label for="regTerms">أوافق على <a href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a></label></div>
         <p id="regTermsHint" class="terms-hint">افتح الشروط وراجعها قبل الموافقة. الصفحة بتفتح في تبويب جديد من غير ما تضيع بيانات التسجيل.</p>
@@ -754,7 +756,7 @@ const S = {
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
   myAgent:null, myAgentSubOrders:[], agentNoLink:false, activeAgents:[], myRatings:[], appliedCoupon:null, appliedPoints:null,
   notifications:[],
-  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50 },
+  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50, inviteOnly:false, inviteLimit:10 },
   cart:[], // {productId, quantity}
   favStores:[], // [storeId, ...] — المتاجر المفضلة (بتتزامن مع الحساب لما الميزة تتفتح)
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
@@ -979,6 +981,12 @@ const Auth = {
       const first = document.getElementById('regFirst').value.trim();
       const last = document.getElementById('regLast').value.trim();
       const phone = document.getElementById('regPhone').value.trim();
+      const inviteInput = document.getElementById('regReferral').value.trim().toUpperCase();
+      const inv = inviteInput ? await lookupInvite(inviteInput) : null;
+      if(inviteOn() && (!inv || inv.full)){
+        applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden');
+        Auth.showError(inv&&inv.full ? 'كود الدعوة ده خلّص دعواته. اطلب كود تاني أو انضم لقائمة الانتظار.' : 'التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح أو انضم لقائمة الانتظار.'); return;
+      }
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       await updateProfile(cred.user, { displayName: (first+' '+last).trim() });
       Auth.verificationNotice = '';
@@ -999,7 +1007,9 @@ const Auth = {
 
       // معالجة كود دعوة الصديق لو العميل الجديد دخل واحد
       const referralInput = document.getElementById('regReferral').value.trim().toUpperCase();
-      if(referralInput){
+      if(inv && !inv.full){
+        try{ await redeemInvite(cred.user.uid, inv, first); }catch(e){ console.error('invite redeem failed', e); }
+      } else if(referralInput){
         try{
           const q = await getDocs(query(collection(db,'users'), where('referralCode','==',referralInput)));
           if(!q.empty){
@@ -1087,7 +1097,7 @@ function showSignedOut(){
   document.getElementById('verifyScreen').classList.add('hidden');
   document.getElementById('accountRecovery').classList.add('hidden');
   // المساعد الذكي متاح للزائر على صفحة البداية — نجيب الإعدادات العامة (قراءة عامة) عشان نعرف لو المفتاح مفتوح
-  getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings={...S.settings,...d.data()}; } updateSupportBtn(); }).catch(()=>updateSupportBtn());
+  getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings={...S.settings,...d.data()}; } updateSupportBtn(); applyInviteUi(); }).catch(()=>updateSupportBtn());
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
   Auth.switchTab(authRoute(location));
@@ -1111,6 +1121,11 @@ async function bootAuthUser(user) {
   if(!psnap.exists()){
     if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+    let gInv=null;
+    if(inviteOn()){
+      gInv = await lookupInvite(googleSignupCode);
+      if(!gInv || gInv.full){ await signOut(auth); resetSession(); showSignedOut(); applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden'); Auth.showError('التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح في الخانة قبل ما تكمل بجوجل، أو انضم لقائمة الانتظار.'); return; }
+    }
     const consented = await TermsConsent.askGoogleConsent();
     if(!consented){ await signOut(auth); resetSession(); showSignedOut(); return; }
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
@@ -1122,6 +1137,7 @@ async function bootAuthUser(user) {
     });
     await saveTermsConsent(user.uid, 'google');
     try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
+    if(gInv){ try{ await redeemInvite(user.uid, gInv, user.displayName||''); }catch(e){ console.error('invite redeem failed', e); } }
     await window.Program?.recordSignup(googleSignupCode);
   }
   bootStage='profile-read-back';
@@ -2045,6 +2061,66 @@ window.refreshVerified = async ()=>{
   if(auth.currentUser && auth.currentUser.emailVerified){ UI.closeModal(); UI.toast('تم تأكيد بريدك ✅ ، كمّل طلبك'); render(); }
   else UI.toast('لسه ماتأكدش، افتح الرابط في بريدك الأول');
 };
+/* ===== التسجيل بالدعوة فقط (مقفول افتراضيًا، الأدمن بيفتحه من الإعدادات) ===== */
+const inviteOn = ()=>!!(S.settings&&S.settings.inviteOnly);
+const inviteLimit = ()=>Math.max(1, parseInt(S.settings&&S.settings.inviteLimit)||10);
+async function lookupInvite(raw){
+  const code=String(raw||'').trim().toUpperCase();
+  if(!/^[A-Z0-9]{6}$/.test(code)) return null;
+  try{ const d=await getDoc(doc(db,'inviteCodes',code)); if(!d.exists()) return null;
+    const v=d.data(); return {code, ownerId:v.ownerId, ownerName:v.ownerName||'', used:v.used||0, full:(v.used||0)>=inviteLimit()};
+  }catch(e){ return null; }
+}
+window.applyInviteUi = ()=>{
+  const g=document.getElementById('inviteGate'); if(g) g.classList.toggle('hidden', !inviteOn());
+  const l=document.querySelector('#regReferral')?.closest('.field')?.querySelector('label');
+  if(l) l.textContent = inviteOn() ? 'كود الدعوة (مطلوب)' : 'كود دعوة صديق (اختياري)';
+};
+window.previewInvite = async (v)=>{
+  const el=document.getElementById('inviteBy'); if(!el) return;
+  const code=String(v||'').trim().toUpperCase();
+  if(code.length!==6){ el.classList.add('hidden'); return; }
+  const inv=await lookupInvite(code);
+  if(inv && !inv.full){ el.textContent='دعوة من '+(inv.ownerName||'صديق')+' ✅'; el.classList.remove('hidden'); }
+  else if(inv){ el.textContent='الكود ده خلّص دعواته'; el.classList.remove('hidden'); }
+  else el.classList.add('hidden');
+};
+async function redeemInvite(uid, inv, name){
+  // الدفعة دي بتسجل استخدام واحد للحساب ده وتزوّد عداد الكود، والقواعد بتمنع أي عدّ من غير الاتنين مع بعض.
+  const b=writeBatch(db);
+  b.set(doc(db,'inviteUses',uid),{code:inv.code, ownerId:inv.ownerId, ownerName:inv.ownerName, createdAt:nowMs()});
+  b.update(doc(db,'inviteCodes',inv.code),{used:increment(1)});
+  await b.commit();
+  try{
+    await updateDoc(doc(db,'users',uid),{referredBy:inv.ownerId, invitedByName:inv.ownerName||''});
+    await setDoc(doc(db,'referrals',uid),{refereeId:uid, referrerId:inv.ownerId, status:'PENDING', createdAt:nowMs()});
+  }catch(e){ console.error('invite referral link failed', e); }
+}
+window.openWaitlist = ()=>{
+  UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <p style="line-height:1.9;margin:6px 0 12px">سيب اسمك ورقمك وهنبعتلك دعوة أول ما يفتح مكان.</p>
+    <div class="field"><label>الاسم</label><input id="wlName" maxlength="60"></div>
+    <div class="field"><label>رقم الموبايل</label><input id="wlPhone" type="tel" dir="ltr" maxlength="20"></div>
+    <button class="btn btn-primary" onclick="submitWaitlist()">انضم</button>`);
+};
+window.submitWaitlist = async ()=>{
+  const name=document.getElementById('wlName').value.trim().slice(0,60), phone=document.getElementById('wlPhone').value.replace(/[^0-9+]/g,'').slice(0,20);
+  if(name.length<2||phone.replace(/\D/g,'').length<10) return UI.toast('اكتب اسمك ورقم موبايل صحيح');
+  try{ await setDoc(doc(collection(db,'waitlist')),{name,phone,createdAt:nowMs()}); UI.closeModal(); UI.toast('تمام، سجلناك في قائمة الانتظار ✅'); }
+  catch(e){ UI.toast('تعذّر التسجيل دلوقتي، جرّب بعد شوية'); }
+};
+// كود الدعوة الشخصي: 6 حروف من حسابه. بيتعمل أول مرة العميل يدخل لما التسجيل بالدعوة يكون مفتوح.
+async function ensureInviteCode(){
+  if(!S.profile || S.role!=='customer' || !S.user) return;
+  const code=S.user.uid.slice(-6).toUpperCase();
+  if(S.inviteCode===code) return;
+  try{
+    const r=doc(db,'inviteCodes',code); const d=await getDoc(r);
+    if(!d.exists()) await setDoc(r,{ownerId:S.user.uid, ownerName:S.profile.firstName||'', used:0, createdAt:nowMs()});
+    S.inviteCode=code; S.inviteUsed=d.exists()?(d.data().used||0):0;
+  }catch(e){ console.warn('invite code unavailable', e.code); }
+}
+const myCode = ()=> (inviteOn() && S.inviteCode) || S.profile?.referralCode || '';
 function referralMessage(code){
   return 'سجّل في تطبيق على بابك بكود الدعوة «'+code+'» وهياخد كل واحد فينا نقاط ولاء هدية بعد أول طلب! 🎁\nhttps://3alababk.com/?ref='+encodeURIComponent(code);
 }
@@ -2054,18 +2130,19 @@ window.shareInviteStep = ()=>{ window.shareReferral(); try{ sessionStorage.remov
 function maybeShowInviteStep(){
   let pending=false; try{ pending=sessionStorage.getItem('inviteStepPending')==='1'; }catch(e){}
   if(!pending || S.role!=='customer' || !S.profile || !S.profile.referralCode) return;
+  if(inviteOn() && !S.inviteCode){ ensureInviteCode().then(()=>{ if(S.inviteCode) renderShell(); }); return; }
   try{ sessionStorage.removeItem('inviteStepPending'); }catch(e){}
   const pts=(S.settings&&S.settings.referralBonusPoints)||0;
   setTimeout(()=>UI.openModal(`<div class="modal-head"><h3>ادعو صاحبك 🎁</h3><button class="modal-close" onclick="skipInviteStep()"><i class="fa-solid fa-xmark"></i></button></div>
     <p style="line-height:1.9;margin:6px 0 12px">${pts>0?`ابعت كودك لصاحبك، ولما يطلب أول طلب يخدوا انتم الاتنين ${pts} نقطة ولاء.`:'ابعت كودك لصاحبك عشان يجرّب على بابك.'}</p>
-    <div class="profile-referral-code" dir="ltr" style="text-align:center;font-size:22px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:14px">${esc(S.profile.referralCode)}</div>
+    <div class="profile-referral-code" dir="ltr" style="text-align:center;font-size:22px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:14px">${esc(myCode())}</div>
     <button class="btn btn-primary" onclick="shareInviteStep()"><i class="fa-brands fa-whatsapp"></i> ابعت لصاحبك على واتساب</button>
     <button class="btn btn-ghost" style="margin-top:8px" onclick="skipInviteStep()">تخطي</button>`),0);
 }
 // لينك الدعوة (?ref=CODE) بيملّا خانة كود الدعوة في التسجيل لوحده.
 try{ const _rp=(new URLSearchParams(location.search).get('ref')||'').trim().toUpperCase().slice(0,32); const _re=document.getElementById('regReferral'); if(_rp&&_re&&!_re.value) _re.value=_rp; }catch(e){}
 window.shareReferral = ()=>{
-  const code = S.profile?.referralCode || '';
+  const code = myCode();
   if(!code) return UI.toast('كود الدعوة غير متاح، اطلب من الإدارة إصلاح بيانات الحساب');
   window.open(waLink('', referralMessage(code)),'_blank');
   UI.toast('تم فتح واتساب للمشاركة 📤');
@@ -2538,6 +2615,7 @@ async function logSupportMiss(question){
 function renderShell(){
   if(!S.profile) return;
   maybeShowInviteStep();
+  if(inviteOn() && !S.inviteCode) ensureInviteCode();
   updateSupportBtn();
   const tb = document.getElementById('topbar');
   const bn = document.getElementById('bottomNav');
@@ -3949,10 +4027,12 @@ function renderProfile(){
     </div>
     ${S.profile.referralCode?`<div class="card" style="margin-top:12px;text-align:center">
       <p style="font-size:13px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-user-group" style="color:var(--teal)"></i> ادعُ صديقك وخدوا نقاط مع بعض</p>
-      <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(S.profile.referralCode)}</div>
+      <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(myCode())}</div>
+      ${inviteOn()&&S.inviteCode?`<p style="font-size:12.5px;margin:0 0 10px;color:var(--ink-soft)">استخدمت ${S.inviteUsed||0} من ${inviteLimit()} دعوة</p>`:''}
+      ${S.profile.invitedByName?`<p style="font-size:12.5px;margin:0 0 10px;color:var(--teal)">اتدعيت بواسطة ${esc(S.profile.invitedByName)}</p>`:''}
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" style="width:auto" onclick="shareReferral()"><i class="fa-brands fa-whatsapp"></i> شارك كودك</button>
-        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(S.profile.referralCode)}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
+        <button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(myCode())}')"><i class="fa-regular fa-copy"></i> نسخ الكود</button>
       </div>
     </div>`:''}
     ${S.role==='customer'?`<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px">انضم لشركاء على بابك</h3>${memberRequestStatusHTML()}<p style="font-size:13px;line-height:1.8;margin-bottom:12px">قدّم طلبك للدعم عبر واتساب. حسابك يفضل عميل لحد مراجعة الإدارة.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('merchant')">طلب تسجيل متجر</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('service')">طلب الانضمام كمقدم خدمة</button>`:''}<button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('delivery')">طلب الانضمام كمندوب</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">طلب الانضمام كمسوّق</button></div></div>`:''}
@@ -5701,6 +5781,9 @@ function renderAdminSettings(){
       <h3 style="margin:0 0 14px;font-size:15px">دعوة صديق</h3>
       <div class="field"><label>عدد النقاط اللي ياخدها كل من الصديقين (الداعي والمدعو)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
       <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، الاتنين ياخدوا نفس عدد النقاط دي تلقائيًا.</p>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:10px 0"><input type="checkbox" id="setInviteOnly" ${s.inviteOnly?'checked':''}> التسجيل بالدعوة فقط (مقفول افتراضيًا)</label>
+      <div class="field"><label>عدد الدعوات لكل عميل</label><input id="setInviteLimit" type="number" step="1" min="1" value="${esc(String(s.inviteLimit||10))}"></div>
+      <button class="btn btn-ghost btn-sm" style="width:auto;margin-bottom:10px" onclick="showWaitlist()"><i class="fa-solid fa-list"></i> قائمة الانتظار</button><br>
       <button class="btn btn-primary" onclick="saveReferralSettings()">حفظ</button>
     </div>
     `:''}
@@ -5744,9 +5827,18 @@ function renderAdminSettings(){
     `:''}
   `;
 }
+window.showWaitlist = async ()=>{
+  try{
+    const q=await getDocs(query(collection(db,'waitlist'),orderBy('createdAt','desc'),limit(100)));
+    const rows=q.docs.map(d=>d.data()).map(w=>`<div class="card" style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px"><span>${esc(w.name||'')}</span><a dir="ltr" href="${waLink(w.phone||'','')}" target="_blank" rel="noopener">${esc(w.phone||'')}</a></div>`).join('');
+    UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار (${q.size})</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>${rows||'<p>لسه مفيش حد.</p>'}`);
+  }catch(e){ UI.toast('تعذّر تحميل القائمة (محتاج قواعد Firebase الجديدة)'); }
+};
 window.saveReferralSettings = async ()=>{
   const referralBonusPoints = Math.max(0, parseInt(document.getElementById('setReferralBonus').value)||0);
-  await setDoc(doc(db,'settings','app'), {referralBonusPoints}, {merge:true});
+  const inviteOnly = !!document.getElementById('setInviteOnly')?.checked;
+  const inviteLimit = Math.min(1000, Math.max(1, parseInt(document.getElementById('setInviteLimit')?.value)||10));
+  await setDoc(doc(db,'settings','app'), {referralBonusPoints, inviteOnly, inviteLimit}, {merge:true});
   await logAudit('تعديل إعدادات دعوة الصديق', `نقاط المكافأة: ${referralBonusPoints}`);
   UI.toast('تم حفظ إعدادات دعوة الصديق ✅');
 };
