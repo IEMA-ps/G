@@ -28,6 +28,36 @@ assert.equal(match('نقاطي بتستبدل ازاي'), 'points');
 assert.equal(match('افعل اشعارات الموبايل'), 'push-help');
 assert.equal(match('تقدر اطلب من محلين في نفس الوقت؟'), 'multi-store');
 
+// --- تسجيل مقدم خدمة / ترقية حساب موجود (مشكلة المدرس اللي ظهرت في المراجعة) ---
+assert.equal(match('ازاى اسجل كمدرس'), 'provider-signup');
+assert.equal(match('عايز اشتغل مدرس خصوصي'), 'provider-signup');
+assert.equal(match('عايز اشتغل سباك في المنصه'), 'provider-signup');
+assert.equal(match('ازاي اسجل كمقدم خدمه'), 'provider-signup');
+assert.equal(match('ازاي احجز مدرس لابني'), 'book-service', 'حجز مدرس للعميل يفضل book-service');
+assert.equal(match('عندي حساب عادي وعايز افتح متجر'), 'upgrade-account');
+assert.equal(match('مسجل بالفعل عايز اشتغل مندوب'), 'upgrade-account');
+const second = match('سجلت بس ده حساب عادى عايز اسجل كمدرس');
+assert.ok(second === 'provider-signup' || second === 'upgrade-account', 'متابعة الحساب العادي متروحش لإجابة التسجيل العامة: '+second);
+assert.ok(second !== 'signup', 'ممنوع نفس إجابة التسجيل العامة مرتين ورا بعض');
+
+// --- الرد المتكرر: نفس السؤال ورا بعضه يرجع صياغة مختلفة ---
+const signupFaq = SC.FAQ_SEED.find(f => f.id === 'signup');
+assert.equal(SC.replyFor(signupFaq, false), signupFaq.answer);
+assert.equal(SC.replyFor(signupFaq, true), signupFaq.followup);
+assert.notEqual(SC.replyFor(signupFaq, true), signupFaq.answer, 'المتابعة مش نفس النص');
+const noFollow = {id:'x', q:'س', keys:['س'], answer:'ج'};
+assert.equal(SC.replyFor(noFollow, true), SC.REPEAT_GENERIC, 'سؤال بدون متابعة يرجع النص العام');
+for (const id of ['signup','merchant-signup','courier-join','marketer-join','work-with-us','provider-signup','upgrade-account']) {
+  const f = SC.FAQ_SEED.find(x => x.id === id);
+  assert.ok(f.followup && f.followup.length > 20, id+' لازم يكون ليه متابعة');
+}
+
+// --- شرائح المتابعة المرتبطة بالإجابة ---
+const rel = SC.relatedChipsFor(SC.FAQ_SEED.find(f => f.id === 'upgrade-account'), SC.FAQ_SEED);
+assert.deepEqual(rel.map(c => c.id), ['provider-signup','merchant-signup','courier-join','marketer-join']);
+assert.deepEqual(SC.relatedChipsFor(SC.FAQ_SEED.find(f => f.id === 'about'), SC.FAQ_SEED), [], 'سؤال بدون related يرجع فاضي');
+assert.deepEqual(SC.relatedChipsFor(null, SC.FAQ_SEED), []);
+
 // --- أسئلة برة النطاق ترجع null (عشان تتحول لواتساب وتتسجل) ---
 assert.equal(match('عايز اعرف حاله الطقس النهارده'), null);
 assert.equal(match(''), null);
@@ -92,4 +122,4 @@ assert.ok(typing.includes('sc-typing'));
 const adminHtml = SC.adminCardHTML({esc, faqs:[{_id:'f1', q:'سؤال', keys:['أ']}], unanswered:[{_id:'u1', question:'متي التسليم؟', uid:'x'}, {_id:'u2', question:'متى التسليم؟', leadPhone:'2010'}], leads:[{name:'إسلام', phone:'2010', createdAt:null}], waPhone:'2010'});
 assert.ok(adminHtml.includes('×2'), 'تجميع الأسئلة المجهولة المتشابهة');
 assert.ok(adminHtml.includes('wa.me/2010'));
-console.log('PASS support-chat: normalize, match (incl. out-of-scope null), roles chips, merge, lead gate, payloads, XSS escaping, admin card.');
+console.log('PASS support-chat: normalize, match (incl. out-of-scope null + provider/upgrade + repeat reply), roles chips, merge, lead gate, payloads, XSS escaping, admin card.');
