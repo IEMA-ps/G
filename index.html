@@ -578,7 +578,7 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
 import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import * as AdSlots from '/ad-slots.js?v=ads-2';
 import * as Favorites from '/favorites.js?v=fav-1';
-import * as FeatureFlags from '/feature-flags.js?v=flags-3';
+import * as FeatureFlags from '/feature-flags.js?v=flags-4';
 import * as StorePhoto from '/store-photo.js?v=photo-1';
 import * as RoleMode from '/role-mode.js?v=rm-1';
 import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
@@ -797,6 +797,7 @@ const S = {
 };
 
 const INITIAL_STATE = JSON.parse(JSON.stringify(S));
+S.settings = FeatureFlags.withPermanent(S.settings); // الميزات الأساسية شغالة دايمًا حتى قبل ما الإعدادات توصل
 window.S = S; // لازم تتعرض على window عشان أي onclick="S...." في الـ HTML يقدر يوصلها (السكريبت type="module" فمتغيرات المستوى الأعلى مش بتبقى على window تلقائيًا)
 
 const cartSync = CartReminder.makeScheduler({send: async summary=>{
@@ -1133,14 +1134,14 @@ function showSignedOut(){
   document.getElementById('verifyScreen').classList.add('hidden');
   document.getElementById('accountRecovery').classList.add('hidden');
   // المساعد الذكي متاح للزائر على صفحة البداية — نجيب الإعدادات العامة (قراءة عامة) عشان نعرف لو المفتاح مفتوح
-  getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings={...S.settings,...d.data()}; } updateSupportBtn(); applyInviteUi(); }).catch(()=>updateSupportBtn());
+  getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()}); } updateSupportBtn(); applyInviteUi(); }).catch(()=>updateSupportBtn());
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
   updateCartBar();
   Auth.switchTab(authRoute(location));
   applyMarketerLanding();
   const drawTeam=()=>{let team=document.getElementById('teamLanding');if(!team){team=document.createElement('div');team.id='teamLanding';document.getElementById('authScreen').prepend(team);}team.innerHTML=Program.joinLanding();};drawTeam();
-  if(new URLSearchParams(location.search).has('team'))getDoc(doc(db,'settings','app')).then(d=>{if(!auth.currentUser&&d.exists()){S.settings={...S.settings,...d.data()};drawTeam();}}).catch(()=>{});
+  if(new URLSearchParams(location.search).has('team'))getDoc(doc(db,'settings','app')).then(d=>{if(!auth.currentUser&&d.exists()){S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()});drawTeam();}}).catch(()=>{});
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
 async function bootAuthUser(user) {
@@ -1302,7 +1303,7 @@ function needProducts(){
 function subscribeShared(){
   S.unsubs.push(onSnapshot(doc(db,'settings','app'), d=>{
     const programWasEnabled=window.Program?.enabled();
-    if(d.exists()) S.settings = {...S.settings, ...d.data()};
+    S.settings = FeatureFlags.withPermanent({...S.settings, ...(d.exists()?d.data():{})});
     if(window.Program?.enabled()!==programWasEnabled) window.Program.subscribe();
     syncFavoritesFromAccount();
     if(S._rawMerchants) recomputeMerchants();
@@ -1899,7 +1900,6 @@ function renderAdminSubscriptions(){
         <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${x.upgrade?'<b style="color:var(--teal)">طلب ترقية</b> · ':''}${esc(x.planName)} · ${x.months} شهر${x.reference?` · مرجع: ${esc(x.reference)}`:''}${m.marketerId?` · مسوّق: ${esc(m.marketerName||'')}`:''}</div>
         ${sa?`<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveSubscription('${x._id}')">اعتماد</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="rejectSubscription('${x._id}')">رفض</button></div>`:''}</div>`; }).join('')}</div>`:''}
     ${sa?`<div class="card" style="margin-bottom:16px;border-color:var(--teal)"><b>النظام الجديد: تعريفية وطلبات</b><p style="font-size:13px;line-height:1.8">تعريفية: 200 / 400 / 600 جنيه. طلبات: 400 / 800 / 1200 جنيه + 2% على التاجر. المدد: 3 / 6 / 12 شهر. الاشتراكات والعمولات القديمة مش هتتغير.</p><button class="btn btn-ghost" onclick="previewMerchantPlans()">مراجعة الباقات الست قبل الإضافة</button></div>`:''}
-    ${sa?FeatureFlags.cardHTML(S.settings,esc):''}
     <div class="section-head"><h3>الباقات</h3></div>
     ${sa?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="openPlanForm()"><i class="fa-solid fa-plus"></i> إضافة باقة</button>`:''}
     ${!plans.length && sa ? `<button class="btn btn-ghost" style="margin-bottom:12px" onclick="seedDefaultPlans()"><i class="fa-solid fa-wand-magic-sparkles"></i> إنشاء 3 باقات جاهزة (أساسية / متوسطة / مميزة)</button>` : ''}
@@ -6070,9 +6070,6 @@ function renderAdminSettings(){
     <div class="card" style="margin-top:16px">
       <div class="row-between" style="margin-bottom:14px">
         <h3 style="margin:0;font-size:15px">برنامج نقاط الولاء</h3>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
-          <input type="checkbox" id="setLoyaltyEnabled" ${s.loyaltyEnabled!==false?'checked':''}> مفعّل
-        </label>
       </div>
       <div class="field"><label>معدل الكسب (نقطة لكل 1 جنيه إنفاق)</label><input id="setLoyaltyEarn" type="number" step="0.01" min="0" value="${s.loyaltyEarnRate||0}"></div>
       <div class="field"><label>قيمة النقطة عند الاستبدال (جنيه لكل نقطة)</label><input id="setLoyaltyRedeem" type="number" step="0.01" min="0" value="${s.loyaltyRedeemValue||0}"></div>
@@ -6136,9 +6133,6 @@ function renderAdminSettings(){
     ${SupportChat.adminCardHTML({esc, faqs: S.supportFaqRemote||[], unanswered: S.supportUnanswered||[], leads: S.supportGuestLeads||[], waPhone: MerchantPlans.supportPhone(s.supportWhatsapp), fmtDay})}
     `:''}
     ${sec==='ops'?`
-    <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام داخل التطبيق</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setMemberRequests" ${s.memberRequestsEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">طلبات التاجر ومقدم الخدمة والمندوب تظهر في قائمة الأعضاء وتستنى موافقتك. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveMemberRequestsSwitch()">حفظ</button></div>
-    <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-calendar-check" style="color:var(--teal)"></i> قسم الخدمات (حجز مواعيد)</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setServices" ${s.servicesEnabled===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">عيادات ومدرسين وصيانة منزلية وتدريب بدني وصالونات وتنظيف ونقل وسيارات وتصوير وحفلات ورعاية وبيطري. مقدم الخدمة تاجر بنوع خدمات، بيشترك بنفس الباقات، وبيدير مواعيده وحجوزاته من لوحته. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveServicesSwitch()">حفظ</button></div>
-    <div class="card" style="margin-bottom:16px"><div class="row-between" style="margin-bottom:10px"><h3 style="margin:0;font-size:15px"><i class="fa-solid fa-bolt" style="color:var(--teal)"></i> قبول الطلبات تلقائيًا</h3><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="setAutoApprove" ${s.autoApproveOrders===true?'checked':''}> شغّال</label></div><p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">لما يكون شغّال، الطلب الجديد بيوصل للتاجر مباشرة من غير ما الإدارة تراجعه وتبعته. الإدارة لسه بتشوفه وتقدر تلغيه. لازم قواعد Firestore تكون متحدّثة الأول وإلا الطلبات هتفشل. مقفول لحد ما تفتحه.</p><button class="btn btn-primary" onclick="saveAutoApproveSwitch()">حفظ</button></div>
     `:''}
   `;
 }
@@ -6183,7 +6177,7 @@ window.saveReferralSettings = async ()=>{
   UI.toast('تم حفظ إعدادات دعوة الصديق ✅');
 };
 window.saveLoyaltySettings = async ()=>{
-  const loyaltyEnabled = document.getElementById('setLoyaltyEnabled').checked;
+  const loyaltyEnabled = true;
   const loyaltyEarnRate = Math.max(0, parseFloat(document.getElementById('setLoyaltyEarn').value)||0);
   const loyaltyRedeemValue = Math.max(0, parseFloat(document.getElementById('setLoyaltyRedeem').value)||0);
   await setDoc(doc(db,'settings','app'), {loyaltyEnabled, loyaltyEarnRate, loyaltyRedeemValue}, {merge:true});
