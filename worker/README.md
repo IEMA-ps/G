@@ -43,7 +43,7 @@ Worker على Cloudflare بيبعت إشعار تليجرام فوري:
 
 ## الربط محمي بإيه؟
 - ربط الحساب (`/link/start` و`/link/status` و`/link/stop`) محمي بتوكن Firebase ID بتاع المستخدم نفسه — الـ Worker بيتحقق من التوقيع بمفاتيح جوجل العامة، فمحدش يقدر يربط حساب غيره.
-- `/notify` محمي بسر مشترك `APP_SECRET` بين التطبيق والـ Worker (ظاهر في سورس الواجهة زي أي كود عميل — بيقلل العبث العشوائي، وأسوأ تأثير ممكن هو إشعار مزعج مش تسريب بيانات).
+- مفيش سر مشترك في الواجهة. كل المسارات (ماعدا `/health` و`/push/key` و`/tg/webhook`) لازم توكن Firebase ID، والـ Worker بيقرا `users/{uid}` من Firestore **بتوكن المتصل نفسه** (القواعد هي اللي بتقرر) وبيحدد الدور منه: `/link/start` و`/push/subscribe` بيقبلوا بس الدور/المتجر/المندوب بتاع المتصل، و`/broadcast` و`/tg/setup-webhook` للأدمن بس، و`/reminders/prefs` لصاحب المتجر أو الأدمن، و`/reminders/sync` بيقرا مستند الحجز نفسه ويخزن بياناته. `/notify` لازم مستخدم له ملف، وفيه حد أقصى للطلبات (30 كل 10 دقايق، 300 للأدمن). CORS لموقعنا بس.
 - `/tg/webhook` محمي بـ `WEBHOOK_SECRET` (تليجرام بيبعته في هيدر مع كل تحديث).
 
 ## خطوات النشر (بعد موافقة إسلام)
@@ -58,7 +58,7 @@ Worker على Cloudflare بيبعت إشعار تليجرام فوري:
 3. **الأسرار**:
    ```
    wrangler secret put BOT_TOKEN       # التوكن من BotFather (من الخزنة)
-   wrangler secret put APP_SECRET      # نفس قيمة APP_SECRET في telegram-notify.js
+   # APP_SECRET اتلغى. لو كان متسجل قبل كده: wrangler secret delete APP_SECRET
    wrangler secret put WEBHOOK_SECRET  # نص عشوائي طويل
    ```
 4. **نشر**:
@@ -68,7 +68,7 @@ Worker على Cloudflare بيبعت إشعار تليجرام فوري:
    خد رابط الـ Worker (مثل `https://ala-babk-tg-notify.<sub>.workers.dev`) وحطه في `WORKER_URL` في `telegram-notify.js`.
 5. **تفعيل الـ webhook** (مرة واحدة):
    ```
-   curl -X POST https://<worker-url>/tg/setup-webhook -H "x-app-secret: <APP_SECRET>"
+   curl -X POST https://<worker-url>/tg/setup-webhook -H "authorization: Bearer <Firebase ID token لحساب أدمن>"
    ```
    المفروض يرجع `{"ok":true,...}`.
 
