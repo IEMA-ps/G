@@ -1,5 +1,5 @@
 // Services section: clinics, teachers, home maintenance. A provider is a normal merchant record whose activityType is one of SERVICE_TYPES.
-export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية'];
+export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية','تدريب بدني شخصي'];
 export const SLOT_OPTIONS=[15,20,30,45,60];
 export const DAY_NAMES=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 export const STATUS_LABEL={PENDING:'مستني رد مقدم الخدمة',ACCEPTED:'مقبول',REJECTED:'مرفوض',CANCELLED:'ملغي',DONE:'تم',NO_SHOW:'لم يحضر'};
@@ -42,6 +42,20 @@ export function craftNote({problem,address}){
   if(a.length<5)throw Error('اكتب العنوان بالتفصيل');
   if(a.length>90)throw Error('العنوان أطول من 90 حرف');
   return `العطل: ${p}\nالعنوان: ${a}`;
+}
+// تدريب بدني شخصي: الهدف والمستوى ومكان الجلسة (اختيار) + ملاحظات صحية اختيارية، جوه حقل note من غير تغيير في الحقول.
+export const TRAINER_TYPE='تدريب بدني شخصي';
+export const isTrainer=m=>!!m&&String(m.activityType||'').trim()===TRAINER_TYPE;
+export const TRAINER_GOALS=['خسارة وزن','زيادة عضل','لياقة عامة','تأهيل بعد إصابة','تحضير لرياضة'];
+export const TRAINER_LEVELS=['مبتدئ','متوسط','متقدم'];
+export const TRAINER_PLACES=['عند المدرب','في بيتي','في الهواء الطلق'];
+export function trainerNote({goal,level,place,extra}){
+  if(!TRAINER_GOALS.includes(goal))throw Error('اختار هدفك من التمرين');
+  if(!TRAINER_LEVELS.includes(level))throw Error('اختار مستوى لياقتك');
+  if(!TRAINER_PLACES.includes(place))throw Error('اختار مكان الجلسة');
+  const x=String(extra||'').trim();
+  if(x.length>120)throw Error('الملاحظات أطول من 120 حرف');
+  return `الهدف: ${goal}\nالمستوى: ${level}\nالمكان: ${place}`+(x?`\nملاحظات صحية: ${x}`:'');
 }
 export function validBookingInput({date,time,name,phone,note},schedule,booked,ms=Date.now()){
   const n=String(name||'').trim(),p=String(phone||'').replace(/[\s\-]/g,''),nt=String(note||'').trim();
@@ -98,7 +112,10 @@ export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,wee
     ${known?`<div class="bk-known" id="bkKnown"><div><strong>${esc(person)}</strong><span>${esc(ph)}</span></div><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('bkKnown').classList.add('hidden');document.getElementById('bkEdit').classList.remove('hidden')">تعديل</button></div>`:''}
     <div id="bkEdit" class="${known?'hidden':''}"><div class="field"><label>اسمك</label><input id="bkName" maxlength="80" value="${esc(person)}"></div>
     <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(ph)}"></div></div>
-    ${isCraft(m)?`<div class="field"><label>إيه العطل أو المشكلة؟ *</label><textarea id="bkProblem" maxlength="140" placeholder="مثال: سخان الغاز بيطفي لوحده، أو تسريب مياه تحت الحوض"></textarea></div>
+    ${isTrainer(m)?`<div class="field"><label>هدفك من التمرين *</label><select id="bkGoal"><option value="">اختار</option>${TRAINER_GOALS.map(g=>`<option>${g}</option>`).join('')}</select></div>
+    <div class="field"><label>مستوى لياقتك *</label><select id="bkLevel"><option value="">اختار</option>${TRAINER_LEVELS.map(g=>`<option>${g}</option>`).join('')}</select></div>
+    <div class="field"><label>مكان الجلسة *</label><select id="bkPlace"><option value="">اختار</option>${TRAINER_PLACES.map(g=>`<option>${g}</option>`).join('')}</select></div>
+    <div class="field"><label>إصابات أو ملاحظات صحية (اختياري)</label><textarea id="bkExtra" maxlength="120" placeholder="مثال: ألم في الركبة، أو ضغط"></textarea></div>`:isCraft(m)?`<div class="field"><label>إيه العطل أو المشكلة؟ *</label><textarea id="bkProblem" maxlength="140" placeholder="مثال: سخان الغاز بيطفي لوحده، أو تسريب مياه تحت الحوض"></textarea></div>
     <div class="field"><label>العنوان بالتفصيل *</label><input id="bkAddress" maxlength="90" placeholder="المنطقة، الشارع، رقم العمارة والدور والشقة"></div>`:`<div class="field"><label>ملاحظة (اختياري)</label><textarea id="bkNote" maxlength="300" placeholder="مثال: سبب الزيارة أو المادة أو العطل"></textarea></div>`}
     <button class="btn btn-primary" ${wk&&!okN?'disabled':''} onclick="submitBooking('${esc(m.id)}','${sel}','${time}')">${wk?`أرسل ${okN} طلبات حجز أسبوعية: ${fmtDay(sel)} ${fmtTime(time)}`:`أرسل طلب الحجز: ${fmtDay(sel)} ${fmtTime(time)}`}</button>
     <p class="welcome-note">الطلب بيوصل لمقدم الخدمة وهو اللى بيأكد الميعاد. الدفع بينك وبينه مباشرة.</p>`:''}</div>`;
