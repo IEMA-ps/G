@@ -256,6 +256,16 @@ let linkUrl;
   r = await _internals.runCron(env, EVENING + 10 * 60e3);
   assert.equal(r.summaries, 0);
 
+  // ساعة ملخص بكرة: 12..23 فقط، والافتراضي 8 مساءً
+  assert.equal((await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem', summaryHour: 5}})).status, 400);
+  assert.equal((await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem', summaryHour: 18.5}})).status, 400);
+  const sh = await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem', summaryHour: 18}});
+  assert.equal((await sh.json()).prefs.summaryHour, 18);
+  assert.equal(_internals.summaryHourFor({summaryHour: 18}), 18);
+  assert.equal(_internals.summaryHourFor({}), 20);
+  assert.equal(_internals.summaryHourFor({summaryHour: 3}), 20);
+  await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem', summaryHour: 20}});
+
   // تفضيلات: قفل التذكير قبل الميعاد
   const pr = await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem', reminder1h: false}});
   assert.equal((await pr.json()).prefs.reminder1h, false);
