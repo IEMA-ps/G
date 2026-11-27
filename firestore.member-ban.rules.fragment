@@ -1,0 +1,11 @@
+// MEMBER BAN, merge into the current rules (v11) before relying on the ban.
+// Without this, a banned member could clear his own flag from the browser console.
+// 1) In match /users/{uid} -> allow update -> the self-update branch (request.auth.uid == uid), add the ban fields to the !touches list:
+//      !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','loyaltyPoints','inviteCredit',
+//                'deliverySubStartedAt','deliverySubUntil','deliverySubUsedPeriod','banned','bannedAt','bannedBy','bannedReason'])
+// 2) The other self branches use only([...]) with fixed keys, so they already cannot touch these fields.
+// 3) Sign-up (validSelfUser) must not let a new profile start with banned fields: confirm its key list does not include them.
+// Admin update already works: the isAdmin() branch only blocks role, adminRole, merchantId, deliveryAgentId, marketerPercent, referralCode.
+// Still true after this change: a banned person can use the browser console to call Firebase directly with his signed-in session
+// for what the rules allow a normal customer (e.g. place an order). The app blocks him at sign-in. To cut the login itself, also
+// disable the user in Firebase Console -> Authentication -> Users -> Disable account.
