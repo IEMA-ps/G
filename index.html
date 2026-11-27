@@ -3343,7 +3343,7 @@ window.submitBooking = async (mid,date,time)=>{
   const m=getMerchant(mid),st=S.book?.[mid]; if(!m||!st||!S.user) return;
   try{
     const weekly=st.repeat==='weekly';
-    const v=Services.validBookingInput({date,time,name:document.getElementById('bkName').value,phone:document.getElementById('bkPhone').value,note:document.getElementById('bkNote').value},st.schedule,bookedFor(mid,date));
+    const v=Services.validBookingInput({date,time,name:document.getElementById('bkName').value,phone:document.getElementById('bkPhone').value,note:document.getElementById('bkProblem')?Services.craftNote({problem:document.getElementById('bkProblem').value,address:document.getElementById('bkAddress').value}):document.getElementById('bkNote').value},st.schedule,bookedFor(mid,date));
     const dates=weekly?Services.seriesInfo({schedule:st.schedule,booked:st.booked,date,time,weeks:st.weeks}).filter(x=>x.ok).map(x=>x.date):[date];
     if(weekly&&v.note.length>270) throw Error('الملاحظة طويلة، اختصرها لأقل من 270 حرف');
     const sch=Services.normalizeSchedule(st.schedule),t=nowMs(); let done=0;

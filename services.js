@@ -32,6 +32,17 @@ export function slotsFor(schedule,date,booked=new Set(),ms=Date.now()){
   return out;
 }
 export const bookingId=(mid,date,time)=>`${mid}_${date}_${time.replace(':','')}`;
+// صيانة منزلية: العميل لازم يكتب العطل والعنوان عشان الصنايعي يجهز نفسه. بيتخزنوا جوه حقل note (300 حرف) من غير تغيير في قواعد Firebase.
+export const CRAFT_TYPE='صيانة منزلية';
+export const isCraft=m=>!!m&&String(m.activityType||'').trim()===CRAFT_TYPE;
+export function craftNote({problem,address}){
+  const p=String(problem||'').trim(),a=String(address||'').trim();
+  if(p.length<3)throw Error('اكتب العطل أو المشكلة');
+  if(p.length>140)throw Error('وصف العطل أطول من 140 حرف');
+  if(a.length<5)throw Error('اكتب العنوان بالتفصيل');
+  if(a.length>90)throw Error('العنوان أطول من 90 حرف');
+  return `العطل: ${p}\nالعنوان: ${a}`;
+}
 export function validBookingInput({date,time,name,phone,note},schedule,booked,ms=Date.now()){
   const n=String(name||'').trim(),p=String(phone||'').replace(/[\s\-]/g,''),nt=String(note||'').trim();
   if(!n||n.length>80)throw Error('اكتب اسمك');
@@ -87,7 +98,8 @@ export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,wee
     ${known?`<div class="bk-known" id="bkKnown"><div><strong>${esc(person)}</strong><span>${esc(ph)}</span></div><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('bkKnown').classList.add('hidden');document.getElementById('bkEdit').classList.remove('hidden')">تعديل</button></div>`:''}
     <div id="bkEdit" class="${known?'hidden':''}"><div class="field"><label>اسمك</label><input id="bkName" maxlength="80" value="${esc(person)}"></div>
     <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(ph)}"></div></div>
-    <div class="field"><label>ملاحظة (اختياري)</label><textarea id="bkNote" maxlength="300" placeholder="مثال: سبب الزيارة أو المادة أو العطل"></textarea></div>
+    ${isCraft(m)?`<div class="field"><label>إيه العطل أو المشكلة؟ *</label><textarea id="bkProblem" maxlength="140" placeholder="مثال: سخان الغاز بيطفي لوحده، أو تسريب مياه تحت الحوض"></textarea></div>
+    <div class="field"><label>العنوان بالتفصيل *</label><input id="bkAddress" maxlength="90" placeholder="المنطقة، الشارع، رقم العمارة والدور والشقة"></div>`:`<div class="field"><label>ملاحظة (اختياري)</label><textarea id="bkNote" maxlength="300" placeholder="مثال: سبب الزيارة أو المادة أو العطل"></textarea></div>`}
     <button class="btn btn-primary" ${wk&&!okN?'disabled':''} onclick="submitBooking('${esc(m.id)}','${sel}','${time}')">${wk?`أرسل ${okN} طلبات حجز أسبوعية: ${fmtDay(sel)} ${fmtTime(time)}`:`أرسل طلب الحجز: ${fmtDay(sel)} ${fmtTime(time)}`}</button>
     <p class="welcome-note">الطلب بيوصل لمقدم الخدمة وهو اللى بيأكد الميعاد. الدفع بينك وبينه مباشرة.</p>`:''}</div>`;
 }
@@ -96,7 +108,7 @@ export function bookingCardHTML(b,esc,role){
   const wa=phone?`<a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" href="https://wa.me/${esc(String(phone).replace(/\D/g,'').replace(/^0/,'20'))}"><i class="fa-brands fa-whatsapp"></i> واتساب</a>`:'';
   const acts=prov?(st==='PENDING'?`<button class="btn btn-primary btn-sm" style="width:auto" onclick="setBookingStatus('${esc(b.id)}','ACCEPTED')">قبول</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="setBookingStatus('${esc(b.id)}','REJECTED')">رفض</button>`:st==='ACCEPTED'?`<button class="btn btn-primary btn-sm" style="width:auto" onclick="setBookingStatus('${esc(b.id)}','DONE')">تم</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="setBookingStatus('${esc(b.id)}','NO_SHOW')">لم يحضر</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="setBookingStatus('${esc(b.id)}','REJECTED')">إلغاء</button>`:''):(['PENDING','ACCEPTED'].includes(st)?`<button class="btn btn-danger btn-sm" style="width:auto" onclick="cancelMyBooking('${esc(b.id)}')">إلغاء الحجز</button>`:'');
   return `<div class="card"><div class="row-between"><b>${esc(prov?b.customerName:b.merchantName)}</b><span class="status-pill ${st==='ACCEPTED'||st==='DONE'?'status-active':st==='PENDING'?'status-pending':'status-suspended'}">${STATUS_LABEL[st]||st}</span></div>
-    <div style="font-size:13px;margin:6px 0">${fmtDay(b.date)} · ${fmtTime(b.time)}</div>${b.note?`<div style="font-size:12.5px;color:var(--ink-soft)">${esc(b.note)}</div>`:''}
+    <div style="font-size:13px;margin:6px 0">${fmtDay(b.date)} · ${fmtTime(b.time)}</div>${b.note?`<div style="font-size:12.5px;color:var(--ink-soft);white-space:pre-line">${esc(b.note)}</div>`:''}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${acts}${wa}</div></div>`;
 }
 export function providerScheduleViewHTML(bookings,esc,ms=Date.now()){
@@ -111,8 +123,8 @@ export function bookedTableHTML(bookings,esc,ms=Date.now(),day){
   if(!live.length) return head+`<p class="hint-box">${sel===t?'مفيش مواعيد محجوزة النهاردة.':'مفيش مواعيد محجوزة في اليوم ده.'}</p>`;
   const rows=live.map(b=>{const phone=String(b.customerPhone||'').replace(/\D/g,'').replace(/^0/,'20');
     const wa=phone?`<a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" rel="noopener" href="https://wa.me/${esc(phone)}"><i class="fa-brands fa-whatsapp"></i> واتساب</a>`:'<span style="color:var(--ink-soft)">لا يوجد رقم</span>';
-    return `<tr><td>${fmtTime(b.time)}</td><td><b>${esc(b.customerName||'')}</b>${b.status==='PENDING'?' <span class="status-pill status-pending">مستنية ردك</span>':''}</td><td>${wa}</td></tr>`;}).join('');
-  return head+`<div class="card" style="margin-bottom:14px;overflow-x:auto"><table class="booked-table" style="width:100%;border-collapse:collapse;font-size:13.5px"><thead><tr><th>الميعاد</th><th>العميل</th><th>تواصل</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<tr><td>${fmtTime(b.time)}</td><td><b>${esc(b.customerName||'')}</b>${b.status==='PENDING'?' <span class="status-pill status-pending">مستنية ردك</span>':''}</td><td style="white-space:pre-line;font-size:12.5px">${esc(b.note||'')}</td><td>${wa}</td></tr>`;}).join('');
+  return head+`<div class="card" style="margin-bottom:14px;overflow-x:auto"><table class="booked-table" style="width:100%;border-collapse:collapse;font-size:13.5px"><thead><tr><th>الميعاد</th><th>العميل</th><th>التفاصيل</th><th>تواصل</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 export function serviceListHTML(providers,type,esc){
   const list=providers.filter(m=>!type||m.activityType===type);
