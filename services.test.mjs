@@ -67,3 +67,10 @@ console.log('services tests passed');
   assert.ok(S.bookedTableHTML([],esc,ms).includes('مفيش مواعيد محجوزة النهاردة'));
   assert.ok(S.bookedTableHTML([],esc,ms,'2026-12-01').includes('مفيش مواعيد محجوزة في اليوم ده'));
 }
+// صيانة منزلية: العطل والعنوان
+assert.equal(S.isCraft({activityType:'صيانة منزلية'}),true);assert.equal(S.isCraft({activityType:'مدرسين'}),false);
+assert.equal(S.craftNote({problem:'  سخان بيطفي ',address:'المعادي شارع 9 عمارة 3'}),'العطل: سخان بيطفي\nالعنوان: المعادي شارع 9 عمارة 3');
+assert.throws(()=>S.craftNote({problem:'',address:'المعادي شارع 9'}));
+assert.throws(()=>S.craftNote({problem:'سخان بيطفي',address:'قريب'}));
+assert.throws(()=>S.craftNote({problem:'x'.repeat(141),address:'المعادي شارع 9'}));
+assert.ok(S.craftNote({problem:'x'.repeat(140),address:'y'.repeat(90)}).length+30<=300);
