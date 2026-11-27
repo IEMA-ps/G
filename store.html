@@ -39,7 +39,7 @@ window.addEventListener('popstate',()=>{if(!/^\/store(?:\/|$|\.html)/.test(locat
 const $=id=>document.getElementById(id);
 const id=storeIdFromLocation(location);let shareUrl=location.href;
 const config={apiKey:'AIzaSyDBIyrFLmdv2kFdYhgSPYOtkRZKpHwWXHE',authDomain:'ala-babk.firebaseapp.com',projectId:'ala-babk',appId:'1:728631367880:web:0d7b7e6be6131914e72dfd'};
-const safeLogo=url=>{try{const u=new URL(url);return u.protocol==='https:'?u.href:'';}catch{return '';}};
+const safeLogo=url=>{if(typeof url==='string'&&url.length<=90000&&/^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(url))return url;try{const u=new URL(url);return u.protocol==='https:'?u.href:'';}catch{return '';}};
 function unavailable(){ $('message').textContent='صفحة المتجر مش متاحة دلوقتي. ممكن اشتراكه يكون انتهى، أو بيانات الصفحة لسه ما اتنشرتش.'; }
 async function load(){
  if(!/^[A-Za-z0-9_-]{1,100}$/.test(id||'')){unavailable();return;}
