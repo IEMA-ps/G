@@ -19,4 +19,7 @@ eq(OT.planRestore(sub,[sub],{pointsRedeemed:0}).storePoints,7);
 eq(OT.planRestore({...sub,storePointsRestored:true},[sub],{}).storePoints,0);
 eq(OT.planRestore({...sub,status:'CANCELLED'},[sub],{}).storePoints,0);
 eq(OT.planRestore({id:'S',status:'SENT_TO_MERCHANT',items:[]},[],{}).storePoints,0);
+// invite credit goes back to the field it was paid from
+eq(OT.planRestore({id:'S',status:'SENT_TO_MERCHANT',items:[]},[{id:'S',status:'SENT_TO_MERCHANT'}],{pointsRedeemed:5,pointsField:'inviteCredit'}).pointsField,'inviteCredit');
+eq(OT.planRestore({id:'S',status:'SENT_TO_MERCHANT',items:[]},[{id:'S',status:'SENT_TO_MERCHANT'}],{pointsRedeemed:5}).pointsField,'loyaltyPoints');
 console.log(`store-points-redeem: ${n} checks passed`);
