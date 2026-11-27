@@ -51,7 +51,7 @@ export async function cancelSubOrderWithRestore(api, db, s, extra, opts={}){
     if(spRef) tx.set(spRef, { points: ((spSnap.exists()?spSnap.data().points:0)||0) + plan.storePoints, restoredFor: s.id, updatedAt: Date.now() }, {merge:true});
     plan.stock.forEach((r,i)=>{ if(prodSnaps[i].exists()) tx.update(doc(db,'products', r.productId), { stock: increment(r.qty) }); });
     if(plan.restoreDiscount){
-      if(couponSnap && couponSnap.exists() && (couponSnap.data().usedCount||0)>0) tx.update(couponRef, { usedCount: increment(-1) });
+      if(couponSnap && couponSnap.exists() && (couponSnap.data().usedCount||0)>0) tx.update(couponRef, { usedCount: increment(-1), lastRestoreSub: s.id });
       if(plan.points>0 && order) tx.update(doc(db,'users', order.customerId), { [plan.pointsField]: increment(plan.points) });
     }
   });

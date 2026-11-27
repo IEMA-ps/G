@@ -4019,7 +4019,7 @@ window.submitOrder = async ()=>{
         // خصم الكمية المطلوبة من مخزون كل منتج فور تأكيد الطلب
         items.forEach(l=>{ tx.update(doc(db,'products', l.productId), { stock: increment(-l.quantity) }); });
       });
-      if(coupon){ tx.update(doc(db,'coupons', coupon.code), { usedCount: increment(1) }); }
+      if(coupon){ tx.update(doc(db,'coupons', coupon.code), { usedCount: increment(1), lastOrderId: orderId }); }
       if(priced.points>0){ tx.update(doc(db,'users', S.user.uid), { [creditField()]: increment(-priced.points) }); }
       Object.entries(spTx.byStore).forEach(([mid,r])=>{ const m=merchantSnaps[merchantEntries.findIndex(e=>e[0]===mid)].data(); tx.set(doc(db,'users',S.user.uid,'storePoints',mid), { points: spBal[mid]-r.points, storeName:String(m.businessName||'').slice(0,100), updatedAt: nowMs() }, {merge:true}); });
     });
