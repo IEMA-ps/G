@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const P=await import('data:text/javascript;base64,'+Buffer.from(await readFile(new URL('./store-photo.js',import.meta.url),'utf8')).toString('base64'));
+let n=0;const eq=(a,b,m)=>{assert.deepEqual(a,b,m);n++;};
+const ok='data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+eq(P.validNew(ok),true);
+eq(P.validNew('data:image/svg+xml;base64,AAAA'),false,'svg refused');
+eq(P.validNew('data:image/jpeg;base64,AA" onerror="x'),false,'quote refused');
+eq(P.validNew('data:image/jpeg;base64,'+'A'.repeat(P.MAX_CHARS)),false,'too big');
+eq(P.safeSrc(ok),ok);eq(P.safeSrc('https://x.com/a.png'),'https://x.com/a.png');
+eq(P.safeSrc('javascript:alert(1)'),'');eq(P.safeSrc('http://x.com/a.png'),'');eq(P.safeSrc(''),'');
+eq(P.labelFor({},false),'صورة المتجر');eq(P.labelFor({},true),'صورة شخصية');
+eq(P.hasPhoto({logoUrl:''}),false);eq(P.hasPhoto({logoUrl:' '}),false);eq(P.hasPhoto({logoUrl:ok}),true);
+eq(P.isOn({}),false);eq(P.isOn({storePhotoRequired:true}),true);eq(P.isOn({storePhotoRequired:'true'}),false);
+eq(P.fit(2000,1000),{w:400,h:200});eq(P.fit(100,50),{w:100,h:50});
+console.log('store-photo ok',n);
