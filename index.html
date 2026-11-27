@@ -634,6 +634,8 @@ import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
 import * as SupportChat from '/support-chat.js?v=support-4';
+import * as MemberId from '/member-id.js?v=id-1';
+import * as RefCodes from '/referral-codes.js?v=ref-1';
 import { needsEmailVerification, googleProfile, googleError, accountLoadError, INTERNAL_EMAIL } from '/auth-policy.js?v=account-diagnostics-1';
 
 import * as MerchantPlans from '/merchant-plans.js?v=offer2-1';
@@ -1048,13 +1050,12 @@ const Auth = {
         try{ await window.InviteGate.redeem(cred.user.uid, inv, first); }catch(e){ console.error('invite redeem failed', e); }
       } else if(referralInput){
         try{
-          const q = await getDocs(query(collection(db,'users'), where('referralCode','==',referralInput)));
-          if(!q.empty){
-            const referrerDoc = q.docs[0];
-            if(referrerDoc.id !== cred.user.uid){
-              await updateDoc(doc(db,'users',cred.user.uid), { referredBy: referrerDoc.id });
+          const referrerId = await RefCodes.lookup({doc,getDoc},db,referralInput);
+          if(referrerId){
+            if(referrerId !== cred.user.uid){
+              await updateDoc(doc(db,'users',cred.user.uid), { referredBy: referrerId });
               await setDoc(doc(db,'referrals', cred.user.uid), {
-                refereeId: cred.user.uid, referrerId: referrerDoc.id, status:'PENDING', createdAt: nowMs()
+                refereeId: cred.user.uid, referrerId: referrerId, status:'PENDING', createdAt: nowMs()
               });
             }
           }
@@ -1184,6 +1185,7 @@ async function bootAuthUser(user) {
   bootStage='profile-prepare';
   if(!finalSnap.exists()) throw new Error('profile-missing-after-create');
   S.profile = finalSnap.data();
+  RefCodes.ensureMine({doc,getDoc,setDoc},db,user.uid,S.profile).catch(e=>console.warn('referral code mirror',e&&e.code));
   const missing = userDefaults(user.uid, S.profile);
   if(Object.keys(missing).length){
     try{ await updateDoc(doc(db,'users',user.uid), missing); Object.assign(S.profile, missing); }
@@ -1436,7 +1438,7 @@ function subscribeAdmin(){
   S.unsubs.push(onSnapshot(collection(db,'merchants'), snap=>{ S.allMerchantsReady=true;S.allMerchants = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'orders'), snap=>{ S.allOrders = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'subOrders'), snap=>{ S.allSubOrders = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
-  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsersReady=true;S.allUsersError='';S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); },()=>{S.allUsersReady=false;S.allUsersError='تعذر تحميل الأعضاء. راجع صلاحية حساب الإدارة ثم أعد تحميل الصفحة.';render();}));
+  S.unsubs.push(onSnapshot(collection(db,'users'), snap=>{ S.allUsersReady=true;S.allUsersError='';S.allUsers = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); if(isSuperAdmin()&&!S._refBackfill){ S._refBackfill=true; getDocs(collection(db,'referralCodes')).then(rs=>RefCodes.backfill({doc,writeBatch},db,S.allUsers,rs.docs.map(d=>d.id))).catch(e=>console.warn('referral backfill',e&&e.code)); } },()=>{S.allUsersReady=false;S.allUsersError='تعذر تحميل الأعضاء. راجع صلاحية حساب الإدارة ثم أعد تحميل الصفحة.';render();}));
   S.unsubs.push(onSnapshot(collection(db,'settlements'), snap=>{ S.allSettlements = snap.docs.map(d=>({...d.data(),_id:d.id})); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'deliveryAgents'), snap=>{ S.allDeliveryAgents = snap.docs.map(d=>d.data()); render(); }));
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.price-b.price); render(); }));
@@ -3152,8 +3154,9 @@ window.createGroupBuy = async (pid)=>{
       minParticipants:p.groupMinParticipants||3, initiatorId:S.user.uid, initiatorName:me.customerName,
       governorate:addr?addr.governorate:'', area:addr?addr.area:'',
       status:'OPEN', expiresAt: nowMs()+hours*3600*1000,
-      participants:[me], participantIds:[S.user.uid], createdAt: nowMs()
+      participants:[{customerId:me.customerId,quantity:me.quantity,joinedAt:me.joinedAt}], participantIds:[S.user.uid], createdAt: nowMs()
     });
+    await setDoc(doc(db,'groupBuys',ref.id,'members',S.user.uid), me);
     UI.closeModal();
     const shareText = encodeURIComponent(`عايز أجمع تجميعة "${p.title}" مع جيراني في ${addr?addr.area:''} بخصم ${p.groupDiscountPercent}%! افتح تطبيق على بابك وانضم للتجميعة قبل ما الوقت يخلص 🤝`);
     UI.openModal(`
@@ -3191,9 +3194,10 @@ window.joinGroupBuy = async (gid)=>{
       if(g.expiresAt < nowMs()) throw new Error('انتهى وقت التجميعة دي');
       if((g.participantIds||[]).includes(S.user.uid)) throw new Error('أنت مشارك في التجميعة دي بالفعل');
       tx.update(ref, {
-        participants: [...(g.participants||[]), me],
+        participants: [...(g.participants||[]), {customerId:me.customerId,quantity:me.quantity,joinedAt:me.joinedAt}],
         participantIds: [...(g.participantIds||[]), S.user.uid]
       });
+      tx.set(doc(db,'groupBuys',gid,'members',S.user.uid), me);
     });
     UI.closeModal();
     UI.toast('تم انضمامك للتجميعة 🎉');
@@ -3208,8 +3212,11 @@ window.finalizeGroupBuy = async (gid)=>{
       if(!gSnap.exists()) throw new Error('التجميعة غير موجودة');
       const g = gSnap.data();
       if(g.status!=='OPEN') throw new Error('تم التعامل مع التجميعة دي بالفعل');
-      if((g.participants||[]).length < g.minParticipants) throw new Error(`لسه ناقص مشاركين (${g.participants.length}/${g.minParticipants})`);
-      const totalQty = g.participants.reduce((a,p)=>a+p.quantity,0);
+      // بيانات المشاركين الخاصة (اسم / تليفون / عنوان) في groupBuys/{id}/members وبيشوفها منشئ التجميعة بس
+      const parts=[];
+      for(const pid of (g.participantIds||[])){ const ms=await tx.get(doc(db,'groupBuys',gid,'members',pid)); if(ms.exists()) parts.push(ms.data()); else { const old=(g.participants||[]).find(x=>x.customerId===pid); if(old) parts.push(old); } }
+      if(parts.length < g.minParticipants) throw new Error(`لسه ناقص مشاركين (${parts.length}/${g.minParticipants})`);
+      const totalQty = parts.reduce((a,p)=>a+p.quantity,0);
       const pRef = doc(db,'products', g.productId);
       const pSnap = await tx.get(pRef);
       const currentStock = pSnap.exists() ? (pSnap.data().stock||0) : 0;
@@ -3218,7 +3225,7 @@ window.finalizeGroupBuy = async (gid)=>{
       const m=md.exists()?md.data():null;
       if(!MerchantPlans.canOrder(m,S.settings.subsEnforced)) throw new Error('المتجر لا يستقبل طلبات حاليًا');
       const subOrderIds = [];
-      g.participants.forEach((part, idx)=>{
+      parts.forEach((part, idx)=>{
         const orderId = newOrderId();
         const subId = `SUB-${orderId}-1`;
         subOrderIds.push(subId);
@@ -3251,7 +3258,7 @@ window.markGroupBuyExpired = async (gid)=>{
 function groupBuyCard(g, mode){
   const mine = g.participantIds && g.participantIds.includes(S.user.uid);
   const isInitiator = g.initiatorId===S.user.uid;
-  const count = (g.participants||[]).length;
+  const count = (g.participantIds||g.participants||[]).length;
   const pct = Math.min(100, Math.round(count/g.minParticipants*100));
   const hoursLeft = Math.max(0, Math.round((g.expiresAt-nowMs())/3600000));
   const expired = g.expiresAt < nowMs();
@@ -4208,6 +4215,7 @@ function addInAppRequestButton(kind){
   const pending=S.myMemberRequest&&S.myMemberRequest.status!=='REJECTED';
   const b=document.createElement('button');b.type='button';b.className='btn btn-primary';b.style.marginBottom='8px';b.id='rqInApp';
   b.textContent=pending?'عندك طلب قيد المراجعة أو تمت الموافقة عليه':'إرسال الطلب للإدارة داخل التطبيق';b.disabled=!!pending;b.setAttribute('onclick',`submitMemberRequest('${kind}')`);
+  if(MemberId.required(MR_KINDS[kind],S.settings)&&!pending){const box=document.createElement('div');box.innerHTML=MemberId.fieldsHTML(esc);form.insertBefore(box.firstElementChild,sub);}
   sub.parentNode.insertBefore(b,sub);sub.className='btn btn-ghost';sub.textContent='أو أرسل نسخة على واتساب';
   const msg=document.createElement('p');msg.id='rqInAppMsg';msg.setAttribute('role','status');msg.style.cssText='font-size:13px;line-height:1.8;margin-bottom:8px';b.parentNode.insertBefore(msg,b);
 }
@@ -4224,11 +4232,17 @@ window.submitMemberRequest = async kind=>{
     const u=auth.currentUser.uid,doc_={id:u,userId:u,kind:MR_KINDS[kind],name:c('name'),phone:c('phone',30),address:c('area',200),status:'PENDING',createdAt:nowMs()};
     if(kind!=='delivery'){doc_.business=c('business');doc_.activity=c('activity');const mc=c('marketerCode',64).toUpperCase();if(mc)doc_.marketerCode=mc;}else doc_.vehicle=c('vehicle',50);
     const n=c('notes',400);if(n)doc_.notes=n;
-    if(S.myMemberRequest&&S.myMemberRequest.status==='REJECTED') await deleteDoc(doc(db,'memberRequests',u));
-    await setDoc(doc(db,'memberRequests',u),doc_);
+    const needId=MemberId.required(MR_KINDS[kind],S.settings);let idDoc=null;
+    if(needId){
+      if(!document.getElementById('rqIdConsent')?.checked) throw Error('وافق على استخدام صورة البطاقة الأول');
+      const im=MemberId.get();try{idDoc=MemberId.buildDoc({uid:u,kind:MR_KINDS[kind],front:im.front,back:im.back,now:nowMs()});}catch(e2){throw Error('ارفع صورة وش وضهر البطاقة');}
+    }
+    if(S.myMemberRequest&&S.myMemberRequest.status==='REJECTED'){ try{await deleteDoc(doc(db,'memberRequestIds',u));}catch(e3){} await deleteDoc(doc(db,'memberRequests',u)); }
+    const wb=writeBatch(db);wb.set(doc(db,'memberRequests',u),doc_);if(idDoc) wb.set(doc(db,'memberRequestIds',u),idDoc);await wb.commit();MemberId.reset();
     msg.textContent='وصل طلبك للإدارة وهو قيد المراجعة. هتشوف حالته في صفحتك.';msg.style.color='var(--teal)';
   }catch(e){ btn.disabled=false; err.textContent=e?.code==='permission-denied'?'تعذّر إرسال الطلب حاليًا. جرّب واتساب أو حاول لاحقًا.':(e?.message||'تعذّر إرسال الطلب'); }
 };
+window.pickMemberId = async (side,input)=>{ try{ await MemberId.pick(side,input,esc); }catch(e){ UI.toast(e&&e.message?e.message:'تعذّر قراءة الصورة'); } };
 window.prepareSupportRequest = (ev,kind)=>{
   ev.preventDefault();
   if(S.role!=='customer' || !auth.currentUser) return;
@@ -6309,11 +6323,22 @@ function memberRequestsHTML(){
   if(!isSuperAdmin()) return '';
   const list=(S.memberRequests||[]).filter(r=>r.status==='PENDING').sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
   if(!list.length&&S.settings.memberRequestsEnabled!==true) return '';
-  return `<section class="card" style="margin-bottom:16px"><h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام (${list.length})</h3>${list.length?list.map(r=>`<div class="hint-box" style="margin-bottom:10px;line-height:1.9"><b>${esc(MR_LABELS[r.kind]||'')}</b> . ${esc(r.name)} . ${esc(r.phone)}<br>${r.business?esc(r.business)+' . '+esc(r.activity||'')+'<br>':''}${r.vehicle?'وسيلة التوصيل: '+esc(r.vehicle)+'<br>':''}${esc(r.address||'')}${r.marketerCode?'<br>كود المسوّق: '+esc(r.marketerCode):''}${r.notes?'<br>ملاحظات: '+esc(r.notes):''}<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveMemberRequest('${esc(r.id)}')">موافقة</button><button class="btn btn-ghost btn-sm" style="flex:1" onclick="rejectMemberRequest('${esc(r.id)}')">رفض</button></div></div>`).join(''):'<p style="font-size:13px;color:var(--ink-soft);margin:0">مفيش طلبات جديدة.</p>'}</section>`;
+  return `<section class="card" style="margin-bottom:16px"><h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-inbox" style="color:var(--teal)"></i> طلبات الانضمام (${list.length})</h3>${list.length?list.map(r=>`<div class="hint-box" style="margin-bottom:10px;line-height:1.9"><b>${esc(MR_LABELS[r.kind]||'')}</b> . ${esc(r.name)} . ${esc(r.phone)}<br>${r.business?esc(r.business)+' . '+esc(r.activity||'')+'<br>':''}${r.vehicle?'وسيلة التوصيل: '+esc(r.vehicle)+'<br>':''}${esc(r.address||'')}${r.marketerCode?'<br>كود المسوّق: '+esc(r.marketerCode):''}${r.notes?'<br>ملاحظات: '+esc(r.notes):''}<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-primary btn-sm" style="flex:1" onclick="approveMemberRequest('${esc(r.id)}')">موافقة</button><button class="btn btn-ghost btn-sm" style="flex:1" onclick="rejectMemberRequest('${esc(r.id)}')">رفض</button></div><button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="viewMemberId('${esc(r.id)}')"><i class="fa-solid fa-id-card"></i> عرض بطاقة الهوية</button></div>`).join(''):'<p style="font-size:13px;color:var(--ink-soft);margin:0">مفيش طلبات جديدة.</p>'}</section>`;
 }
+window.viewMemberId = async rid=>{
+  if(!isSuperAdmin()) return;
+  try{
+    const s=await getDoc(doc(db,'memberRequestIds',rid));
+    if(!s.exists()){ UI.toast('مفيش صورة بطاقة لطلب ده'); return; }
+    const d=s.data(),img=u=>MemberId.validImage(u)?`<img src="${esc(u)}" alt="" style="width:100%;border-radius:12px;margin-bottom:10px">`:'';
+    UI.openModal(`<div class="modal-head"><h3>بطاقة الهوية</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="font-size:12px;color:var(--danger);line-height:1.8">بيانات حساسة. متشاركهاش ولا تصوّر الشاشة.</p>${img(d.front)}${img(d.back)}`);
+    try{await logAudit('عرض بطاقة هوية',rid);}catch(e){}
+  }catch(e){ UI.toast('تعذّر عرض البطاقة'); }
+};
 window.approveMemberRequest = async rid=>{
   if(!isSuperAdmin()) return;
   const r=(S.memberRequests||[]).find(x=>x.id===rid);if(!r||r.status!=='PENDING') return;
+  if(MemberId.required(r.kind,S.settings)){ let has=false; try{has=(await getDoc(doc(db,'memberRequestIds',rid))).exists();}catch(e){} if(!has){ UI.toast('الطلب ده من غير صورة بطاقة. اطلبها من صاحب الطلب الأول'); return; } }
   const role=r.kind==='courier'?'DELIVERY':'MERCHANT';
   if(!confirm('الموافقة هتفعّل السجل على طول وتربطه بحساب العضو. تكمل؟')) return;
   try{
