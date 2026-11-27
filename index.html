@@ -579,7 +579,7 @@ import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import * as AdSlots from '/ad-slots.js?v=ads-2';
 import * as Favorites from '/favorites.js?v=fav-1';
 import * as FeatureFlags from '/feature-flags.js?v=flags-4';
-import * as StorePhoto from '/store-photo.js?v=photo-1';
+import * as StorePhoto from '/store-photo.js?v=photo-2';
 import * as RoleMode from '/role-mode.js?v=rm-1';
 import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
 import * as OrderTimeline from '/order-timeline.js?v=tl-1';
@@ -3008,7 +3008,7 @@ window.saveRecurring = async (pid)=>{
   try{
     await addDoc(collection(db,'recurringOrders'), {
       customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(), customerPhone:S.profile.phone,
-      productId:pid, productTitle:p.title, productImage:p.imageUrl||'', merchantId:p.merchantId, price:effPrice(p),
+      productId:pid, productTitle:p.title, productImage:StorePhoto.orderImage(p.imageUrl), merchantId:p.merchantId, price:effPrice(p),
       quantity:qty, dayOfWeek, addressId:addrId, addressText: addr?addr.fullAddressText:'',
       status:'ACTIVE', lastHandledWeek:null, createdAt: nowMs()
     });
@@ -3147,7 +3147,7 @@ window.createGroupBuy = async (pid)=>{
   const me = { customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(), phone:S.profile.phone, quantity:qty, addressId:addrId, addressText:addr?addr.fullAddressText:'', joinedAt: nowMs() };
   try{
     const ref = await addDoc(collection(db,'groupBuys'), {
-      productId:pid, productTitle:p.title, productImage:p.imageUrl||'', price:effPrice(p), groupPrice,
+      productId:pid, productTitle:p.title, productImage:StorePhoto.orderImage(p.imageUrl), price:effPrice(p), groupPrice,
       groupDiscountPercent:p.groupDiscountPercent, merchantId:p.merchantId, merchantName:m?m.businessName:'',
       minParticipants:p.groupMinParticipants||3, initiatorId:S.user.uid, initiatorName:me.customerName,
       governorate:addr?addr.governorate:'', area:addr?addr.area:'',
@@ -4598,7 +4598,7 @@ window.openProductForm = (pid)=>{
       <div class="field" style="flex:1"><label>سعر العرض</label><input id="pfFlashPrice" type="number" step="0.01" min="0" value="${p&&flashActive(p)?p.flashPrice:''}" placeholder="أقل من السعر"></div>
       <div class="field" style="flex:1"><label>مدة العرض (ساعات)</label><input id="pfFlashHours" type="number" min="0" max="168" placeholder="مثلًا 6"></div>
     </div>
-    <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="pfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
+    ${StorePhoto.productFieldHTML('pfImg',p?p.imageUrl:'',esc)}
     <div class="field"><label>حجم الصورة للعميل</label><select id="pfImgSize"><option value="small"${p&&p.imageSize!=='large'||!p?' selected':''}>صغيرة (جنب الاسم)</option><option value="large"${p&&p.imageSize==='large'?' selected':''}>كبيرة (فوق الاسم)</option></select></div>
     <div class="divider"></div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px"><i class="fa-solid fa-people-group"></i> تجميعة الجيران (اختياري): خلّي العملاء يجمعوا طلبات مع جيرانهم ويكسبوا خصم أكبر</p>
@@ -4626,7 +4626,7 @@ window.saveProduct = async (pid)=>{
     stock: parseInt(document.getElementById('pfStock').value)||0,
     groupDiscountPercent: parseInt(document.getElementById('pfGroupDiscount').value)||0,
     groupMinParticipants: parseInt(document.getElementById('pfGroupMin').value)||3,
-    imageUrl: document.getElementById('pfImg').value.trim()
+    imageUrl: StorePhoto.productImage('pfImg', document.getElementById('pfImg').value)
   };
   const bigImg = document.getElementById('pfImgSize').value==='large';
   // العرض المحدود
@@ -4739,6 +4739,8 @@ function renderMerchantProfile(){
   `;
 }
 window.updateStoreMapPreview = id=>{const input=document.getElementById(id),preview=document.getElementById(id+'Preview');if(input&&preview)preview.innerHTML=MerchantPlans.mapPreviewHTML(input.value,esc);};
+window.pickProductPhoto = async (id,el)=>{ try{ await StorePhoto.pickProduct(id,el,esc); }catch(e){ UI.toast(e.message||'تعذر قراءة الصورة'); } };
+window.clearProductPhoto = id=>StorePhoto.clearProduct(id);
 window.pickStorePhoto = async (id,el)=>{ try{ await StorePhoto.pick(id,el,esc); }catch(e){ UI.toast(e.message||'تعذر قراءة الصورة'); } };
 window.openMerchantEdit = ()=>{
   const m = S.myMerchant;
@@ -5687,7 +5689,7 @@ window.openAdminProductForm = (pid)=>{
       <div class="field" style="flex:1"><label>السعر قبل الخصم</label><input id="apfOldPrice" type="number" step="0.01" value="${p&&p.oldPrice?p.oldPrice:''}"></div>
     </div>
     <div class="field"><label>الكمية بالمخزون</label><input id="apfStock" type="number" value="${p?p.stock:50}"></div>
-    <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="apfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
+    ${StorePhoto.productFieldHTML('apfImg',p?p.imageUrl:'',esc)}
     <div class="field"><label>حجم الصورة للعميل</label><select id="apfImgSize"><option value="small"${p&&p.imageSize!=='large'||!p?' selected':''}>صغيرة (جنب الاسم)</option><option value="large"${p&&p.imageSize==='large'?' selected':''}>كبيرة (فوق الاسم)</option></select></div>
     <div class="divider"></div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px"><i class="fa-solid fa-people-group"></i> تجميعة الجيران (اختياري)</p>
@@ -5710,7 +5712,7 @@ window.saveAdminProduct = async (pid)=>{
     stock: parseInt(document.getElementById('apfStock').value)||0,
     groupDiscountPercent: parseInt(document.getElementById('apfGroupDiscount').value)||0,
     groupMinParticipants: parseInt(document.getElementById('apfGroupMin').value)||3,
-    imageUrl: document.getElementById('apfImg').value.trim()
+    imageUrl: StorePhoto.productImage('apfImg', document.getElementById('apfImg').value)
   };
   const bigImg = document.getElementById('apfImgSize').value==='large';
   if(pid){
