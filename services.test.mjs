@@ -85,3 +85,24 @@ assert.throws(()=>S.trainerNote({goal:'خسارة وزن',level:'x',place:'في 
 assert.throws(()=>S.trainerNote({goal:'خسارة وزن',level:'مبتدئ',place:'x'}));
 assert.throws(()=>S.trainerNote({goal:'خسارة وزن',level:'مبتدئ',place:'في بيتي',extra:'x'.repeat(121)}));
 assert.ok(S.trainerNote({goal:'تأهيل بعد إصابة',level:'متوسط',place:'في الهواء الطلق',extra:'x'.repeat(120)}).length+30<=300);
+
+
+// أنواع خدمات تانية (حقول بسيطة جوه note)
+for(const [type,fs] of Object.entries(S.TYPE_FIELDS)){
+  assert.ok(S.SERVICE_TYPES.includes(type),type);
+  const full=fs.map(([,k,o])=>k==='select'?o.reduce((a,b)=>b.length>a.length?b:a,''):'ي'.repeat(o));
+  const note=S.typeNote(type,full);
+  assert.ok(note.length+30<=300,type+' '+note.length);
+  const req=fs.map(([,k,o,r])=>r?(k==='select'?o[0]:'ك'):'');
+  assert.ok(S.typeNote(type,req).length>0);
+  fs.forEach(([,k,o,r],i)=>{if(r){const v=[...req];v[i]='';assert.throws(()=>S.typeNote(type,v),type+' required '+i);}
+    if(k==='select'){const v=[...req];v[i]='غلط';assert.throws(()=>S.typeNote(type,v));}
+    if(k==='text'){const v=[...req];v[i]='ي'.repeat(o+1);assert.throws(()=>S.typeNote(type,v));}});
+  assert.ok(S.typeFieldsHTML(type,x=>x).includes('bkF0'));
+}
+assert.throws(()=>S.typeNote('مدرسين',[]));
+assert.equal(S.typeNote('حلاقة رجالي',['قص شعر','في البيت','']),'الخدمة: قص شعر\nالمكان: في البيت');
+assert.equal(S.typeNote('عيادات',['متابعة','']),'نوع الزيارة: متابعة');
+assert.equal(S.typeFieldsHTML('مدرسين',x=>x),'');
+const mvHtml=S.bookingPanelHTML({m:{id:'m1',activityType:'نقل أثاث وونش'},schedule:S.normalizeSchedule(S.defaultSchedule()),booked:new Set(),date:'2026-11-28',time:'11:00',profile:{},repeat:'once'},x=>x,Date.parse('2026-11-26T10:00:00+02:00'));
+assert.ok(mvHtml.includes('bkF2')&&!mvHtml.includes('bkNote')&&!mvHtml.includes('bkProblem'));

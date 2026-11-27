@@ -1,5 +1,5 @@
 // Services section: clinics, teachers, home maintenance. A provider is a normal merchant record whose activityType is one of SERVICE_TYPES.
-export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية','تدريب بدني شخصي'];
+export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية','تدريب بدني شخصي','حلاقة رجالي','صالون تجميل وميك أب','تنظيف منازل','غسيل سجاد وكنب','نقل أثاث وونش','صيانة سيارات','غسيل سيارات متنقل','تصوير','تنظيم حفلات','رعاية أطفال وكبار','بيطري وخدمات حيوانات'];
 export const SLOT_OPTIONS=[15,20,30,45,60];
 export const DAY_NAMES=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 export const STATUS_LABEL={PENDING:'مستني رد مقدم الخدمة',ACCEPTED:'مقبول',REJECTED:'مرفوض',CANCELLED:'ملغي',DONE:'تم',NO_SHOW:'لم يحضر'};
@@ -57,6 +57,23 @@ export function trainerNote({goal,level,place,extra}){
   if(x.length>120)throw Error('الملاحظات أطول من 120 حرف');
   return `الهدف: ${goal}\nالمستوى: ${level}\nالمكان: ${place}`+(x?`\nملاحظات صحية: ${x}`:'');
 }
+// أنواع خدمات تانية: كل نوع ليه حقول بسيطة (اختيار أو نص قصير) بتتجمع في حقل note الموجود (300 حرف). [الاسم, النوع, الاختيارات أو أقصى طول, إجباري]
+export const TYPE_FIELDS={"حلاقة رجالي": [["الخدمة", "select", ["قص شعر", "دقن", "قص شعر ودقن", "حلاقة عريس"], 1], ["المكان", "select", ["في الصالون", "في البيت"], 1], ["ملاحظات", "text", 60, 0]], "صالون تجميل وميك أب": [["الخدمة", "select", ["شعر", "ميك أب", "أظافر", "بشرة", "عروسة"], 1], ["المكان", "select", ["في الصالون", "في البيت"], 1], ["ملاحظات", "text", 60, 0]], "تنظيف منازل": [["نوع التنظيف", "select", ["عادي", "عميق", "بعد تشطيب"], 1], ["حجم المكان", "select", ["شقة صغيرة", "شقة متوسطة", "شقة كبيرة", "فيلا"], 1], ["العنوان", "text", 90, 1]], "غسيل سجاد وكنب": [["القطع", "select", ["سجاد", "كنب", "ستائر", "مراتب", "أكتر من نوع"], 1], ["العدد التقريبي", "text", 30, 1], ["العنوان", "text", 90, 1]], "نقل أثاث وونش": [["الخدمة", "select", ["نقل أثاث", "ونش", "نقل وفك وتركيب"], 1], ["من عنوان", "text", 90, 1], ["إلى عنوان", "text", 90, 1]], "صيانة سيارات": [["نوع السيارة وموديلها", "text", 60, 1], ["العطل", "text", 140, 1], ["المكان", "select", ["في الورشة", "في مكاني"], 1]], "غسيل سيارات متنقل": [["حجم السيارة", "select", ["صغيرة", "سيدان", "SUV", "ميني فان"], 1], ["نوع الغسيل", "select", ["خارجي", "داخلي", "كامل"], 1], ["العنوان", "text", 90, 1]], "تصوير": [["المناسبة", "select", ["فرح", "خطوبة", "عيد ميلاد", "منتجات", "بورتريه", "أخرى"], 1], ["مكان التصوير", "text", 90, 1], ["ملاحظات", "text", 80, 0]], "تنظيم حفلات": [["نوع الحفل", "select", ["فرح", "خطوبة", "عيد ميلاد", "شركات", "أخرى"], 1], ["عدد الحضور", "select", ["أقل من 30", "30 إلى 100", "100 إلى 300", "أكتر من 300"], 1], ["مكان الحفل", "text", 90, 1]], "رعاية أطفال وكبار": [["الرعاية لـ", "select", ["طفل", "كبير سن"], 1], ["المدة", "select", ["ساعات", "يوم كامل", "مبيت"], 1], ["العنوان", "text", 90, 1], ["ملاحظات", "text", 60, 0]], "بيطري وخدمات حيوانات": [["الحيوان", "select", ["قطة", "كلب", "طيور", "أخرى"], 1], ["الخدمة", "select", ["كشف", "تطعيم", "استحمام وتجميل", "إقامة"], 1], ["ملاحظات", "text", 80, 0]], "عيادات": [["نوع الزيارة", "select", ["كشف جديد", "متابعة", "استشارة"], 1], ["سبب الزيارة (اختياري)", "text", 80, 0]]};
+export function typeNote(type,values){
+  const fs=TYPE_FIELDS[String(type||'').trim()];if(!fs)throw Error('نوع الخدمة غير معروف');
+  const out=[];
+  fs.forEach(([label,kind,opt,req],i)=>{
+    const v=String(values&&values[i]!=null?values[i]:'').trim();
+    if(!v){if(req)throw Error(kind==='select'?'اختار: '+label:'اكتب: '+label);return;}
+    if(kind==='select'&&!opt.includes(v))throw Error('اختيار غير صحيح: '+label);
+    if(kind==='text'&&v.length>opt)throw Error(label+' أطول من '+opt+' حرف');
+    out.push(label+': '+v);
+  });
+  return out.join('\n');
+}
+export const typeFieldsHTML=(type,esc)=>(TYPE_FIELDS[String(type||'').trim()]||[]).map(([label,kind,opt,req],i)=>kind==='select'
+  ?`<div class="field"><label>${esc(label)}${req?' *':''}</label><select id="bkF${i}"><option value="">اختار</option>${opt.map(o=>`<option>${esc(o)}</option>`).join('')}</select></div>`
+  :`<div class="field"><label>${esc(label)}${req?' *':''}</label><input id="bkF${i}" maxlength="${opt}"></div>`).join('');
 export function validBookingInput({date,time,name,phone,note},schedule,booked,ms=Date.now()){
   const n=String(name||'').trim(),p=String(phone||'').replace(/[\s\-]/g,''),nt=String(note||'').trim();
   if(!n||n.length>80)throw Error('اكتب اسمك');
@@ -112,7 +129,7 @@ export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,wee
     ${known?`<div class="bk-known" id="bkKnown"><div><strong>${esc(person)}</strong><span>${esc(ph)}</span></div><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('bkKnown').classList.add('hidden');document.getElementById('bkEdit').classList.remove('hidden')">تعديل</button></div>`:''}
     <div id="bkEdit" class="${known?'hidden':''}"><div class="field"><label>اسمك</label><input id="bkName" maxlength="80" value="${esc(person)}"></div>
     <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(ph)}"></div></div>
-    ${isTrainer(m)?`<div class="field"><label>هدفك من التمرين *</label><select id="bkGoal"><option value="">اختار</option>${TRAINER_GOALS.map(g=>`<option>${g}</option>`).join('')}</select></div>
+    ${TYPE_FIELDS[String(m.activityType||'').trim()]?typeFieldsHTML(m.activityType,esc):isTrainer(m)?`<div class="field"><label>هدفك من التمرين *</label><select id="bkGoal"><option value="">اختار</option>${TRAINER_GOALS.map(g=>`<option>${g}</option>`).join('')}</select></div>
     <div class="field"><label>مستوى لياقتك *</label><select id="bkLevel"><option value="">اختار</option>${TRAINER_LEVELS.map(g=>`<option>${g}</option>`).join('')}</select></div>
     <div class="field"><label>مكان الجلسة *</label><select id="bkPlace"><option value="">اختار</option>${TRAINER_PLACES.map(g=>`<option>${g}</option>`).join('')}</select></div>
     <div class="field"><label>إصابات أو ملاحظات صحية (اختياري)</label><textarea id="bkExtra" maxlength="120" placeholder="مثال: ألم في الركبة، أو ضغط"></textarea></div>`:isCraft(m)?`<div class="field"><label>إيه العطل أو المشكلة؟ *</label><textarea id="bkProblem" maxlength="140" placeholder="مثال: سخان الغاز بيطفي لوحده، أو تسريب مياه تحت الحوض"></textarea></div>
