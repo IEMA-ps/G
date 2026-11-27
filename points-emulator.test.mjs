@@ -16,21 +16,21 @@ try{
   // two simultaneous deliveries (merchant + courier) pay once
   const r=await Promise.all([OrderTx.deliverSubOrder(api,db,{id:'S1'},{status:'DELIVERED'},opt),OrderTx.deliverSubOrder(api,db,{id:'S1'},{status:'DELIVERED'},opt)]);
   eq(r.filter(x=>x.awarded).length,1,'exactly one award');
-  eq((await get('users','cust')).loyaltyPoints,20+50,'20 points + 50 referral bonus, once');
+  eq((await get('users','cust')).loyaltyPoints,20,'20 points, no bonus for the invited friend');
   eq((await get('users','ref')).loyaltyPoints,55);
   eq((await get('referrals','cust')).status,'REWARDED');
   eq((await get('subOrders','S1')).pointsAwarded,true);
   // repeating later pays nothing
   const again=await OrderTx.deliverSubOrder(api,db,{id:'S1'},{status:'DELIVERED'},opt);
-  eq(again.awarded,false);eq((await get('users','cust')).loyaltyPoints,70);
+  eq(again.awarded,false);eq((await get('users','cust')).loyaltyPoints,20);
   // second order: points only, no bonus (referral already rewarded)
   await setDoc(doc(db,'subOrders','S2'),{status:'OUT_FOR_DELIVERY',subtotal:100,customerId:'cust'});
   const r2=await OrderTx.deliverSubOrder(api,db,{id:'S2'},{status:'DELIVERED'},opt);
-  eq([r2.pointsEarned,r2.bonus],[10,0]);eq((await get('users','cust')).loyaltyPoints,80);
+  eq([r2.pointsEarned,r2.bonus],[10,0]);eq((await get('users','cust')).loyaltyPoints,30);
   // loyalty disabled: status changes, no points
   await setDoc(doc(db,'subOrders','S3'),{status:'OUT_FOR_DELIVERY',subtotal:100,customerId:'cust'});
   await OrderTx.deliverSubOrder(api,db,{id:'S3'},{status:'DELIVERED'},{...opt,loyaltyEnabled:false});
-  eq((await get('users','cust')).loyaltyPoints,80);eq((await get('subOrders','S3')).status,'DELIVERED');
+  eq((await get('users','cust')).loyaltyPoints,30);eq((await get('subOrders','S3')).status,'DELIVERED');
   // missing order: error, no write
   await assert.rejects(OrderTx.deliverSubOrder(api,db,{id:'NOPE'},{status:'DELIVERED'},opt));n++;
  });
