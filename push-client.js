@@ -13,7 +13,7 @@ export function pushState({hasSW, hasPush, hasNotification, permission, isIOS, s
   return subscribed ? 'on' : 'ready';
 }
 async function call(fetchImpl, workerUrl, path, {method = 'GET', token, appSecret, body} = {}){
-  const headers = {'x-app-secret': appSecret};
+  const headers = {};
   if(token) headers.authorization = 'Bearer ' + token;
   if(body) headers['content-type'] = 'application/json';
   const res = await fetchImpl(workerUrl + path, {method, headers, body: body ? JSON.stringify(body) : undefined});
