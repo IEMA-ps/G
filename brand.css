@@ -144,3 +144,5 @@ body>#pwaInstallBtn{background:#30251F!important;border:1px solid #30251F!import
 .booked-table th,.booked-table td{padding:9px 8px;text-align:start;border-bottom:1px solid var(--line,#eadfd3);vertical-align:middle}
 .booked-table th{font-size:12px;color:var(--ink-soft,#6b5a50);font-weight:600}
 .booked-table tr:last-child td{border-bottom:0}
+.booked-day{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:13px}
+.booked-day input[type="date"]{padding:6px 8px;border:1px solid var(--line,#eadfd3);border-radius:10px;background:#fff;font:inherit}
