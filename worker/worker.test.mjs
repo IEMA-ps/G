@@ -24,6 +24,20 @@ _internals.verifyFirebaseIdToken = async token => {
   if (token === 'good-uid-admin') return 'uid-admin';
   throw new Error('bad token');
 };
+// Firestore وهمي: مستندات بالمسار. المستخدمين بيتظبطوا بـ setUser قبل كل حالة (الدور بييجي من هنا مش من الطلب).
+const fakeDocs = new Map();
+const setUser = (uid, doc) => fakeDocs.set('users/' + uid, doc);
+setUser('uid-admin', {role: 'ADMIN'});
+setUser('uid-1', {role: 'MERCHANT', merchantId: 'm1'});
+setUser('uid-2', {role: 'CUSTOMER'});
+_internals.fsGetDoc = async (env, token, path) => {
+  const uid = {'good-uid-1': 'uid-1', 'good-uid-2': 'uid-2', 'good-uid-admin': 'uid-admin'}[token];
+  if (!uid) return null;
+  const d = fakeDocs.get(path);
+  if (!d) return null;
+  if (path.startsWith('bookings/') && !(uid === 'uid-admin' || d.customerId === uid || d.ownerUid === uid)) return null; // قواعد الحجز
+  return d;
+};
 _internals.tgSend = async (env, chatId, text) => { sentMessages.push({chatId, text}); return true; };
 
 const env = {
@@ -87,7 +101,7 @@ let linkUrl;
 
   // إشعار للتاجر m1 يوصل للشات 555
   const before = sentMessages.length;
-  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:m1'], title: 'طلب جديد', message: 'رقم الطلب: #ORD-1'}});
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['m:m1'], title: 'طلب جديد', message: 'رقم الطلب: #ORD-1'}});
   assert.equal((await nres.json()).sent, 1);
   assert.equal(sentMessages.length, before + 1);
   assert.equal(sentMessages.at(-1).chatId, '555');
@@ -99,11 +113,12 @@ let linkUrl;
   const merchId = 'merch_3f6b2a1c-9d4e-4f8a-b7c6-5d4e3f2a1b09'; // 42 حرف — الشكل الفعلي في الإنتاج
   const agentId = 'agent_0a1b2c3d-4e5f-4678-89ab-cdef01234567';
   assert.equal(merchId.length, 42);
+  setUser('uid-2', {role: 'MERCHANT', merchantId: merchId, deliveryAgentId: agentId});
   const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-2'), body: {merchantId: merchId}});
   assert.equal(res.status, 200);
   const code = (await res.json()).url.split('start=')[1];
   await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 556}, text: '/start ' + code}}});
-  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:' + merchId], title: 't', message: 'm'}});
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['m:' + merchId], title: 't', message: 'm'}});
   assert.equal((await nres.json()).sent, 1);
   assert.equal(sentMessages.at(-1).chatId, '556');
   await call('/link/stop', {method: 'POST', headers: auth('good-uid-2')});
@@ -116,9 +131,9 @@ let linkUrl;
 // 4) /notify بدون السر مترفض، وبمفاتيح غير معروفة يرجع 0
 {
   assert.equal((await call('/notify', {method: 'POST', headers: {'content-type': 'application/json'}, body: {keys: ['m:m1'], title: 't', message: 'm'}})).status, 401);
-  assert.equal((await (await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:unknown'], title: 't', message: 'm'}})).json()).sent, 0);
+  assert.equal((await (await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['m:unknown'], title: 't', message: 'm'}})).json()).sent, 0);
   // مفاتيح مش مطابقة للشكل بتتجاهل
-  assert.equal((await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['x:hack', 'uid:1'], title: 't', message: 'm'}})).status, 400);
+  assert.equal((await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['x:hack', 'uid:1'], title: 't', message: 'm'}})).status, 400);
 }
 
 // 5) ربط أدمن وإشعار role:ADMIN
@@ -127,7 +142,7 @@ let linkUrl;
   const code = (await res.json()).url.split('start=')[1];
   await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 777}, text: '/start ' + code}}});
   const before = sentMessages.length;
-  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['role:ADMIN'], title: 'طلب جديد 🔔', message: 'تم استلام طلب جديد'}});
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['role:ADMIN'], title: 'طلب جديد 🔔', message: 'تم استلام طلب جديد'}});
   assert.equal((await nres.json()).sent, 1);
   assert.equal(sentMessages.length, before + 1);
   assert.equal(sentMessages.at(-1).chatId, '777');
@@ -138,7 +153,7 @@ let linkUrl;
   const res = await call('/link/stop', {method: 'POST', headers: auth('good-uid-1')});
   assert.equal((await res.json()).linked, false);
   const before = sentMessages.length;
-  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:m1'], title: 't', message: 'm'}});
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['m:m1'], title: 't', message: 'm'}});
   assert.equal((await nres.json()).sent, 0);
   assert.equal(sentMessages.length, before);
 }
@@ -176,6 +191,7 @@ let linkUrl;
 // 9) المستخدم اللي حظر البوت بيتشال من القوائم أثناء البث
 {
   // اربط عميل على شات 888
+  setUser('uid-1', {role: 'CUSTOMER'});
   const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-1'), body: {customer: true}});
   const code = (await res.json()).url.split('start=')[1];
   await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 888}, text: '/start ' + code}}});
@@ -196,9 +212,10 @@ let linkUrl;
 {
   const NOW = Date.parse('2026-06-15T10:00:00Z');
   const TODAY = '2026-06-15', TOMORROW = '2026-06-16';
-  const sec = {'content-type': 'application/json', 'x-app-secret': 's3cr3t'};
+  const sec = {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'};
 
   // اربط تاجر mrem على شات 900
+  setUser('uid-2', {role: 'MERCHANT', merchantId: 'mrem'});
   const res = await call('/link/start', {method: 'POST', headers: auth('good-uid-2'), body: {merchantId: 'mrem'}});
   const code = (await res.json()).url.split('start=')[1];
   await call('/tg/webhook', {method: 'POST', headers: {'content-type': 'application/json', 'x-telegram-bot-api-secret-token': 'whsec'}, body: {message: {chat: {id: 900}, text: '/start ' + code}}});
@@ -209,7 +226,7 @@ let linkUrl;
   assert.equal((await call('/reminders/prefs', {method: 'POST', headers: sec, body: {merchantId: 'mrem'}})).status, 400);
 
   // مزامنة: حجز مقبول ميعاده بعد ساعة + حجز معلق من 3 ساعات + حجز تالف الشكل
-  const bk = (id, status, date, time, createdAt) => ({id, merchantId: 'mrem', customerName: 'أحمد', date, time, status, createdAt});
+  const bk = (id, status, date, time, createdAt) => { const b = {id, merchantId: 'mrem', customerName: 'أحمد', date, time, status, createdAt}; fakeDocs.set('bookings/' + id, {...b, customerId: 'uid-cust'}); return b; };
   const sync = await call('/reminders/sync', {method: 'POST', headers: sec, body: {bookings: [
     bk('mrem_2026-06-15_1400', 'ACCEPTED', TODAY, '14:00', NOW - 5 * 3600e3),  // الميعاد بعد 60 دقيقة بالظبط
     bk('mrem_2026-06-15_2000', 'ACCEPTED', TODAY, '20:00', NOW - 5 * 3600e3),  // بعد 7 ساعات — بره النافذة
@@ -292,6 +309,7 @@ let linkUrl;
 
 // 11) Web Push: مفتاح VAPID، الاشتراكات، fan-out في /notify، تنظيف الميت، وفك تشفير RFC 8291
 {
+  setUser('uid-1', {role: 'MERCHANT', merchantId: 'm1'});
   const b64u = buf => Buffer.from(buf).toString('base64url');
   const b64uDec = s => new Uint8Array(Buffer.from(s, 'base64url'));
   const cat = (...as) => { const o = new Uint8Array(as.reduce((n, a) => n + a.length, 0)); let off = 0; for (const a of as) { o.set(a, off); off += a.length; } return o; };
@@ -321,7 +339,7 @@ let linkUrl;
   const pushCalls = [];
   const origPush = _internals.pushSendOnce;
   _internals.pushSendOnce = async (e, v, sub, payload) => { pushCalls.push({endpoint: sub.endpoint, payload}); return {ok: true}; };
-  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:m1'], title: 'طلب جديد', message: 'تفاصيل'}});
+  const nres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['m:m1'], title: 'طلب جديد', message: 'تفاصيل'}});
   const ndata = await nres.json();
   assert.equal(ndata.sent, 0); // ربط تليجرام بتاع m1 اتشال في اختبار 6 — البوش شغال لوحده
   assert.equal(ndata.pushed, 1);
@@ -331,7 +349,7 @@ let linkUrl;
 
   // اشتراك ميت (404/410) بيتشال من الفهارس
   _internals.pushSendOnce = async () => ({ok: false, gone: true});
-  const gres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', 'x-app-secret': 's3cr3t'}, body: {keys: ['m:m1'], title: 't', message: 'm'}});
+  const gres = await call('/notify', {method: 'POST', headers: {'content-type': 'application/json', authorization: 'Bearer good-uid-admin'}, body: {keys: ['m:m1'], title: 't', message: 'm'}});
   assert.equal((await gres.json()).pushed, 0);
   assert.equal(await env.TG_LINKS.get('push:idx:m:m1'), '[]');
   assert.equal(await env.TG_LINKS.get('push:sub:' + h1), null);
@@ -482,5 +500,64 @@ let linkUrl;
   await _internals.runCartCron(env, noon); assert.equal(pushes.length, 3); assert.equal(await env.TG_LINKS.get('cart:uid-2'), null);
   _internals.pushFanOut = origFan;
   console.log('PASS cart reminder');
+}
+// 14) الأمان: مفيش سر مشترك، والدور بييجي من Firestore مش من الطلب
+{
+  const J = {'content-type': 'application/json'};
+  const post = (path, headers, body) => call(path, {method: 'POST', headers, body});
+  // السر القديم لوحده مبقاش يفتح حاجة
+  const legacy = {...J, 'x-app-secret': 's3cr3t'};
+  for (const [path, body] of [['/notify', {keys: ['role:ADMIN'], title: 't', message: 'm'}], ['/reminders/sync', {bookings: [{id: 'x'}]}], ['/reminders/prefs', {merchantId: 'm1', reminder1h: false}], ['/tg/setup-webhook', {}]])
+    assert.equal((await post(path, legacy, body)).status, 401, path);
+  // مستخدم مسجل دخول بس ملوش ملف في users: ممنوع
+  fakeDocs.delete('users/uid-2');
+  assert.equal((await post('/notify', auth('good-uid-2'), {keys: ['role:ADMIN'], title: 't', message: 'm'})).status, 403);
+  // عميل عادي: مينفعش يربط تليجرام كأدمن أو كتاجر أو كمسوّق
+  setUser('uid-2', {role: 'CUSTOMER'});
+  assert.equal((await post('/link/start', auth('good-uid-2'), {admin: true})).status, 403);
+  assert.equal((await post('/link/start', auth('good-uid-2'), {merchantId: 'm1'})).status, 403);
+  assert.equal((await post('/link/start', auth('good-uid-2'), {deliveryAgentId: 'a1'})).status, 403);
+  assert.equal((await post('/link/start', auth('good-uid-2'), {marketer: true})).status, 403);
+  assert.equal((await post('/link/start', auth('good-uid-2'), {customer: true})).status, 200);
+  // تاجر: متجره بس، مش متجر تاني ولا أدمن
+  setUser('uid-1', {role: 'MERCHANT', merchantId: 'm1'});
+  assert.equal((await post('/link/start', auth('good-uid-1'), {merchantId: 'm2'})).status, 403);
+  assert.equal((await post('/link/start', auth('good-uid-1'), {admin: true})).status, 403);
+  assert.equal((await post('/link/start', auth('good-uid-1'), {merchantId: 'm1'})).status, 200);
+  assert.equal((await post('/link/start', auth('good-uid-admin'), {admin: true})).status, 200);
+  // البث: عميل ممنوع حتى لو كان مربوط
+  assert.equal((await post('/broadcast', auth('good-uid-2'), {audience: 'ALL', text: 'x'})).status, 403);
+  // الاشتراك في بوش: مفاتيح الأدمن والتجار التانيين بتتشال من اللي العميل طلبه
+  const sub = {endpoint: 'https://push.example/sec-1', keys: {p256dh: 'BPxx', auth: 'aa'}};
+  assert.equal((await post('/push/subscribe', auth('good-uid-2'), {subscription: sub, keys: ['role:ADMIN', 'm:m1', 'a:a1']})).status, 200);
+  const hash = (await Promise.resolve(Object.keys(Object.fromEntries(env.TG_LINKS.m))).then(k => k.find(x => x.startsWith('push:sub:') && JSON.parse(env.TG_LINKS.m.get(x)).endpoint === sub.endpoint)));
+  assert.deepEqual(JSON.parse(env.TG_LINKS.m.get(hash)).selectors, ['uid:uid-2']);
+  // مرايا الحجوزات: حجز مش بتاع المتصل = skipped، والبيانات بتتاخد من المستند مش من الطلب
+  fakeDocs.set('bookings/sec_b1', {merchantId: 'mreal', customerName: 'س', date: '2026-06-20', time: '10:00', status: 'PENDING', createdAt: 1, customerId: 'uid-other'});
+  let r = await (await post('/reminders/sync', auth('good-uid-2'), {bookings: [{id: 'sec_b1', merchantId: 'mfake', date: '2026-06-20', time: '10:00', status: 'PENDING', createdAt: 1}]})).json();
+  assert.equal(r.skipped, 1); assert.equal(r.stored, 0);
+  fakeDocs.set('bookings/sec_b2', {merchantId: 'mreal', customerName: 'س', date: '2026-06-20', time: '10:00', status: 'PENDING', createdAt: 1, customerId: 'uid-2'});
+  r = await (await post('/reminders/sync', auth('good-uid-2'), {bookings: [{id: 'sec_b2', merchantId: 'mfake', date: '2030-01-01', time: '10:00', status: 'PENDING', createdAt: 1}]})).json();
+  assert.equal(r.stored, 1);
+  assert.equal(JSON.parse(env.TG_LINKS.m.get('rem:sec_b2')).merchantId, 'mreal');
+  // تفضيلات التذكير: صاحب المتجر أو الأدمن بس
+  assert.equal((await post('/reminders/prefs', auth('good-uid-2'), {merchantId: 'm1', reminder1h: false})).status, 403);
+  assert.equal((await post('/reminders/prefs', auth('good-uid-1'), {merchantId: 'm2', reminder1h: false})).status, 403);
+  assert.equal((await post('/reminders/prefs', auth('good-uid-1'), {merchantId: 'm1', reminder1h: false})).status, 200);
+  fakeDocs.set('merchants/m9', {ownerId: 'uid-2'});
+  assert.equal((await post('/reminders/prefs', auth('good-uid-2'), {merchantId: 'm9', reminder1h: false})).status, 200);
+  // setup-webhook: أدمن بس
+  assert.equal((await post('/tg/setup-webhook', auth('good-uid-1'), {})).status, 403);
+  // حد أقصى للإشعارات: 30 لغير الأدمن ثم 429
+  setUser('uid-2', {role: 'CUSTOMER'});
+  let last = 0;
+  for (let i = 0; i < 32; i++) last = (await post('/notify', auth('good-uid-2'), {keys: ['m:nobody'], title: 't', message: 'm'})).status;
+  assert.equal(last, 429);
+  // CORS: موقعنا بس
+  const evil = await worker.fetch(new Request('https://worker.test/health', {headers: {origin: 'https://evil.example'}}), env, {});
+  assert.equal(evil.headers.get('access-control-allow-origin'), null);
+  const good = await worker.fetch(new Request('https://worker.test/health', {headers: {origin: 'https://3alababk.com'}}), env, {});
+  assert.equal(good.headers.get('access-control-allow-origin'), 'https://3alababk.com');
+  console.log('PASS worker security: no shared secret, roles from Firestore, link/push/notify/reminders/broadcast/setup guards, rate limit, CORS');
 }
 console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. reminders sync/prefs/cron (1h reminder, 2h aggregated alert, tomorrow summary, prefs off, unlinked merchant). web push (vapid key, subscribe guards/dedupe/uid selector, notify fan-out payload, gone cleanup, unsubscribe, RFC 8291 decrypt roundtrip + VAPID JWT signature). uid-keys broadcast (admin-only, strict 400s, 101 cap, unlinked not counted, telegram+push, dedupe, gone cleanup, audience unchanged). messages sent:', sentMessages.length);
