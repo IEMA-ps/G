@@ -206,3 +206,26 @@ const adminHtml = SC.adminCardHTML({esc, faqs:[{_id:'f1', q:'سؤال', keys:['�
 assert.ok(adminHtml.includes('×2'), 'تجميع الأسئلة المجهولة المتشابهة');
 assert.ok(adminHtml.includes('wa.me/2010'));
 console.log('PASS support-chat: normalize, match (incl. out-of-scope null + provider/upgrade + repeat reply), roles chips, merge, lead gate, payloads, XSS escaping, admin card.');
+
+// --- دفعة 2 (support-faq-extra.js): كل سؤال جاهز لازم يرجع لإجابته، ومفيش تكرار ids جديدة ---
+{
+  const extra = SC.FAQ_SEED.slice(100);
+  assert.ok(extra.length >= 80, 'الدفعة التانية موجودة');
+  const seen = new Set(SC.FAQ_SEED.slice(0,100).map(f=>f.id));
+  for(const f of extra){
+    assert.ok(!seen.has(f.id), 'id مكرر: '+f.id); seen.add(f.id);
+    assert.ok(f.answer.length >= 20 && f.answer.length <= 600, 'طول الإجابة: '+f.id);
+    const r = SC.matchFaq(f.q, SC.FAQ_SEED);
+    assert.ok(r && r.id === f.id, 'السؤال لازم يرجع لإجابته: '+f.id+' -> '+(r&&r.id));
+  }
+  // أسئلة طبيعية بصيغ مختلفة
+  const m2 = q => { const f = SC.matchFaq(q, SC.FAQ_SEED); return f ? f.id : null; };
+  assert.equal(m2('كود الدعوة بيقول غير صحيح'), 'invite-code-invalid');
+  assert.equal(m2('محلي اختفى من التطبيق'), 'merchant-sub-expired');
+  assert.equal(m2('الحد الأدنى للسحب كام'), 'marketer-min-withdraw');
+  assert.equal(m2('ازاي اسجل الاستلام من المحل'), 'courier-pickup');
+  // الدور بيحدد الشرائح: المندوب يشوف أسئلة المندوب
+  const chips = SC.chipsFor('delivery', SC.FAQ_SEED, 30).map(c=>c.id);
+  assert.ok(chips.includes('courier-deliver'));
+}
+console.log('PASS support-faq-extra');
