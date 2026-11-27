@@ -3386,10 +3386,10 @@ let _closedDraft=null;
 const closedNow=()=>_closedDraft||Services.normalizeSchedule(S.mySchedule).closedDates;
 window.addClosedDate=()=>{ const v=document.getElementById('schClosedAdd').value; if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; _closedDraft=[...new Set([...closedNow(),v])].sort(); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
 window.removeClosedDate=d=>{ _closedDraft=closedNow().filter(x=>x!==d); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
-function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow()); }catch(e){ return S.mySchedule; } }
+function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>{const e=document.getElementById(id);return e?e[f==='checked'?'checked':'value']:undefined},closedNow()); }catch(e){ return S.mySchedule; } }
 function scheduleLockHTML(){
   const un=!!S.schedUnlocked;
-  return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:13px">${un?'🔓 المواعيد مفتوحة للتعديل':'🔒 المواعيد مقفولة'}</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()">${un?'قفل بدون حفظ':'فتح للتعديل'}</button></div><fieldset ${un?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;${un?'':'opacity:.65'}"><style>fieldset[disabled] .btn-primary,fieldset[disabled] .btn-ghost{display:none}</style>${Services.scheduleEditorHTML(S.mySchedule,esc)}</fieldset>`;
+  return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:13px">${un?'🔓 المواعيد مفتوحة للتعديل':'🔒 المواعيد مقفولة'}</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()">${un?'قفل بدون حفظ':'فتح للتعديل'}</button></div><fieldset ${un?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;${un?'':'opacity:.65'}"><style>fieldset[disabled] .btn-primary,fieldset[disabled] .btn-ghost{display:none}</style>${Services.scheduleEditorHTML(S.mySchedule,esc,FeatureFlags.isOn(S.settings,'slotCapacityEnabled'))}</fieldset>`;
 }
 window.toggleScheduleLock = async ()=>{
   if(!S.schedUnlocked){ S.schedUnlocked=true; renderMain(); return; }
@@ -3400,7 +3400,7 @@ window.toggleScheduleLock = async ()=>{
 window.saveProviderSchedule = async ()=>{
   const mId=S.profile.merchantId; if(!mId) return;
   try{
-    const sch=Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow());
+    const sch=Services.readScheduleForm((id,f)=>{const e=document.getElementById(id);return e?e[f==='checked'?'checked':'value']:undefined},closedNow());
     await setDoc(doc(db,'serviceSchedules',mId),{merchantId:mId,...sch,updatedAt:nowMs()}); _closedDraft=null; S.schedUnlocked=false; renderMain(); UI.toast('تم حفظ المواعيد ✅');
   }catch(e){ UI.toast(e.message||'تعذر الحفظ'); }
 };
