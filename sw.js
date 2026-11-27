@@ -1,7 +1,7 @@
 // Cache only public local app files. Never cache Firebase data, auth requests or external resources.
-const CACHE='alababak-services-v59';
+const CACHE='alababak-services-v60';
 const SHELL=['/terms.html','/terms-consent.js','/terms-consent.css','/marketer-benefits.js','/services.js','/delivery-sub.js','/ad-slots.js','/store-hours.js','/favorites.js','/marketer-contest.js','/marketer-insights.js','/order-timeline.js','/merchant-ratings.js','/feature-flags.js','/push-client.js','/broadcast-audience.js','/order-tx.js','/order-money.js','/order-points-tx.js','/delivery-batch.js','/admin-panel.js','/admin-panel.css','/shared-catalog.js','/shared-catalog-ui.js','/shared-catalog.css','/product-list.js','/product-sheet.js','/product-sheet-ui.js','/product-list.css','/marketer-program.js','/marketer-program-ui.js','/referral-report.js','/navigation-history.js','/store-link-codes.js','/store-sharing.js','/store-types.js','/app-routes.js','/nearby-stores.js','/egypt-locations.js','/egypt-locations-data.js','/password-policy.js','/founding-merchants.js','/member-roles.js','/support-requests.js','/support-chat.js','/telegram-notify.js','/auth-policy.js','/store.html','/merchant-plans.js','/','/index.html','/manifest.webmanifest','/icon-192.png','/icon-512.png','/maskable-512.png','/apple-touch-icon.png','/icon.svg','/qrcode.js','/marketer-tools.js','/marketing-config.js','/pwa-install.js','/brand.css','/brand.js','/logo.svg','/logo-reverse.svg'];
-self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
+self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(u=>new Request(u,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('alababak-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
  const req=event.request,url=new URL(req.url);
@@ -12,7 +12,7 @@ self.addEventListener('fetch',event=>{
  }
  if(!SHELL.includes(url.pathname)) return;
  // Network-first prevents an old HTML/new module mix during updates.
- event.respondWith(fetch(req).then(res=>{if(res.ok){const copy=res.clone();event.waitUntil(caches.open(CACHE).then(c=>c.put(req,copy)));}return res;}).catch(()=>caches.match(req)));
+ event.respondWith(fetch(req,{cache:'no-cache'}).then(res=>{if(res.ok){const copy=res.clone();event.waitUntil(caches.open(CACHE).then(c=>c.put(req,copy)));}return res;}).catch(()=>caches.match(req)));
 });
 
 self.addEventListener('push',event=>{
