@@ -589,7 +589,7 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
 <script src="/qrcode.js"></script>
 <script type="module">
 import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
-import * as AdSlots from '/ad-slots.js?v=ads-2';
+import * as AdSlots from '/ad-slots.js?v=ads-3';
 import * as Favorites from '/favorites.js?v=fav-1';
 import * as FeatureFlags from '/feature-flags.js?v=flags-4';
 import * as StorePhoto from '/store-photo.js?v=photo-2';
@@ -6210,10 +6210,14 @@ function renderAdminSettings(){
     </div>
     ${isSuperAdmin()?`<div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 10px;font-size:15px"><i class="fa-solid fa-rectangle-ad" style="color:var(--teal)"></i> الإعلانات الثابتة</h3>
-      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">صورة ثابتة بنسبة 3:1 (مثلا 1080x360). حط رابط الصورة (لازم يبدأ بـ https)، ورابط اختيارى لو عايزها تفتح صفحة. كل مكان مقفول لحد ما تفتحه.</p>
+      <p style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin:0 0 12px">صورة ثابتة بنسبة 3:1 (المقاس المناسب 900×300 بكسل). ارفع الصورة من جهازك أو حط رابط https، ورابط اختيارى لو عايزها تفتح صفحة. كل مكان مقفول لحد ما تفتحه.</p>
       ${AdSlots.AD_SLOTS.map(sl=>{const v=AdSlots.normalizeSlot((s.adSlots||{})[sl.id]);return `<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">
         <div class="row-between" style="margin-bottom:8px"><b style="font-size:13.5px">${esc(sl.label)}</b><label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer"><input type="checkbox" id="ad_${sl.id}_on" ${v.on?'checked':''}> ظاهر</label></div>
-        <div class="field"><label>رابط الصورة</label><input id="ad_${sl.id}_imageUrl" type="url" dir="ltr" placeholder="https://..." value="${esc(v.imageUrl)}"></div>
+        ${(AdSlots.initAd(sl.id,v.imageUrl),'')}<div class="field"><label>صورة البانر <span style="color:var(--ink-soft);font-weight:400">(المقاس المناسب ${AdSlots.AD_W}×${AdSlots.AD_H} بكسل، نسبة 3:1)</span></label>
+          <div style="display:flex;align-items:center;gap:12px"><div id="ad_${sl.id}_prev" style="width:150px;height:50px;border-radius:10px;background:var(--teal-tint);overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0">${AdSlots.isAdData(v.imageUrl)?`<img src="${esc(v.imageUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">`:'<i class="fa-solid fa-image" style="color:var(--ink-soft)"></i>'}</div>
+          <div style="display:flex;flex-direction:column;gap:6px"><label class="btn btn-ghost btn-sm" style="width:auto;cursor:pointer;margin:0"><i class="fa-solid fa-camera"></i> رفع صورة<input type="file" accept="image/*" style="display:none" onchange="pickAdImage('${sl.id}',this)"></label><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="clearAdImage('${sl.id}')">شيل الصورة</button></div></div>
+          <p style="font-size:11px;color:var(--ink-soft);margin:6px 0 4px">الصورة بتتقص وتتصغّر لوحدها لنسبة 3:1. أو حط رابط صورة بدلها (لازم https):</p>
+          <input id="ad_${sl.id}_imageUrl" type="url" dir="ltr" placeholder="https://..." value="${AdSlots.isAdData(v.imageUrl)?'':esc(v.imageUrl)}"></div>
         <div class="field"><label>رابط عند الضغط (اختيارى)</label><input id="ad_${sl.id}_link" type="url" dir="ltr" placeholder="https://..." value="${esc(v.link)}"></div>
         <div class="field"><label>وصف الصورة (اختيارى)</label><input id="ad_${sl.id}_alt" maxlength="120" value="${esc(v.alt)}"></div>
       </div>`;}).join('')}
@@ -6310,10 +6314,12 @@ window.saveLoyaltySettings = async ()=>{
   await logAudit('تعديل إعدادات نقاط الولاء', `مفعّل: ${loyaltyEnabled} — كسب: ${loyaltyEarnRate} — استبدال: ${loyaltyRedeemValue}`);
   UI.toast('تم حفظ إعدادات نقاط الولاء ✅');
 };
+window.pickAdImage = async (id,el)=>{ try{ await AdSlots.pickAd(id,el,esc); }catch(e){ UI.toast(e.message||'تعذر قراءة الصورة'); } };
+window.clearAdImage = id=>AdSlots.clearAd(id);
 window.saveAdSlots = async ()=>{
   if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
   const el=(id,f)=>document.getElementById('ad_'+id+'_'+f);
-  const r=AdSlots.readAdForm((id,f)=>f==='on'?el(id,f).checked:el(id,f).value);
+  const r=AdSlots.readAdForm((id,f)=>f==='on'?el(id,f).checked:f==='imageUrl'?AdSlots.adImageValue(id,el(id,f).value):el(id,f).value);
   if(r.error){ UI.toast(r.error); return; }
   await setDoc(doc(db,'settings','app'), {adSlots:r.slots}, {merge:true});
   await logAudit('تعديل الإعلانات الثابتة', AdSlots.AD_SLOT_IDS.map(id=>id+':'+(r.slots[id].on?'on':'off')).join(' '));
