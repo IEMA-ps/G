@@ -132,3 +132,10 @@ body>#pwaInstallBtn{background:#30251F!important;border:1px solid #30251F!import
   body>#pwaInstallBtn{left:20px!important;bottom:72px!important}
   body[data-role] #mainContent{padding-bottom:150px}
 }
+
+/* إظهار/إخفاء كلمة المرور */
+.pw-wrap{position:relative;display:block}
+.pw-wrap input[type="password"],.pw-wrap input[data-pw-eye]{padding-inline-end:46px}
+.pw-eye{position:absolute;inset-block:0;inset-inline-end:0;width:44px;border:0;background:transparent;color:var(--ink-soft,#6b5a50);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px}
+.pw-eye:hover{color:var(--ink,#2b1d16)}
+.pw-eye:focus-visible{outline:2px solid var(--teal,#c8401a);outline-offset:-2px;border-radius:10px}
