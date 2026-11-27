@@ -132,6 +132,12 @@ img{max-width:100%; display:block;}
 #mainContent{flex:1; padding:16px 16px 90px;}
 /* على الموبايل الزر العايم (دعم فني) وفقاعة التثبيت كانوا بيغطوا آخر صفوف الفورم، فبنسيب مساحة تحتهم */
 @media (max-width:600px){ #mainContent{padding-bottom:220px;} }
+#cartBar{position:fixed; bottom:calc(66px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); width:calc(100% - 24px); max-width:456px; z-index:19; display:flex; justify-content:space-between; align-items:center; background:var(--teal); color:#fff; border:none; border-radius:16px; padding:11px 16px; font-family:inherit; box-shadow:0 6px 18px rgba(0,0,0,.28); cursor:pointer;}
+#cartBar .cb-info{display:flex; flex-direction:column; align-items:flex-start; font-size:12.5px; font-weight:600; line-height:1.4;}
+#cartBar .cb-info b{font-size:15px; font-weight:800;}
+#cartBar .cb-go{background:#fff; color:var(--teal); font-weight:800; font-size:14px; border-radius:12px; padding:9px 16px;}
+body.has-cartbar .support-btn{bottom:170px;}
+body.has-cartbar .fab{bottom:150px;}
 #bottomNav{
   position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px;
   background:#fff; border-top:1px solid var(--line); display:flex; z-index:20;
@@ -2723,6 +2729,17 @@ function renderShell(){
   _shellBusy = true;
   renderMain();
   _shellBusy = false;
+  updateCartBar();
+}
+// شريط السلة الثابت للعميل: يظهر لما يكون في السلة حاجة، وبيودّي على السلة مباشرة
+function updateCartBar(){
+  let el = document.getElementById('cartBar');
+  const n = (S.role==='customer' && Array.isArray(S.cart)) ? S.cart.reduce((a,c)=>a+(c.quantity||0),0) : 0;
+  const hide = !n || ['cart','checkout','orderDone'].includes(S.tab);
+  if(hide){ if(el) el.remove(); document.body.classList.remove('has-cartbar'); return; }
+  if(!el){ el = document.createElement('button'); el.id = 'cartBar'; el.type = 'button'; el.onclick = ()=>go('cart'); document.body.appendChild(el); }
+  el.innerHTML = '<span class="cb-info">السلة ('+n+')<b>'+fmtMoney(cartTotal())+'</b></span><span class="cb-go">اطلب الآن <i class="fa-solid fa-arrow-left"></i></span>';
+  document.body.classList.add('has-cartbar');
 }
 window.goBack=()=>previousOr(routeURL(defaultTabForRole(),S.role,location.search)||'/');
 window.go = (tab, opts)=>{
