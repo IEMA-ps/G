@@ -519,7 +519,7 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
         <p class="location-note">اختار منطقتك لعرض المتاجر المسجلة في نفس المنطقة، مش حسب مسافة فعلية. عنوان التوصيل بالتفصيل تضيفه بعد الدخول.</p><div id="regLocation"></div>
         <div class="field"><label>كود دعوة صديق (اختياري)</label><input type="text" id="regReferral" placeholder="كود الداعي، للتسجيل بالبريد أو جوجل" style="text-transform:uppercase" oninput="previewInvite(this.value)">
         <div id="inviteBy" class="hidden" style="font-size:12.5px;color:var(--teal);margin-top:6px"></div>
-        <div id="inviteGate" class="hidden" style="font-size:12.5px;line-height:1.8;margin-top:6px;color:var(--ink-soft)">التسجيل دلوقتي بالدعوة بس. اطلب كود من صاحب ليه حساب، أو <a href="#" onclick="openWaitlist();return false" style="color:var(--teal);font-weight:700">انضم لقائمة الانتظار</a>.</div></div>
+        <div id="inviteGate" class="hidden" style="font-size:12.5px;line-height:1.8;margin-top:6px;color:var(--ink-soft)">مفيش كود؟ سجّل عادي، وحسابك هيفضل على قائمة الانتظار لحد ما الإدارة تفعّله.</div></div>
 
         <div class="terms-check"><input type="checkbox" id="regTerms" required aria-describedby="regTermsHint"><label for="regTerms">أوافق على <a href="/terms.html" target="_blank" rel="noopener">شروط الاستخدام</a></label></div>
         <p id="regTermsHint" class="terms-hint">افتح الشروط وراجعها قبل الموافقة. الصفحة بتفتح في تبويب جديد من غير ما تضيع بيانات التسجيل.</p>
@@ -543,6 +543,19 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
     <button id="googleTermsAccept" class="btn btn-primary" type="button" disabled>موافق، كمّل التسجيل</button>
     <button id="googleTermsCancel" class="btn btn-ghost" type="button">إلغاء والخروج</button>
   </dialog>
+  <div id="pendingScreen" class="hidden" dir="rtl" style="max-width:480px;margin:32px auto;padding:16px" role="region" aria-label="قائمة الانتظار">
+    <div class="card" style="padding:24px">
+      <h2 style="font-size:22px;margin-bottom:12px">حسابك على قائمة الانتظار ⏳</h2>
+      <p style="line-height:1.9">اتسجّلت بنجاح، وحسابك هيتفعّل من الإدارة. هنبعتلك رسالة أول ما يتفعّل.</p>
+      <p style="line-height:1.9;margin-top:8px">عشان الرسالة توصلك فورًا، اربط بوت تليجرام بتاعنا:</p>
+      <button class="btn btn-primary" style="margin:8px 0 14px" onclick="openTelegramLink('customer')"><i class="fa-brands fa-telegram"></i> ربط تليجرام</button>
+      <div class="field"><label>عندك كود دعوة؟</label><input id="pendingCode" type="text" dir="ltr" style="text-transform:uppercase" placeholder="الكود"></div>
+      <button class="btn btn-ghost" style="margin-bottom:8px" onclick="activateWithCode()">فعّل بالكود</button>
+      <p id="pendingMsg" role="status" style="line-height:1.8;margin:8px 0"></p>
+      <button class="btn btn-ghost" style="margin-bottom:8px" onclick="recheckPending()">تحديث الحالة</button>
+      <button class="btn btn-danger" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> تسجيل الخروج</button>
+    </div>
+  </div>
   <div id="verifyScreen" class="hidden" dir="rtl" style="max-width:480px;margin:32px auto;padding:16px" role="region" aria-label="تأكيد البريد الإلكتروني">
     <div class="card" style="padding:24px">
       <h2 style="font-size:22px;margin-bottom:12px">أكّد بريدك الإلكتروني</h2>
@@ -1022,19 +1035,12 @@ const Auth = {
       const inviteInput = document.getElementById('regReferral').value.trim().toUpperCase();
       const IG = window.InviteGate;
       const inv = (IG && inviteInput) ? await IG.lookup(inviteInput) : null;
-      if(IG && IG.on() && ((!inv && !inviteInput) || (inv && inv.full))){
-        applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden');
-        Auth.showError(inv&&inv.full ? 'كود الدعوة ده خلّص دعواته. اطلب كود تاني أو انضم لقائمة الانتظار.' : 'التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح أو انضم لقائمة الانتظار.'); return;
-      }
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      // كود مسوّق/إحالة/إدارة: بيتفحص بعد ما الدخول يتعمل (القواعد بتقرا referralCodes للمسجلين بس). لو غلط نمسح الحساب الجديد قبل ما أي بيانات تتكتب.
-      if(IG && IG.on() && !inv){
-        const anyInv = await IG.lookupAny(inviteInput);
-        if(!anyInv){
-          let removed=true; try{ await deleteUser(cred.user); }catch(e){ removed=false; try{ await signOut(auth); }catch(e2){} }
-          applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden');
-          Auth.showError(removed ? 'كود الدعوة ده مش صحيح. اكتب كود صح أو انضم لقائمة الانتظار.' : 'كود الدعوة ده مش صحيح، ومتعملش حساب جديد. تواصل مع الإدارة لو بريدك اتحجز.'); return;
-        }
+      // بدون كود صالح والتسجيل بالدعوة شغال: الحساب بيتعمل عادي وبيفضل على قائمة الانتظار لحد التفعيل. كود المسوّق/الإحالة بيتفحص بعد الدخول (القواعد).
+      let waitlisted = false, badCode = false;
+      if(IG && IG.on()){
+        const okCode = (inv && !inv.full) ? true : !!(inviteInput && await IG.lookupAny(inviteInput));
+        waitlisted = !okCode; badCode = !okCode && !!inviteInput;
       }
       await updateProfile(cred.user, { displayName: (first+' '+last).trim() });
       Auth.verificationNotice = '';
@@ -1052,6 +1058,10 @@ const Auth = {
       // Keep the exact create-user schema allowed by the owner's rules. Preference is a separate self-update.
       try{await updateDoc(doc(db,'users',cred.user.uid),{preferredLocation});}
       catch(e){UI.toast('الحساب اتعمل، لكن منطقتك ما اتحفظتش. اختارها من متاجر منطقتك بعد الدخول.');}
+      if(waitlisted){
+        try{ await updateDoc(doc(db,'users',cred.user.uid),{waitlisted:true,waitlistedAt:nowMs()}); }catch(e){ console.error('waitlist flag failed', e); }
+        if(badCode) UI.toast('الكود مش صحيح، حسابك على قائمة الانتظار لحد التفعيل.');
+      }
 
       // معالجة كود دعوة الصديق لو العميل الجديد دخل واحد
       const referralInput = document.getElementById('regReferral').value.trim().toUpperCase();
@@ -1142,6 +1152,7 @@ function showSignedOut(){
   document.getElementById('loadingScreen').classList.add('hidden');
   document.getElementById('appShell').classList.add('hidden');
   document.getElementById('verifyScreen').classList.add('hidden');
+  document.getElementById('pendingScreen')?.classList.add('hidden');
   document.getElementById('accountRecovery').classList.add('hidden');
   // المساعد الذكي متاح للزائر على صفحة البداية — نجيب الإعدادات العامة (قراءة عامة) عشان نعرف لو المفتاح مفتوح
   getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()}); } updateSupportBtn(); applyInviteUi(); }).catch(()=>updateSupportBtn());
@@ -1169,10 +1180,10 @@ async function bootAuthUser(user) {
   if(!psnap.exists()){
     if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
-    let gInv=null;
+    let gInv=null, gWaitlisted=false;
     if(window.InviteGate?.on()){
       gInv = googleSignupCode ? await window.InviteGate.lookupAny(googleSignupCode) : null;
-      if(!gInv || gInv.full){ await signOut(auth); resetSession(); showSignedOut(); applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden'); Auth.switchTab('register'); document.getElementById('regReferral')?.focus(); Auth.showError('التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح في الخانة قبل ما تكمل بجوجل، أو انضم لقائمة الانتظار.'); return; }
+      if(!gInv || gInv.full) gWaitlisted=true;
     }
     const consented = await TermsConsent.askGoogleConsent();
     if(!consented){ await signOut(auth); resetSession(); showSignedOut(); return; }
@@ -1184,6 +1195,7 @@ async function bootAuthUser(user) {
       if(!existing.exists()) tx.set(ref, googleProfile(user, userDefaults(user.uid), nowMs()));
     });
     await saveTermsConsent(user.uid, 'google');
+    if(gWaitlisted){ try{ await updateDoc(doc(db,'users',user.uid),{waitlisted:true,waitlistedAt:nowMs()}); }catch(e){ console.error('waitlist flag failed', e); } }
     try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
     if(gInv && gInv.kind==='friend'){ try{ await window.InviteGate.redeem(user.uid, gInv, user.displayName||''); }catch(e){ console.error('invite redeem failed', e); } }
     await window.Program?.recordSignup(String(googleSignupCode).toUpperCase().startsWith('WL-')?'':googleSignupCode);
@@ -1201,6 +1213,11 @@ async function bootAuthUser(user) {
     catch(e){ console.warn('User defaults need admin repair', e.code); }
   }
   if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+  if(S.profile.waitlisted===true){
+    let on=true; try{ const st=await getDoc(doc(db,'settings','app')); on=!!(st.exists()&&st.data().inviteOnly); }catch(e){}
+    if(on){ window.showPendingScreen(); return; }
+    try{ await updateDoc(doc(db,'users',user.uid),{waitlisted:false}); S.profile.waitlisted=false; }catch(e){}
+  }
   bootStage='app-open';
   S.role = (S.profile.role||'CUSTOMER').toLowerCase();
   S.realRole = S.role; S.shopping = false;
@@ -2141,7 +2158,7 @@ window.InviteGate = {on:inviteOn, lookup:lookupInvite, lookupAny:lookupAnyInvite
 window.applyInviteUi = ()=>{
   const g=document.getElementById('inviteGate'); if(g) g.classList.toggle('hidden', !inviteOn());
   const l=document.querySelector('#regReferral')?.closest('.field')?.querySelector('label');
-  if(l) l.textContent = inviteOn() ? 'كود الدعوة (مطلوب)' : 'كود دعوة صديق (اختياري)';
+  if(l) l.textContent = inviteOn() ? 'كود دعوة (اختياري، بيفعّل حسابك فورًا)' : 'كود دعوة صديق (اختياري)';
 };
 window.previewInvite = async (v)=>{
   const el=document.getElementById('inviteBy'); if(!el) return;
@@ -6196,34 +6213,41 @@ window.saveAutoApproveSwitch = async ()=>{
   await logAudit('تعديل قبول الطلبات تلقائيًا',autoApproveOrders?'تشغيل':'إيقاف');
   UI.toast(autoApproveOrders?'الطلبات هتروح للتاجر مباشرة ✅':'الطلبات هترجع لمراجعة الإدارة');
 };
-window.showWaitlist = async ()=>{
-  try{
-    const q=await getDocs(query(collection(db,'waitlist'),orderBy('createdAt','desc'),limit(100)));
-    const sup=isSuperAdmin(); window._wl=Object.fromEntries(q.docs.map(d=>[d.id,d.data()]));
-    const rows=q.docs.map(d=>{ const w=d.data(); const t=w.createdAt?new Date(w.createdAt).toLocaleString('ar-EG',{timeZone:'Africa/Cairo'}):'';
-      return `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(w.name||'')}</b><a dir="ltr" href="${waLink(w.phone||'','')}" target="_blank" rel="noopener">${esc(w.phone||'')}</a></div><div style="font-size:12px;color:var(--ink-soft);margin:4px 0 8px">${esc(t)}</div><div style="display:flex;gap:8px">${sup?`<button class="btn btn-primary btn-sm" style="width:auto;flex:1" onclick="approveWaitlist('${d.id}')">موافقة وإرسال كود</button>`:''}<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="rejectWaitlist('${d.id}')">رفض</button></div></div>`; }).join('');
-    UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار (${q.size})</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>${rows||'<p>لسه مفيش حد.</p>'}`);
-  }catch(e){ UI.toast('تعذّر تحميل القائمة (محتاج قواعد Firebase الجديدة)'); }
+window.showWaitlist = ()=>{
+  const list=(S.allUsers||[]).filter(u=>u.waitlisted===true).sort((a,b)=>(a.waitlistedAt||0)-(b.waitlistedAt||0));
+  const rows=list.map(u=>{ const t=u.waitlistedAt?new Date(u.waitlistedAt).toLocaleString('ar-EG',{timeZone:'Africa/Cairo'}):'';
+    return `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(((u.firstName||'')+' '+(u.lastName||'')).trim())}</b><a dir="ltr" href="${waLink(u.phone||'','')}" target="_blank" rel="noopener">${esc(u.phone||'')}</a></div><div dir="ltr" style="font-size:12px;color:var(--ink-soft);margin:4px 0 0;text-align:right">${esc(u.email||'')}</div><div style="font-size:12px;color:var(--ink-soft);margin:2px 0 8px">${esc(t)}</div><button class="btn btn-primary btn-sm" style="width:auto" onclick="activateWaitlisted('${esc(u._id)}')">تفعيل وإرسال رسالة</button></div>`; }).join('');
+  UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار (${list.length})</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>${S.allUsersReady===true?'':'<p class="hint-box">لسه بيحمّل المستخدمين، افتحها تاني بعد ثواني.</p>'}${rows||'<p>مفيش حد في الانتظار.</p>'}`);
 };
-// موافقة: كود دعوة جديد بإسم الإدارة (WL-xxxxxx) بيشتغل زي كود المسوّق، بيتبعت للشخص على واتساب، ويتشال من القائمة. لإدارة الموقع بس.
-window.approveWaitlist = async id=>{
-  const w=(window._wl||{})[id]; if(!w) return;
-  if(!isSuperAdmin()){ UI.toast('الموافقة لإدارة الموقع فقط'); return; }
-  const b=new Uint8Array(6); crypto.getRandomValues(b); const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const code='WL-'+[...b].map(x=>A[x%A.length]).join('');
+// تفعيل: بيشيل علامة الانتظار، وبعدين رسالة تليجرام (لو مربوط) ورابط واتساب.
+window.activateWaitlisted = async uid=>{
+  const u=(S.allUsers||[]).find(x=>x._id===uid); if(!u) return;
   try{
-    await setDoc(doc(db,'referralCodes',code),{uid:auth.currentUser.uid});
-    await deleteDoc(doc(db,'waitlist',id));
-    try{ await logAudit('موافقة قائمة الانتظار',code); }catch(e){}
-    const msg='أهلاً '+(w.name||'')+'، تمت الموافقة على تسجيلك في على بابك. كود الدعوة بتاعك: '+code+'\nسجّل من هنا: https://3alababk.com/';
-    UI.openModal(`<div class="modal-head"><h3>تمت الموافقة</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="line-height:1.9">الكود: <b dir="ltr">${esc(code)}</b></p><a class="btn btn-primary" target="_blank" rel="noopener" href="${waLink(w.phone||'',msg)}"><i class="fa-brands fa-whatsapp"></i> ابعته على واتساب</a><button class="btn btn-ghost" style="margin-top:8px" onclick="showWaitlist()">رجوع للقائمة</button>`);
-  }catch(e){ UI.toast('تعذّر إنشاء الكود'); }
+    await updateDoc(doc(db,'users',uid),{waitlisted:false}); u.waitlisted=false;
+    try{ await logAudit('تفعيل حساب من قائمة الانتظار',uid); }catch(e){}
+    const msg='أهلاً '+(u.firstName||'')+'، حسابك على على بابك اتفعّل ✅ تقدر تدخل دلوقتي: https://3alababk.com/';
+    let tg=false; try{ const r=await TelegramNotify.broadcastKeys(['uid:'+uid], msg, await S.user.getIdToken()); tg=!!(r&&(r.sent>0||r.pushed>0)); }catch(e){}
+    UI.openModal(`<div class="modal-head"><h3>تم التفعيل ✅</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="line-height:1.9">${tg?'اتبعتتله رسالة على تليجرام.':'مش مربوط تليجرام، ابعتله من واتساب:'}</p><a class="btn btn-primary" target="_blank" rel="noopener" href="${waLink(u.phone||'',msg)}"><i class="fa-brands fa-whatsapp"></i> رسالة واتساب</a><button class="btn btn-ghost" style="margin-top:8px" onclick="showWaitlist()">رجوع للقائمة</button>`);
+  }catch(e){ UI.toast('تعذّر التفعيل'); }
 };
-window.rejectWaitlist = async id=>{
-  if(!(window._wl||{})[id]) return;
-  if(!confirm('رفض الطلب وحذفه من القائمة؟')) return;
-  try{ await deleteDoc(doc(db,'waitlist',id)); try{ await logAudit('رفض قائمة الانتظار',id); }catch(e){} showWaitlist(); }
-  catch(e){ UI.toast('تعذّر الرفض'); }
+window.showPendingScreen = ()=>{
+  ['authScreen','loadingScreen','appShell','verifyScreen','accountRecovery'].forEach(i=>document.getElementById(i)?.classList.add('hidden'));
+  document.getElementById('pendingScreen')?.classList.remove('hidden');
+};
+window.recheckPending = async ()=>{
+  const m=document.getElementById('pendingMsg');
+  try{ const sn=await getDoc(doc(db,'users',S.user.uid)); if(sn.exists()&&sn.data().waitlisted!==true){ location.reload(); return; } m.textContent='لسه على قائمة الانتظار.'; }
+  catch(e){ m.textContent='تعذّر التحديث، جرّب بعد شوية.'; }
+};
+window.activateWithCode = async ()=>{
+  const m=document.getElementById('pendingMsg'); const code=(document.getElementById('pendingCode')?.value||'').trim().toUpperCase();
+  if(!code){ m.textContent='اكتب الكود الأول.'; return; }
+  try{
+    const inv=await lookupAnyInvite(code);
+    if(!inv||inv.full){ m.textContent=inv&&inv.full?'الكود ده خلّص دعواته.':'الكود مش صحيح.'; return; }
+    if(inv.kind==='friend'){ try{ await redeemInvite(S.user.uid, inv, S.profile?.firstName||''); }catch(e){ console.error('invite redeem failed', e); } }
+    await updateDoc(doc(db,'users',S.user.uid),{waitlisted:false}); location.reload();
+  }catch(e){ m.textContent='تعذّر التفعيل، جرّب بعد شوية.'; }
 };
 window.saveDeliverySubSettings = async ()=>{
   const n=(id,d)=>{ const v=parseFloat(document.getElementById(id).value); return Number.isFinite(v)&&v>=0?v:d; };
