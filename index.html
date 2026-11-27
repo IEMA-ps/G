@@ -3510,7 +3510,7 @@ window.saveServicesSwitch = async ()=>{
   await logAudit('تعديل قسم الخدمات',servicesEnabled?'تشغيل':'إيقاف');
   UI.toast(servicesEnabled?'تم تشغيل قسم الخدمات ✅':'تم إيقاف قسم الخدمات');
 };
-function homeHasServices(){ return Services.servicesEnabled(S.settings)&&(S.providers||[]).length>0; }
+function homeHasServices(){ return Services.servicesEnabled(S.settings); }
 function homeMode(){ if(!homeHasServices()) return 'stores'; let m=S.homeMode; if(!m){ try{ m=localStorage.getItem('home_mode'); }catch(e){} } return m==='services'?'services':'stores'; }
 window.setHomeMode=m=>{ S.homeMode=m; try{ localStorage.setItem('home_mode',m); }catch(e){} renderMain(); };
 function homeModeTiles(){
