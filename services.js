@@ -15,7 +15,8 @@ export function normalizeSchedule(raw){
   const days={};
   for(const k of Object.keys(d.days)){const r=raw.days?.[k];const ok=r&&HM.test(r.from||'')&&HM.test(r.to||'')&&toMin(r.to)>toMin(r.from);days[k]=ok?{on:r.on===true,from:r.from,to:r.to}:d.days[k];}
   const closed=Array.isArray(raw.closedDates)?[...new Set(raw.closedDates.filter(x=>typeof x==='string'&&DATE.test(x)))].sort().slice(0,60):[];
-  return {slotMinutes:slot,closedDates:closed,days};
+  const cap=Number.isInteger(raw.capacity)&&raw.capacity>=1&&raw.capacity<=20?raw.capacity:1;
+  return {slotMinutes:slot,closedDates:closed,days,...(cap>1?{capacity:cap}:{})};
 }
 export function cairoNow(ms=Date.now()){
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
@@ -31,7 +32,13 @@ export function slotsFor(schedule,date,booked=new Set(),ms=Date.now()){
   const out=[];for(let t=toMin(day.from);t+s.slotMinutes<=toMin(day.to);t+=s.slotMinutes){const hm=fromMin(t);if(date===now.date&&hm<=now.time)continue;if(!booked.has(hm))out.push(hm);}
   return out;
 }
-export const bookingId=(mid,date,time)=>`${mid}_${date}_${time.replace(':','')}`;
+// سعة الميعاد: كام حجز في نفس الميعاد (مدرس مع مجموعة طلاب). الافتراضي 1 زي ما كان. المقعد الأول رقمه زي الأول بالظبط، والمقاعد بعده فيها _s2 _s3.
+export const CAPACITY_OPTIONS=[1,2,3,4,5,6,8,10,15,20];
+export const capacityOf=schedule=>normalizeSchedule(schedule).capacity||1;
+export const bookingId=(mid,date,time,seat=1)=>`${mid}_${date}_${time.replace(':','')}${seat>1?'_s'+seat:''}`;
+export const seatKey=(date,time,seat=1)=>seat>1?`${date}|${time}|${seat}`:`${date}|${time}`;
+// أول مقعد فاضي في الميعاد (null لو الميعاد اتملا). booked: Set من seatKey.
+export function seatFor(booked,date,time,cap=1){for(let k=1;k<=cap;k++)if(!(booked&&booked.has(seatKey(date,time,k))))return k;return null;}
 // صيانة منزلية: العميل لازم يكتب العطل والعنوان عشان الصنايعي يجهز نفسه. بيتخزنوا جوه حقل note (300 حرف) من غير تغيير في قواعد Firebase.
 export const CRAFT_TYPE='صيانة منزلية';
 export const isCraft=m=>!!m&&String(m.activityType||'').trim()===CRAFT_TYPE;
@@ -90,10 +97,11 @@ export function providerStats(bookings,ms=Date.now()){
 }
 // ---- HTML ----
 const field=(id,label,v,esc)=>`<div class="field"><label>${label}</label>${v}</div>`;
-export function scheduleEditorHTML(schedule,esc){
+export function scheduleEditorHTML(schedule,esc,capOn=false){
   const s=normalizeSchedule(schedule);
   return `<div class="card" style="margin-bottom:14px"><b>مواعيد التشغيل</b>
     <div class="field" style="margin-top:10px"><label>مدة الحجز</label><select id="schSlot">${SLOT_OPTIONS.map(n=>`<option value="${n}" ${s.slotMinutes===n?'selected':''}>${n} دقيقة</option>`).join('')}</select></div>
+    ${capOn?`<div class="field"><label>عدد الحجوزات المسموح في نفس الميعاد</label><select id="schCap">${CAPACITY_OPTIONS.map(n=>`<option value="${n}" ${(s.capacity||1)===n?'selected':''}>${n===1?'حجز واحد (الوضع العادي)':n+' حجوزات (مجموعة)'}</option>`).join('')}</select><p class="welcome-note" style="margin:6px 0 0">للمدرس اللي بياخد أكتر من طالب في الساعة. أكتر من 1 يحتاج قواعد Firebase الجديدة.</p></div>`:''}
     ${DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:6px;margin:8px 0;align-items:center"><label style="min-width:70px;flex-shrink:0"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:0;min-width:0;flex:1"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:0;min-width:0;flex:1"></div>`;}).join('')}
     <div class="field"><label>أيام إجازة (اختياري)</label><div style="display:flex;gap:8px"><input type="date" id="schClosedAdd"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="addClosedDate()">إضافة</button></div>
     <div id="schClosedList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${s.closedDates.map(d=>`<span class="badge-chip" onclick="removeClosedDate('${d}')" style="cursor:pointer">${d} ✕</span>`).join('')}</div></div>
@@ -102,17 +110,18 @@ export function scheduleEditorHTML(schedule,esc){
 export function readScheduleForm(get,closed){
   const days={};for(let i=0;i<7;i++)days[String(i)]={on:!!get('schOn'+i,'checked'),from:get('schFrom'+i,'value'),to:get('schTo'+i,'value')};
   for(const [k,d] of Object.entries(days))if(d.on&&!(HM.test(d.from)&&HM.test(d.to)&&toMin(d.to)>toMin(d.from)))throw Error(`ساعات ${DAY_NAMES[+k]} مش مظبوطة`);
-  return normalizeSchedule({slotMinutes:Number(get('schSlot','value')),days,closedDates:closed});
+  return normalizeSchedule({slotMinutes:Number(get('schSlot','value')),capacity:Number(get('schCap','value'))||1,days,closedDates:closed});
 }
-export function bookedSetFor(booked,date){return new Set([...(booked||[])].filter(x=>x.startsWith(date+'|')).map(x=>x.split('|')[1]));}
+// الأوقات اللي اتملت (عدد الحجوزات وصل للسعة) في اليوم ده.
+export function bookedSetFor(booked,date,cap=1){const n={};for(const x of booked||[])if(x.startsWith(date+'|')){const t=x.split('|')[1];n[t]=(n[t]||0)+1;}return new Set(Object.keys(n).filter(t=>n[t]>=cap));}
 export const WEEK_CHOICES=[4,8,12];
 // dates of a weekly series starting at `date`; ok=false when that week's time is already taken or closed.
 export function seriesInfo({schedule,booked,date,time,weeks},ms=Date.now()){
   const n=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0];
-  return Array.from({length:n},(_,i)=>{const d=addDays(date,7*i);return {date:d,ok:slotsFor(schedule,d,bookedSetFor(booked,d),ms).includes(time)};});
+  return Array.from({length:n},(_,i)=>{const d=addDays(date,7*i);return {date:d,ok:slotsFor(schedule,d,bookedSetFor(booked,d,capacityOf(schedule)),ms).includes(time)};});
 }
 export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,weeks},esc,ms=Date.now()){
-  const bf=d=>bookedSetFor(booked,d);
+  const bf=d=>bookedSetFor(booked,d,capacityOf(schedule));
   const days=dateOptions(ms),sel=days.includes(date)?date:days.find(d=>slotsFor(schedule,d,bf(d),ms).length)||days[0],slots=slotsFor(schedule,sel,bf(sel),ms);
   const person=((profile?.firstName||'')+' '+(profile?.lastName||'')).trim(),ph=String(profile?.phone||'').trim(),known=!!person&&/^\+?[\d\s()-]{7,25}$/.test(ph),ready=!!(time&&slots.includes(time)),wk=repeat==='weekly',wn=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0],ser=wk&&ready?seriesInfo({schedule,booked,date:sel,time,weeks:wn},ms):[],okN=ser.filter(x=>x.ok).length;
   const dayChip=d=>{const n=slotsFor(schedule,d,bf(d),ms).length,f=fmtDay(d).split(' ');return `<button type="button" class="bk-day ${d===sel?'active':''} ${n?'':'off'}" ${n?`onclick="pickBookDate('${esc(m.id)}','${d}')"`:'disabled'}><strong>${f[0]}</strong><span>${f[1]}</span><small>${n?n+' ميعاد':'مقفول'}</small></button>`;};

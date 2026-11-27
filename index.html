@@ -3337,12 +3337,12 @@ window.loadBookingData = async (mid)=>{
   S.book=S.book||{}; S.book[mid]={...bookDefault()};
   try{
     const [sch,slots]=await Promise.all([getDoc(doc(db,'serviceSchedules',mid)),getDocs(query(collection(db,'bookedSlots'),where('merchantId','==',mid)))]);
-    S.book[mid]={ready:true,schedule:sch.exists()?sch.data():null,booked:new Set(slots.docs.map(d=>d.data()).filter(x=>x.active===true&&x.date).map(x=>x.date+'|'+x.time)),date:'',time:''};
+    S.book[mid]={ready:true,schedule:sch.exists()?sch.data():null,booked:new Set(slots.docs.map(d=>d.data()).filter(x=>x.active===true&&x.date).map(x=>Services.seatKey(x.date,x.time,x.seat||1))),date:'',time:''};
   }catch(e){ S.book[mid]={ready:true,schedule:null,booked:new Set(),date:'',time:''}; }
   renderMain();
 };
 // booked set is date|time; panel needs per-day set
-const bookedFor=(mid,date)=>Services.bookedSetFor(S.book?.[mid]?.booked,date);
+const bookedFor=(mid,date)=>Services.bookedSetFor(S.book?.[mid]?.booked,date,Services.capacityOf(S.book?.[mid]?.schedule));
 window.pickBookDate=(mid,date)=>{ const st=S.book[mid]; st.date=date; st.time=''; renderMain(); };
 window.pickBookRepeat=(mid,r)=>{ S.book[mid].repeat=r; renderMain(); };
 window.pickBookWeeks=(mid,n)=>{ S.book[mid].weeks=n; renderMain(); };
@@ -3358,12 +3358,12 @@ window.submitBooking = async (mid,date,time)=>{
     for(let i=0;i<dates.length;i+=5){
       const batch=writeBatch(db);
       dates.slice(i,i+5).forEach((d,j)=>{
-        const sid=Services.bookingId(mid,d,time),note=weekly?(v.note?v.note+' · ':'')+`حجز أسبوعي (${i+j+1} من ${dates.length})`:v.note;
-        batch.set(doc(db,'bookedSlots',sid),{merchantId:mid,date:d,time,active:true,customerId:S.user.uid});
-        batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date:d,time,slotMinutes:sch.slotMinutes,note,status:'PENDING',createdAt:t,updatedAt:t});
+        const seat=Services.seatFor(st.booked,d,time,sch.capacity||1),sid=Services.bookingId(mid,d,time,seat),note=weekly?(v.note?v.note+' · ':'')+`حجز أسبوعي (${i+j+1} من ${dates.length})`:v.note;
+        batch.set(doc(db,'bookedSlots',sid),{merchantId:mid,date:d,time,active:true,customerId:S.user.uid,...(seat>1?{seat}:{})});
+        batch.set(doc(db,'bookings',sid),{merchantId:mid,merchantName:m.businessName||'',merchantPhone:m.whatsappNumber||m.phone||'',customerId:S.user.uid,customerName:v.name,customerPhone:v.phone,date:d,time,slotMinutes:sch.slotMinutes,note,status:'PENDING',createdAt:t,updatedAt:t,...(seat>1?{seat}:{})});
       });
       await batch.commit(); done+=Math.min(5,dates.length-i);
-      dates.slice(i,i+5).forEach(d=>syncReminder({id:Services.bookingId(mid,d,time),merchantId:mid,customerName:v.name,date:d,time,createdAt:t},'PENDING'));
+      dates.slice(i,i+5).forEach(d=>syncReminder({id:Services.bookingId(mid,d,time,Services.seatFor(st.booked,d,time,sch.capacity||1)),merchantId:mid,customerName:v.name,date:d,time,createdAt:t},'PENDING'));
     }
     try{localStorage.setItem('bk_phone_'+S.user.uid,v.phone);}catch(e){}
     if(!String(S.profile?.phone||'').trim()) updateDoc(doc(db,'users',S.user.uid),{phone:v.phone}).catch(()=>{});
@@ -3394,10 +3394,10 @@ let _closedDraft=null;
 const closedNow=()=>_closedDraft||Services.normalizeSchedule(S.mySchedule).closedDates;
 window.addClosedDate=()=>{ const v=document.getElementById('schClosedAdd').value; if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; _closedDraft=[...new Set([...closedNow(),v])].sort(); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
 window.removeClosedDate=d=>{ _closedDraft=closedNow().filter(x=>x!==d); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
-function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow()); }catch(e){ return S.mySchedule; } }
+function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>{const e=document.getElementById(id);return e?e[f==='checked'?'checked':'value']:undefined},closedNow()); }catch(e){ return S.mySchedule; } }
 function scheduleLockHTML(){
   const un=!!S.schedUnlocked;
-  return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:13px">${un?'🔓 المواعيد مفتوحة للتعديل':'🔒 المواعيد مقفولة'}</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()">${un?'قفل بدون حفظ':'فتح للتعديل'}</button></div><fieldset ${un?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;${un?'':'opacity:.65'}"><style>fieldset[disabled] .btn-primary,fieldset[disabled] .btn-ghost{display:none}</style>${Services.scheduleEditorHTML(S.mySchedule,esc)}</fieldset>`;
+  return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:13px">${un?'🔓 المواعيد مفتوحة للتعديل':'🔒 المواعيد مقفولة'}</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()">${un?'قفل بدون حفظ':'فتح للتعديل'}</button></div><fieldset ${un?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;${un?'':'opacity:.65'}"><style>fieldset[disabled] .btn-primary,fieldset[disabled] .btn-ghost{display:none}</style>${Services.scheduleEditorHTML(S.mySchedule,esc,FeatureFlags.isOn(S.settings,'slotCapacityEnabled'))}</fieldset>`;
 }
 window.toggleScheduleLock = async ()=>{
   if(!S.schedUnlocked){ S.schedUnlocked=true; renderMain(); return; }
@@ -3408,7 +3408,7 @@ window.toggleScheduleLock = async ()=>{
 window.saveProviderSchedule = async ()=>{
   const mId=S.profile.merchantId; if(!mId) return;
   try{
-    const sch=Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow());
+    const sch=Services.readScheduleForm((id,f)=>{const e=document.getElementById(id);return e?e[f==='checked'?'checked':'value']:undefined},closedNow());
     await setDoc(doc(db,'serviceSchedules',mId),{merchantId:mId,...sch,updatedAt:nowMs()}); _closedDraft=null; S.schedUnlocked=false; renderMain(); UI.toast('تم حفظ المواعيد ✅');
   }catch(e){ UI.toast(e.message||'تعذر الحفظ'); }
 };
