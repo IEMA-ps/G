@@ -47,3 +47,23 @@ console.log('services tests passed');
   assert.ok(html.includes('12 أسابيع')&&html.includes('أرسل 11 طلبات'));
   console.log('weekly booking tests passed');
 }
+// جدول المواعيد المحجوزة: اليوم الحالي افتراضيًا، ويوم تاني بالاختيار؛ المعلق/المقبول فقط، باسم العميل وزر واتساب
+{
+  const esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const bk=[
+    {id:'a',status:'ACCEPTED',date:'2026-11-24',time:'12:00',customerName:'أحمد',customerPhone:'01012345678'},
+    {id:'b',status:'PENDING',date:'2026-11-24',time:'15:00',customerName:'سارة',customerPhone:''},
+    {id:'c',status:'CANCELLED',date:'2026-11-24',time:'10:00',customerName:'ملغي',customerPhone:'01000000000'},
+    {id:'d',status:'ACCEPTED',date:'2026-11-25',time:'10:00',customerName:'بكرة',customerPhone:'01000000000'},
+    {id:'e',status:'PENDING',date:'2026-11-24',time:'09:00',customerName:'<x>',customerPhone:'01111111111'}];
+  const h=S.bookedTableHTML(bk,esc,ms);
+  assert.ok(h.includes('أحمد')&&h.includes('سارة')&&!h.includes('ملغي')&&!h.includes('بكرة')&&h.includes('(النهاردة)'));
+  assert.ok(h.includes('https://wa.me/201012345678')&&h.includes('&lt;x&gt;')&&!h.includes('<x>'));
+  assert.ok(h.indexOf('&lt;x&gt;')<h.indexOf('أحمد')&&h.indexOf('أحمد')<h.indexOf('سارة'));
+  assert.ok(h.includes('type="date"')&&h.includes('value="2026-11-24"')&&!h.includes('setBookedDay(\'\')'));
+  const o=S.bookedTableHTML(bk,esc,ms,'2026-11-25');
+  assert.ok(o.includes('بكرة')&&!o.includes('أحمد')&&o.includes('value="2026-11-25"')&&o.includes('setBookedDay(\'\')'));
+  assert.ok(S.bookedTableHTML(bk,esc,ms,'bad').includes('أحمد'));
+  assert.ok(S.bookedTableHTML([],esc,ms).includes('مفيش مواعيد محجوزة النهاردة'));
+  assert.ok(S.bookedTableHTML([],esc,ms,'2026-12-01').includes('مفيش مواعيد محجوزة في اليوم ده'));
+}
