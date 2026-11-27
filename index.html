@@ -768,7 +768,7 @@ const S = {
   allRecurringOrders:[], adminRecurringLoaded:false, adminRecurringLoading:false, adminRecurringError:'',
   myAgent:null, myAgentSubOrders:[], agentNoLink:false, activeAgents:[], myRatings:[], appliedCoupon:null, appliedPoints:null,
   notifications:[],
-  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, deliverySubOn:false, deliverySubPrice:100, deliverySubDiscount:25, deliverySubMinOrder:150, deliverySubDays:30, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50, inviteOnly:false, inviteLimit:10 },
+  settings:{ appNameArabic:'على بابك', supportWhatsapp:'', defaultDeliveryFee:25, deliverySubOn:false, deliverySubPrice:100, deliverySubDiscount:40, deliverySubCourierPay:25, deliverySubMinOrder:150, deliverySubDays:30, multiStoreDeliveryDiscountPercent:30, platformCommissionPercent:10, marketerCommissionPercent:20, marketerCommissionMonths:0, marketerMinWithdraw:100, marketerTiers:[{name:'برونزي',min:0,bonus:0},{name:'فضي',min:10,bonus:2},{name:'ذهبي',min:30,bonus:5}], subsEnforced:false, useBackend:false, marketerCommissionSource:'SUBSCRIPTIONS', marketerSubPercent:10, subPaymentInstructions:'', loyaltyEnabled:true, loyaltyEarnRate:0.1, loyaltyRedeemValue:0.05, referralBonusPoints:50, inviteOnly:false, inviteLimit:10 },
   cart:[], // {productId, quantity}
   favStores:[], // [storeId, ...] — المتاجر المفضلة (بتتزامن مع الحساب لما الميزة تتفتح)
   wishlist:[], // [productId, ...] — قائمة المفضلة الخاصة بكل عميل، محفوظة محليًا زي السلة
@@ -5851,7 +5851,8 @@ function renderAdminSettings(){
       <h3 style="margin:0 0 14px;font-size:15px">اشتراك التوصيل</h3>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-bottom:10px"><input type="checkbox" id="setDsubOn" ${s.deliverySubOn?'checked':''}> الاشتراك شغال (مقفول افتراضيًا)</label>
       <div class="field"><label>سعر الاشتراك (جنيه)</label><input id="setDsubPrice" type="number" min="0" value="${esc(String(s.deliverySubPrice??100))}"></div>
-      <div class="field"><label>مبلغ المنصة للمندوب (جنيه): متجر واحد = توصيل مجاني والمنصة تدفع المبلغ ده للمندوب، أكتر من متجر = يتخصم من الإجمالي. مرة كل 7 أيام</label><input id="setDsubDiscount" type="number" min="0" value="${esc(String(s.deliverySubDiscount??25))}"></div>
+      <div class="field"><label>الخصم من إجمالي التوصيل في الطلب من أكتر من متجر (جنيه). المندوب بيتحاسب عادي. مرة كل 7 أيام</label><input id="setDsubDiscount" type="number" min="0" value="${esc(String(s.deliverySubDiscount??40))}"></div>
+      <div class="field"><label>مبلغ المنصة للمندوب في الطلب من متجر واحد (جنيه): التوصيل مجاني للعميل والمنصة تدفع المبلغ ده للمندوب</label><input id="setDsubCourier" type="number" min="0" value="${esc(String(s.deliverySubCourierPay??25))}"></div>
       <div class="field"><label>أقل قيمة للطلب عشان الخصم يشتغل (جنيه)</label><input id="setDsubMin" type="number" min="0" value="${esc(String(s.deliverySubMinOrder??150))}"></div>
       <div class="field"><label>مدة الاشتراك (يوم)</label><input id="setDsubDays" type="number" min="1" value="${esc(String(s.deliverySubDays||30))}"></div>
       <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> الدفع كاش. بعد ما تستلم فلوس العميل، فعّل اشتراكه من قايمة المستخدمين (زرار «تفعيل اشتراك التوصيل»).</p>
@@ -5924,7 +5925,7 @@ window.showWaitlist = async ()=>{
 };
 window.saveDeliverySubSettings = async ()=>{
   const n=(id,d)=>{ const v=parseFloat(document.getElementById(id).value); return Number.isFinite(v)&&v>=0?v:d; };
-  const v={deliverySubOn:!!document.getElementById('setDsubOn').checked, deliverySubPrice:n('setDsubPrice',100), deliverySubDiscount:n('setDsubDiscount',25), deliverySubMinOrder:n('setDsubMin',150), deliverySubDays:Math.max(1,Math.floor(n('setDsubDays',30)))};
+  const v={deliverySubOn:!!document.getElementById('setDsubOn').checked, deliverySubPrice:n('setDsubPrice',100), deliverySubDiscount:n('setDsubDiscount',40), deliverySubCourierPay:n('setDsubCourier',25), deliverySubMinOrder:n('setDsubMin',150), deliverySubDays:Math.max(1,Math.floor(n('setDsubDays',30)))};
   await setDoc(doc(db,'settings','app'), v, {merge:true});
   await logAudit('تعديل إعدادات اشتراك التوصيل', JSON.stringify(v));
   UI.toast('تم حفظ إعدادات اشتراك التوصيل ✅');
