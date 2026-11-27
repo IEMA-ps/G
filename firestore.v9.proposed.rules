@@ -88,6 +88,15 @@ service cloud.firestore {
         && before.get('storePointsRestored', false) == false && after.get('storePointsRestored', false) == true
         && delta == after.get('storePointsRedeemed', 0);
     }
+    // v9: رصيد الدعوة من المنصة في حقل منفصل inviteCredit (الرصيد العام القديم loyaltyPoints بيتوقف عن الاحتساب لما نقط المتجر تتفتح). نفس قيود loyaltyPoints.
+    function inviteCreditWrite(uid){
+      let oldPts = resource.data.get('inviteCredit', 0);
+      let newPts = request.resource.data.get('inviteCredit', 0);
+      return newPts is number && newPts >= 0
+        && ((request.auth.uid == uid && newPts <= oldPts)
+          || ((me().get('merchantId','') != '' || me().get('deliveryAgentId','') != '')
+            && newPts > oldPts && newPts - oldPts <= 100000));
+    }
     function validGoogleMapsLink(d){
       let link=d.get('googleMapsUrl','');
       return link is string && link.size() <= 4096 && (link == '' || link.matches('https://(maps[.]app[.]goo[.]gl/|goo[.]gl/maps/|(www[.])?google[.]com/maps([/?]|$)|maps[.]google[.]com/).*'));
@@ -363,14 +372,15 @@ service cloud.firestore {
       allow update: if (isSuper() && (!programEnabled() || promotionHasProof(uid)))
         || (isAdmin() && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','referralCode']))
         || (signedIn() && request.auth.uid == uid
-          && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','loyaltyPoints',
+          && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','loyaltyPoints','inviteCredit',
                        'deliverySubStartedAt','deliverySubUntil','deliverySubUsedPeriod']) && safeReferralCodeUpdate())
         // اشتراك التوصيل (PR #142): العميل يسجّل بس استخدام الفترة الحالية (رقم أكبر من السابق ومش أكبر من الفترة الحالية) والاشتراك ساري.
         || (signedIn() && request.auth.uid == uid && only(['deliverySubUsedPeriod'])
           && resource.data.get('deliverySubUntil',0) > request.time.toMillis()
           && request.resource.data.deliverySubUsedPeriod > resource.data.get('deliverySubUsedPeriod',-1)
           && request.resource.data.deliverySubUsedPeriod <= (request.time.toMillis() - resource.data.get('deliverySubStartedAt',0)) / 604800000)
-        || (signedIn() && only(['loyaltyPoints']) && loyaltyPointsWrite(uid));
+        || (signedIn() && only(['loyaltyPoints']) && loyaltyPointsWrite(uid))
+        || (signedIn() && only(['inviteCredit']) && inviteCreditWrite(uid));
       allow delete: if isSuper();
     }
 
