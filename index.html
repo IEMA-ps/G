@@ -645,7 +645,7 @@ import * as PushClient from '/push-client.js';
 import * as CartReminder from '/cart-reminder.js?v=cr-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
-import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
+import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-2';
 import * as SupportChat from '/support-chat.js?v=support-4';
 import * as MemberId from '/member-id.js?v=id-1';
 import * as RefCodes from '/referral-codes.js?v=ref-1';
@@ -1081,6 +1081,7 @@ const Auth = {
         }catch(e){ console.error('referral code lookup failed', e); }
       }
 
+      try{ if(!inv && /^[A-Z0-9-]{4,64}$/.test(referralInput) && !referralInput.startsWith('WL-')) localStorage.setItem('bk_signup_code',referralInput); }catch(e){}
       await window.Program?.recordSignup(referralInput.startsWith('WL-')?'':(referralInput||new URLSearchParams(location.search).get('marketer')||''));
 
       try{
@@ -1198,6 +1199,7 @@ async function bootAuthUser(user) {
     if(gWaitlisted){ try{ await updateDoc(doc(db,'users',user.uid),{waitlisted:true,waitlistedAt:nowMs()}); }catch(e){ console.error('waitlist flag failed', e); } }
     try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
     if(gInv && gInv.kind==='friend'){ try{ await window.InviteGate.redeem(user.uid, gInv, user.displayName||''); }catch(e){ console.error('invite redeem failed', e); } }
+    try{ const gc=String(googleSignupCode).toUpperCase(); if(!(gInv&&gInv.kind==='friend') && /^[A-Z0-9-]{4,64}$/.test(gc) && !gc.startsWith('WL-')) localStorage.setItem('bk_signup_code',gc); }catch(e){}
     await window.Program?.recordSignup(String(googleSignupCode).toUpperCase().startsWith('WL-')?'':googleSignupCode);
   }
   bootStage='profile-read-back';
@@ -4231,7 +4233,7 @@ function renderOrderDetail(){
 window.openJoinRequest = (kind)=>{
   if(S.role!=='customer' || !S.profile || !auth.currentUser || !['merchant','delivery','marketer','service'].includes(kind)) return;
   const available=!!MerchantPlans.supportPhone(S.settings.supportWhatsapp);
-  const code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase();
+  let code=(new URLSearchParams(location.search).get('marketer')||'').trim().toUpperCase(); if(!code){ try{ code=(localStorage.getItem('bk_signup_code')||'').trim().toUpperCase(); }catch(e){} }
   UI.openModal((kind==='marketer'?AdSlots.adSlotHTML(S.settings,'mkJoin',esc):'')+requestForm(kind,{...S.profile,marketerCode:/^[A-Z0-9-]{4,64}$/.test(code)?code:''},available,esc,locationPicker('rqLoc'),kind==='merchant'?typePicker('rqActivity','',esc,Services.servicesEnabled(S.settings)):kind==='service'?typePicker('rqActivity','',esc,true,Services.SERVICE_TYPES):''));
   addInAppRequestButton(kind);
 };
@@ -4265,7 +4267,11 @@ window.submitMemberRequest = async kind=>{
     requestMessage(kind,data,{});
     const c=(k,max=120)=>String(data[k]||'').trim().replace(/[\r\n\u0000-\u001f]/g,' ').slice(0,max);
     const u=auth.currentUser.uid,doc_={id:u,userId:u,kind:MR_KINDS[kind],name:c('name'),phone:c('phone',30),address:c('area',200),status:'PENDING',createdAt:nowMs()};
-    if(kind!=='delivery'){doc_.business=c('business');doc_.activity=c('activity');const mc=c('marketerCode',64).toUpperCase();if(mc)doc_.marketerCode=mc;}else doc_.vehicle=c('vehicle',50);
+    const mc=c('marketerCode',64).toUpperCase();
+    const mcOwner=await RefCodes.lookup({doc,getDoc},db,mc);
+    if(!mcOwner||mc.startsWith('WL-')) throw Error('كود المسوّق غير صالح. راجعه وجرّب تاني.');
+    doc_.marketerCode=mc;
+    if(kind!=='delivery'){doc_.business=c('business');doc_.activity=c('activity');}else doc_.vehicle=c('vehicle',50);
     const n=c('notes',400);if(n)doc_.notes=n;
     const needId=MemberId.required(MR_KINDS[kind],S.settings);let idDoc=null;
     if(needId){
