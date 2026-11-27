@@ -3425,9 +3425,10 @@ function providerBookingsView(){
   const st=Services.providerStats(S.providerBookings||[]);
   return `<div class="card" style="margin-bottom:14px"><div class="row-between"><div><b>${st.pending}</b><div style="font-size:12px;color:var(--ink-soft)">مستنية ردك</div></div><div><b>${st.today}</b><div style="font-size:12px;color:var(--ink-soft)">النهاردة</div></div><div><b>${st.upcoming}</b><div style="font-size:12px;color:var(--ink-soft)">الجاية</div></div></div></div>${Services.providerScheduleViewHTML(S.providerBookings||[],esc)}`;
 }
+window.setBookedDay=d=>{ S.bookedDay=/^\d{4}-\d{2}-\d{2}$/.test(d||'')?d:''; renderMain(); };
 function renderProviderSchedule(){
   if(S.role!=='merchant'||!Services.isServiceProvider(S.myMerchant)) return '';
-  return `${Services.bookedTableHTML(S.providerBookings||[],esc)}<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}${remindersOn()?reminderPrefsHTML():''}`;
+  return `${Services.bookedTableHTML(S.providerBookings||[],esc,Date.now(),S.bookedDay)}<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}${remindersOn()?reminderPrefsHTML():''}`;
 }
 const REM_PREFS=[['reminder1h','تذكير قبل الميعاد بساعة'],['unanswered2h','تنبيه لو حجز مستني ردك أكتر من ساعتين'],['tomorrowSummary','ملخص حجوزات بكرة الساعة 8 مساءً']];
 const remPref=k=>{ try{ return localStorage.getItem('rem_'+k+'_'+S.profile.merchantId)!=='0'; }catch(e){ return true; } };
