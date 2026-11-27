@@ -23,3 +23,5 @@ const proof=[{id:'fixed',referrerId:'owner'},{id:'fixed',referrerId:'owner'},{id
 let owner=panel.customerAcquisition(team,proof).find(r=>r.id==='owner');assert.deepEqual([owner.total,owner.marketers,owner.marketersRecorded,owner.marketersLegacy],[1,2,1,1]);
 owner=panel.customerAcquisition(team.map(u=>u.id==='customer'?{...u,role:'MARKETER'}:u),proof).find(r=>r.id==='owner');assert.deepEqual([owner.total,owner.marketers],[0,3]);
 assert.match(panel.acquisitionHTML({users:team,attributions:proof,status:'ready',usersReady:true},esc),/مسوق آخر/);console.log('PASS direct marketer recruits: fixed/legacy, precedence, dedup, self/deleted/indirect excluded, current-role transition');
+
+{const m=panel.adminMenu(true);assert.match(m,/adminRefreshApp\(\)/);assert.match(m,/تحديث الصفحة/);assert.match(panel.adminMenu(false),/adminRefreshApp\(\)/);console.log('PASS admin menu refresh button');}
