@@ -30,3 +30,22 @@ export function fromForm({on, egpPerPoint, pointValue}){
   if(!c.on) return {error:'اكتب قيمتين صحيحتين: كل كام جنيه = نقطة، وقيمة النقطة بالجنيه'};
   return {value:{on:true, egpPerPoint:c.egpPerPoint, pointValue:c.pointValue}};
 }
+
+// Redeem at checkout. balance = customer's points in THIS store, goods = what the customer buys from this store (delivery excluded).
+// The merchant pays the discount. Never more points than the balance, never a discount above the goods.
+export function redeem(balance, cfg, goods){
+  if(!cfg || !cfg.on || !(cfg.pointValue > 0)) return {points:0, discount:0};
+  const g = Math.max(0, num(goods));
+  const points = Math.max(0, Math.min(Math.floor(num(balance)), Math.floor(g / cfg.pointValue + 1e-9)));
+  return {points, discount: Math.round(points * cfg.pointValue * 100) / 100};
+}
+// Several stores in one cart. use = {storeId:true}, balances = {storeId:points}, goodsBy = {storeId:goods}, cfgBy = {storeId:rawStorePointsField}.
+export function planCart({use, balances, goodsBy, cfgBy}){
+  const byStore = {}; let total = 0;
+  for(const id of Object.keys(goodsBy||{})){
+    if(!(use && use[id])) continue;
+    const r = redeem((balances||{})[id], config((cfgBy||{})[id]), goodsBy[id]);
+    if(r.points > 0){ byStore[id] = r; total += r.discount; }
+  }
+  return {byStore, total: Math.round(total * 100) / 100};
+}
