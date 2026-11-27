@@ -1038,7 +1038,7 @@ const Auth = {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       // بدون كود صالح والتسجيل بالدعوة شغال: الحساب بيتعمل عادي وبيفضل على قائمة الانتظار لحد التفعيل. كود المسوّق/الإحالة بيتفحص بعد الدخول (القواعد).
       let waitlisted = false, badCode = false;
-      if(IG && IG.on()){
+      if(IG && await IG.fresh()){
         const okCode = (inv && !inv.full) ? true : !!(inviteInput && await IG.lookupAny(inviteInput));
         waitlisted = !okCode; badCode = !okCode && !!inviteInput;
       }
@@ -1182,7 +1182,7 @@ async function bootAuthUser(user) {
     if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
     let gInv=null, gWaitlisted=false;
-    if(window.InviteGate?.on()){
+    if(window.InviteGate && await window.InviteGate.fresh()){
       gInv = googleSignupCode ? await window.InviteGate.lookupAny(googleSignupCode) : null;
       if(!gInv || gInv.full) gWaitlisted=true;
     }
@@ -2156,7 +2156,12 @@ async function lookupAnyInvite(raw){
   try{ const owner=await RefCodes.lookup({doc,getDoc},db,code); if(owner) return {code,ownerId:owner,full:false,kind:code.startsWith('WL-')?'wl':'ref'}; }catch(e){}
   return null;
 }
-window.InviteGate = {on:inviteOn, lookup:lookupInvite, lookupAny:lookupAnyInvite, redeem:redeemInvite};
+// قراءة جديدة لإعداد التسجيل بالدعوة وقت التسجيل نفسه (مش من نسخة قديمة في الذاكرة). لو القراءة فشلت نعتبره شغال (الحساب يستنى التفعيل).
+async function inviteOnFresh(){
+  try{ const d=await getDoc(doc(db,'settings','app')); if(d.exists()){ S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()}); } return !!(d.exists()&&d.data().inviteOnly); }
+  catch(e){ console.error('invite setting read failed', e); return true; }
+}
+window.InviteGate = {on:inviteOn, fresh:inviteOnFresh, lookup:lookupInvite, lookupAny:lookupAnyInvite, redeem:redeemInvite};
 window.applyInviteUi = ()=>{
   const g=document.getElementById('inviteGate'); if(g) g.classList.toggle('hidden', !inviteOn());
   const l=document.querySelector('#regReferral')?.closest('.field')?.querySelector('label');
