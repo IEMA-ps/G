@@ -8,7 +8,7 @@ eq(P.pushState(ok),'ready');eq(P.pushState({...ok,subscribed:true}),'on');eq(P.p
 eq(P.pushState({...ok,hasPush:false}),'unsupported');eq(P.pushState({...ok,isIOS:true}),'needs-install');eq(P.pushState({...ok,isIOS:true,standalone:true}),'ready');
 const calls=[];const fetchImpl=async(u,o)=>{calls.push([u,o.method,o.headers.authorization||'',o.body||'']);return {ok:true,json:async()=>u.endsWith('/push/key')?{key:'AQID'}:{ok:true}};};
 let subscribed=null;const reg={pushManager:{subscribe:async o=>{subscribed=o;return {endpoint:'https://e/1',toJSON:()=>({endpoint:'https://e/1',keys:{p256dh:'a',auth:'b'}}),unsubscribe:async()=>true};},getSubscription:async()=>({endpoint:'https://e/1',unsubscribe:async()=>true})}};
-const base={reg,token:'T',workerUrl:'https://w',appSecret:'S',fetchImpl};
+const base={reg,token:'T',workerUrl:'https://w',fetchImpl};
 eq(await P.enable({...base,requestPermission:async()=>'denied'}),'denied');eq(calls.length,0,'no network when permission is refused');
 eq(await P.enable({...base,keys:['m:shop1'],requestPermission:async()=>'granted'}),'on');
 eq(subscribed.userVisibleOnly,true);eq([...subscribed.applicationServerKey],[1,2,3]);
