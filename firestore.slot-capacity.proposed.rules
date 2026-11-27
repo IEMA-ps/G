@@ -1,0 +1,22 @@
+// سعة الميعاد (مدرس مع أكتر من طالب في نفس الساعة). مش بتتنشر لوحدها: ادمجها في قواعد v9 بإيدك.
+// مفيش حاجة بتتغير لحد ما مقدم الخدمة يختار سعة أكتر من 1. القيمة 1 بتفضل زي الوضع الحالي بالظبط.
+//
+// 1) استبدل الدالتين slotKey و validSlotFields (حوالي سطر 502) بالآتي:
+function seatOf(d){ return d.get('seat', 1); }
+function slotKey(d){ return d.merchantId + '_' + d.date + '_' + d.time.replace(':','') + (seatOf(d) > 1 ? '_s' + string(seatOf(d)) : ''); }
+function capacityOf(mid){
+  let p = /databases/$(database)/documents/serviceSchedules/$(mid);
+  return exists(p) ? get(p).data.get('capacity', 1) : 1;
+}
+function validSlotFields(d){
+  return d.merchantId is string && d.date is string && d.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+    && d.time is string && d.time.matches('([01][0-9]|2[0-3]):[0-5][0-9]')
+    && seatOf(d) is int && seatOf(d) >= 1 && seatOf(d) <= capacityOf(d.merchantId);
+}
+//
+// 2) serviceSchedules: ضيف 'capacity' لقايمة hasOnly وضيف الشرط ده في آخر create/update:
+//    && request.resource.data.keys().hasOnly(['merchantId','slotMinutes','closedDates','days','updatedAt','capacity'])
+//    && (!('capacity' in request.resource.data) || (request.resource.data.capacity is int && request.resource.data.capacity >= 1 && request.resource.data.capacity <= 20))
+//
+// 3) bookedSlots و bookings: ضيف 'seat' لكل قايمة hasOnly (في create، وفي إعادة حجز ميعاد اتحرر)، وفي إعادة الحجز ضيف:
+//    && request.resource.data.get('seat', 1) == resource.data.get('seat', 1)
