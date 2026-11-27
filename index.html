@@ -6572,15 +6572,17 @@ function applyMarketerLanding(){
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/sw.js').then(reg=>{
-      // التاب المفتوح بيفضل بكود قديم لحد ما يتحمّل تاني. بنسأل عن نسخة جديدة كل شوية وأول ما الصفحة تظهر.
-      const check=()=>{ try{ reg.update(); }catch(e){} };
+      // للأدمن بس: التاب المفتوح بيفضل بكود قديم لحد ما يتحمّل تاني. بنسأل عن نسخة جديدة كل شوية وأول ما الصفحة تظهر.
+      const isAdmin=()=>!!(window.S&&window.S.role==='admin');
+      const check=()=>{ if(!isAdmin()) return; try{ reg.update(); }catch(e){} };
       setInterval(check, 10*60*1000);
       document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) check(); });
     }).catch(err=>console.error('SW registration failed', err));
     // لو كان فيه نسخة شغالة وبعدين نزلت نسخة جديدة: نعرض شريط تحديث (ولو التاب مخفي نحدّث لوحده).
     const hadController=!!navigator.serviceWorker.controller; let shown=false;
     navigator.serviceWorker.addEventListener('controllerchange', ()=>{
-      if(!hadController || shown) return; shown=true;
+      // للأدمن بس: صفحات العملاء والتجار والمناديب ماتتغيرش.
+      if(!hadController || shown || !(window.S&&window.S.role==='admin')) return; shown=true;
       if(document.hidden){ location.reload(); return; }
       const bar=document.createElement('div');
       bar.setAttribute('style','position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;background:#1f2937;color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font:600 14px sans-serif;direction:rtl');
