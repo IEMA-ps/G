@@ -74,3 +74,14 @@ assert.throws(()=>S.craftNote({problem:'',address:'المعادي شارع 9'}))
 assert.throws(()=>S.craftNote({problem:'سخان بيطفي',address:'قريب'}));
 assert.throws(()=>S.craftNote({problem:'x'.repeat(141),address:'المعادي شارع 9'}));
 assert.ok(S.craftNote({problem:'x'.repeat(140),address:'y'.repeat(90)}).length+30<=300);
+
+// تدريب بدني شخصي
+assert.ok(S.SERVICE_TYPES.includes('تدريب بدني شخصي'));
+assert.equal(S.isTrainer({activityType:'تدريب بدني شخصي'}),true);assert.equal(S.isTrainer({activityType:'مدرسين'}),false);
+assert.equal(S.trainerNote({goal:'خسارة وزن',level:'مبتدئ',place:'في بيتي'}),'الهدف: خسارة وزن\nالمستوى: مبتدئ\nالمكان: في بيتي');
+assert.equal(S.trainerNote({goal:'زيادة عضل',level:'متقدم',place:'عند المدرب',extra:' ألم ركبة '}),'الهدف: زيادة عضل\nالمستوى: متقدم\nالمكان: عند المدرب\nملاحظات صحية: ألم ركبة');
+assert.throws(()=>S.trainerNote({goal:'',level:'مبتدئ',place:'في بيتي'}));
+assert.throws(()=>S.trainerNote({goal:'خسارة وزن',level:'x',place:'في بيتي'}));
+assert.throws(()=>S.trainerNote({goal:'خسارة وزن',level:'مبتدئ',place:'x'}));
+assert.throws(()=>S.trainerNote({goal:'خسارة وزن',level:'مبتدئ',place:'في بيتي',extra:'x'.repeat(121)}));
+assert.ok(S.trainerNote({goal:'تأهيل بعد إصابة',level:'متوسط',place:'في الهواء الطلق',extra:'x'.repeat(120)}).length+30<=300);
