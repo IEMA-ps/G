@@ -130,6 +130,8 @@ img{max-width:100%; display:block;}
 #searchBar i{color:var(--ink-soft);}
 
 #mainContent{flex:1; padding:16px 16px 90px;}
+/* على الموبايل الزر العايم (دعم فني) وفقاعة التثبيت كانوا بيغطوا آخر صفوف الفورم، فبنسيب مساحة تحتهم */
+@media (max-width:600px){ #mainContent{padding-bottom:220px;} }
 #bottomNav{
   position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px;
   background:#fff; border-top:1px solid var(--line); display:flex; z-index:20;
