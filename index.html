@@ -1192,6 +1192,7 @@ async function bootAuthUser(user) {
   bootStage='app-open';
   S.role = (S.profile.role||'CUSTOMER').toLowerCase();
   S.realRole = S.role; S.shopping = false;
+  if(RoleMode.canShop(S.realRole)){ S.role='customer'; S.shopping=true; }
   loadCart();
   loadWishlist();
   document.getElementById('authScreen').classList.add('hidden');
@@ -1201,7 +1202,7 @@ async function bootAuthUser(user) {
   try{const current=routeURL(S.tab,S.role,location.search);seedHistory(routeURL(defaultTabForRole(),S.role,location.search),current);history.replaceState({...history.state,tab:S.tab},'',current);}catch(e){}
   window.Program?.subscribe();
   subscribeShared();
-  if(S.role==='customer') subscribeCustomer();
+  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); }
   if(S.role==='merchant') subscribeMerchant();
   if(S.role==='marketer') subscribeMarketer();
   if(S.role==='delivery') subscribeDeliveryAgent();
@@ -1374,6 +1375,13 @@ function subscribeCustomer(){
   }));
 }
 
+// تاجر في وضع العميل: عداد الطلبات الجديدة بس، من غير ما نلمس إشعارات العميل
+function subscribeRoleBadge(){
+  if(!S.shopping||S.realRole!=='merchant'||!S.profile.merchantId) return;
+  S.unsubs.push(onSnapshot(query(collection(db,'subOrders'), where('merchantId','==',S.profile.merchantId)), snap=>{
+    S.mySubOrders = snap.docs.map(d=>({...d.data(), _id:d.id})).filter(x=>x.status!=='PENDING_ADMIN'); render();
+  }, ()=>{}));
+}
 function subscribeMerchant(){
   const mId = S.profile.merchantId;
   if(!mId){
@@ -2679,7 +2687,7 @@ function renderShell(){
 
   tb.innerHTML = `
     <div class="tb-title">${esc(title)}<small>${esc(sub)}</small></div>
-    ${S.shopping?`<button class="tb-switch" onclick="switchRoleMode(false)">↩ ${RoleMode.backLabel(S.realRole)}</button>`:(RoleMode.canShop(S.realRole)&&S.role===S.realRole?`<button class="tb-switch" onclick="switchRoleMode(true)"><i class="fa-solid fa-cart-shopping"></i> اطلب كعميل</button>`:'')}
+    ${S.shopping?'':(RoleMode.canShop(S.realRole)&&S.role===S.realRole?`<button class="tb-switch" onclick="switchRoleMode(true)"><i class="fa-solid fa-user"></i> واجهة العميل</button>`:'')}
     <button class="icon-btn" onclick="go('notifications')"><i class="fa-solid fa-bell"></i>${unreadCount()>0?'<span class="dot"></span>':''}</button>
     <button class="icon-btn" aria-label="تسجيل الخروج" title="تسجيل الخروج" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
   `;
@@ -2694,7 +2702,7 @@ function renderShell(){
   if(S.role==='customer') navItems = [
     ['home','fa-house','الرئيسية'], ['browse','fa-grip','الأقسام'],
     ['cart','fa-cart-shopping','السلة', ()=>S.cart.reduce((a,c)=>a+c.quantity,0)],
-    ['orders','fa-receipt','طلباتي'], ['profile','fa-user','حسابي']
+    ['orders','fa-receipt','طلباتي'], ['profile','fa-user','حسابي', ()=>S.shopping?RoleMode.ordersBadge(S.realRole,S.mySubOrders):0]
   ];
   if(S.role==='merchant') navItems = [
     ['m_dashboard','fa-chart-line','الرئيسية'], ['m_products','fa-box','منتجاتي'],
@@ -2809,8 +2817,9 @@ window.switchRoleMode = (toCustomer)=>{
   clearSubs();
   S.role = toCustomer ? 'customer' : real; S.shopping = !!toCustomer;
   S.searchQuery = '';
+  recomputeMerchants();
   subscribeShared();
-  if(S.role==='customer') subscribeCustomer();
+  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); }
   if(S.role==='merchant') subscribeMerchant();
   if(S.role==='marketer') subscribeMarketer();
   if(S.role==='delivery') subscribeDeliveryAgent();
@@ -2921,7 +2930,7 @@ function displayCategories(){
 
 /* ================= HELPERS ================= */
 const merchantSubOk = m => MerchantPlans.visibleMerchant(m,S.settings.subsEnforced);
-function recomputeMerchants(){ const ok=(S._rawMerchants||[]).filter(merchantSubOk); S.merchants = ok.filter(m=>!Services.isServiceProvider(m)); S.providers = Services.servicesEnabled(S.settings)?ok.filter(m=>Services.isServiceProvider(m)):[]; }
+function recomputeMerchants(){ const ok=(S._rawMerchants||[]).filter(merchantSubOk).filter(m=>!(S.shopping&&RoleMode.ownStoreBlocked(S.realRole,S.profile,m.id))); S.merchants = ok.filter(m=>!Services.isServiceProvider(m)); S.providers = Services.servicesEnabled(S.settings)?ok.filter(m=>Services.isServiceProvider(m)):[]; }
 const getMerchant = id => S.merchants.find(m=>m.id===id) || (S.providers||[]).find(m=>m.id===id) || S.allMerchants.find(m=>m.id===id);
 const getProduct = id => S.products.find(p=>p.id===id);
 const getCategory = id => S.categories.find(c=>c.id===id);
@@ -3428,6 +3437,7 @@ window.pickBookWeeks=(mid,n)=>{ S.book[mid].weeks=n; renderMain(); };
 window.pickBookTime=(mid,date,time)=>{ const st=S.book[mid]; st.date=date; st.time=time; renderMain(); };
 window.submitBooking = async (mid,date,time)=>{
   const m=getMerchant(mid),st=S.book?.[mid]; if(!m||!st||!S.user) return;
+  if(RoleMode.ownStoreBlocked(S.realRole,S.profile,mid)){ UI.toast('مينفعش تحجز عند نفسك'); return; }
   try{
     const weekly=st.repeat==='weekly';
     const v=Services.validBookingInput({date,time,name:document.getElementById('bkName').value,phone:document.getElementById('bkPhone').value,note:document.getElementById('bkF0')?Services.typeNote(m.activityType,Services.TYPE_FIELDS[String(m.activityType||'').trim()].map((_,i)=>document.getElementById('bkF'+i).value)):document.getElementById('bkProblem')?Services.craftNote({problem:document.getElementById('bkProblem').value,address:document.getElementById('bkAddress').value}):document.getElementById('bkGoal')?Services.trainerNote({goal:document.getElementById('bkGoal').value,level:document.getElementById('bkLevel').value,place:document.getElementById('bkPlace').value,extra:document.getElementById('bkExtra').value}):document.getElementById('bkNote').value},st.schedule,bookedFor(mid,date));
@@ -4240,10 +4250,18 @@ function storePointsCard(){
     (list.length?list.map(x=>`<div class="row-between" style="padding:6px 0;font-size:13.5px"><span>${esc(x.storeName||'متجر')}</span><b>${Number(x.points)||0} نقطة</b></div>`).join('')
       :`<p style="font-size:13px;color:var(--ink-soft);margin:0">${S.storePtsLoaded?'لسه معندكش نقط. اطلب من متجر عليه نقط وهتتجمع هنا بعد التسليم.':'جاري التحميل...'}</p>`)+`</div>`;
 }
+function roleSwitchCard(){
+  if(!S.shopping||!RoleMode.canShop(S.realRole)) return '';
+  const rm=(S._rawMerchants||[]).find(m=>m.id===S.profile.merchantId),prov=!!rm&&Services.isServiceProvider(rm),n=RoleMode.ordersBadge(S.realRole,S.mySubOrders);
+  const label=S.realRole==='merchant'?(prov?'لوحة مقدم الخدمة':'لوحة التاجر'):S.realRole==='delivery'?'لوحة المندوب':'لوحة المسوّق';
+  const hint=S.realRole==='merchant'?(prov?'الحجوزات والمواعيد':'المنتجات والطلبات والتقارير'):S.realRole==='delivery'?'مهام التوصيل':'عملاؤك ورصيدك';
+  return `<div class="card" style="margin-bottom:16px"><p style="margin:0 0 8px;font-weight:700;font-size:13px;color:var(--ink-soft)">حسابك التاني</p><button class="btn btn-primary" style="width:100%;display:flex;justify-content:space-between;align-items:center" onclick="switchRoleMode(false)"><span>${label}<small style="display:block;font-weight:500;opacity:.85">${hint}</small></span>${n?`<span class="badge-chip">${n} طلب جديد</span>`:'<i class="fa-solid fa-chevron-left"></i>'}</button></div>`;
+}
 function renderProfile(){
   const points = myCredit();
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
   return `
+    ${roleSwitchCard()}
     ${bookingsProfileCard()}
     <div class="card" style="margin-bottom:16px"><h3>اشتغل مسوّق مع على بابك</h3><p style="line-height:1.9;margin:10px 0">عرّف التجار بعلى بابك وساعدهم يبدأوا، وتابع شغلك ورصيدك من حسابك.</p><ul style="line-height:2;padding-inline-start:22px;margin:0 0 10px;font-size:13px"><li>كود ورابط خاصين بيك تشاركهم مع التجار.</li><li>عمولة عن كل اشتراك مدفوع تعتمده إدارة الموقع ويتسجل بكودك.</li><li>مستويات بتزود نسبتك كل ما محلاتك النشطة تكتر.</li><li>حافز إضافي في أول مهلة بعد تعيينك لو حققت هدفها.</li></ul><p style="font-size:12px;line-height:1.8;color:var(--ink-soft);margin-bottom:12px">الشغل بالعمولة حسب المعتمد، مش مرتب ثابت ولا ضمان دخل معين. التعيين بيتم بعد مراجعة إدارة الموقع.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">قدّم طلب انضمام كمسوّق</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="go('marketerBenefits')">التفاصيل والشروط</button></div></div>
     ${Program.joinButton()}${Program.candidate()}
