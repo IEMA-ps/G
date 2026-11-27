@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import * as M from './member-id.js';
+const JPG='data:image/jpeg;base64,'+'A'.repeat(400);
+assert.equal(M.required('store',{}),true);assert.equal(M.required('service',{}),true);assert.equal(M.required('courier',{}),true);
+assert.equal(M.required('courier',{memberIdRequired:false}),false,'switch off');
+assert.equal(M.required('marketer',{}),false);
+assert.equal(M.validImage(JPG),true);
+assert.equal(M.validImage('https://x.com/a.jpg'),false);
+assert.equal(M.validImage('data:image/png;base64,AAAA'+'A'.repeat(200)),false);
+assert.equal(M.validImage('data:image/jpeg;base64,'+'A'.repeat(M.MAX_CHARS)),false,'too big');
+assert.deepEqual(M.buildDoc({uid:'u',kind:'store',front:JPG,back:JPG,now:5}),{userId:'u',kind:'store',front:JPG,back:JPG,consent:true,createdAt:5});
+assert.throws(()=>M.buildDoc({uid:'u',kind:'store',front:JPG,back:'',now:5}),/id-images-required/);
+assert.throws(()=>M.buildDoc({uid:'u',kind:'store',front:'',back:JPG,now:5}));
+assert.deepEqual(M.fit(2000,1000),{w:1000,h:500});assert.deepEqual(M.fit(500,300),{w:500,h:300});
+const esc=x=>String(x);const html=M.fieldsHTML(esc);
+assert.ok(html.includes('rqIdConsent')&&html.includes("pickMemberId('front'")&&html.includes("pickMemberId('back'"));
+// the ID must never be written anywhere but memberRequestIds
+import {readFileSync} from 'node:fs';
+const idx=readFileSync(new URL('./index.html',import.meta.url),'utf8');
+const writes=[...idx.matchAll(/(?:set|add)Doc\([^)]*\)|wb\.set\([^)]*\)/g)].map(m=>m[0]);
+assert.ok(!/front|back|idDoc/.test(readFileSync(new URL('./support-requests.js',import.meta.url),'utf8')),'ID never goes into the WhatsApp message');
+assert.ok(/wb\.set\(doc\(db,'memberRequestIds',u\),idDoc\)/.test(idx),'ID doc is its own document');
+assert.ok(!/doc_\.(front|back)|doc_\.idDoc/.test(idx),'ID never copied into memberRequests');
+console.log('member-id ok');
