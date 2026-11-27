@@ -3621,9 +3621,10 @@ function renderMerchantPage(){
   const openNow = isMerchantOpenNow(m);
   return `
     <button class="btn-ghost btn btn-sm" style="width:auto;padding:8px 14px;margin-bottom:14px" onclick="goBack()"><i class="fa-solid fa-arrow-right"></i> رجوع</button>
-    <div class="card" style="margin-bottom:16px">
+    <div class="card" style="margin-bottom:16px${m.logoUrl?';overflow:hidden':''}">
+      ${m.logoUrl?`<div class="store-banner" style="margin:-14px -14px 14px;background:var(--line)"><img src="${esc(m.logoUrl)}" alt="${esc(m.businessName)}" style="display:block;width:100%;aspect-ratio:16/9;max-height:260px;object-fit:cover;object-position:center"></div>`:''}
       <div style="display:flex;gap:12px;align-items:center">
-        <div class="merchant-card" style="border:none;padding:0;flex:0"><div class="logo" style="width:64px;height:64px">${m.logoUrl?`<img src="${esc(m.logoUrl)}">`:'<i class="fa-solid fa-shop"></i>'}</div></div>
+        ${m.logoUrl?'':`<div class="merchant-card" style="border:none;padding:0;flex:0"><div class="logo" style="width:64px;height:64px"><i class="fa-solid fa-shop"></i></div></div>`}
         <div style="flex:1"><h3 style="margin:0 0 4px">${esc(m.businessName)}</h3>
           <div class="meta" style="color:var(--ink-soft);font-size:12.5px">${isSvc?'':`<i class="fa-solid fa-star" style="color:var(--gold)"></i> ${m.rating||4.8}${FeatureFlags.isOn(S.settings,'merchantRatingsEnabled')&&m.ratingCount>0?` (${m.ratingCount} تقييم)`:''} · `}${esc(typeLabel(m))}</div>
         </div>
