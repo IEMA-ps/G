@@ -625,6 +625,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
+import {isBanned,canBan,banPatch,unbanPatch,BANNED_MESSAGE} from '/member-ban.js?v=ban-1';
 import { assignmentType, createMemberRecord, memberRecordForm, parseMemberRequest } from '/member-roles.js?v=member-svc-3';
 import { locationPicker, installLocations } from '/egypt-locations.js?v=eg-2';
 installLocations();
@@ -1208,6 +1209,11 @@ async function bootAuthUser(user) {
   bootStage='profile-prepare';
   if(!finalSnap.exists()) throw new Error('profile-missing-after-create');
   S.profile = finalSnap.data();
+  if(isBanned(S.profile)){
+    await signOut(auth); resetSession(); showSignedOut();
+    UI.openModal(`<div class="modal-head"><h3>الحساب محظور</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="line-height:1.9">${esc(BANNED_MESSAGE)}</p>`);
+    return;
+  }
   RefCodes.ensureMine({doc,getDoc,setDoc},db,user.uid,S.profile).catch(e=>console.warn('referral code mirror',e&&e.code));
   const missing = userDefaults(user.uid, S.profile);
   if(Object.keys(missing).length){
@@ -6395,8 +6401,8 @@ function renderAdminUsers(){
   const seg = S.aUserFilter || 'ALL';
   const isProv=u=>(u.role||'').toUpperCase()==='MERCHANT'&&!!u.merchantId&&Services.isServiceProvider((S.allMerchants||[]).find(m=>m.id===u.merchantId));
   const showProv=Services.servicesEnabled(S.settings)||S.allUsers.some(isProv);
-  const tabs = [['ALL','الكل'],['CUSTOMER','عملاء'],['MERCHANT','تجار'],...(showProv?[['SERVICE','مقدمو خدمة']]:[]),['DELIVERY','مناديب'],['MARKETER','مسوّقون'],['ADMIN','إدارة']];
-  const inSeg=u=>seg==='ALL'||(seg==='SERVICE'?isProv(u):seg==='MERCHANT'?((u.role||'').toUpperCase()==='MERCHANT'&&!isProv(u)):(u.role||'').toUpperCase()===seg);
+  const tabs = [['ALL','الكل'],['CUSTOMER','عملاء'],['MERCHANT','تجار'],...(showProv?[['SERVICE','مقدمو خدمة']]:[]),['DELIVERY','مناديب'],['MARKETER','مسوّقون'],['ADMIN','إدارة'],['BANNED','محظورون']];
+  const inSeg=u=>seg==='ALL'||(seg==='BANNED'?isBanned(u):(seg==='SERVICE'?isProv(u):seg==='MERCHANT'?((u.role||'').toUpperCase()==='MERCHANT'&&!isProv(u)):(u.role||'').toUpperCase()===seg));
   const list = S.allUsers.filter(u=>inSeg(u)&&(!q||[u.firstName,u.lastName,[u.firstName,u.lastName].filter(Boolean).join(' '),u.email,u.phone,u.referralCode].some(v=>String(v||'').toLocaleLowerCase().includes(q))));
   const canManageAdmins = isSuperAdmin();
   const pageSize = S.aUserPageSize || 20;
@@ -6412,8 +6418,10 @@ function renderAdminUsers(){
             <div class="admin-code" dir="ltr">${esc(u.referralCode||'')}</div>
             ${u.role==='CUSTOMER'&&S.settings.deliverySubOn?`<div style="margin-top:6px;font-size:12px">${DeliverySub.subPeriod(u,nowMs())>=0?'<span style="color:var(--success)">اشتراك توصيل حتى '+new Date(u.deliverySubUntil).toLocaleDateString('ar-EG')+'</span> ':''}<button class="btn btn-ghost btn-sm" style="width:auto;font-size:11px;padding:4px 8px" onclick="activateDeliverySub('${u._id}')"><i class="fa-solid fa-crown"></i> ${DeliverySub.subPeriod(u,nowMs())>=0?'تمديد':'تفعيل'} اشتراك التوصيل</button></div>`:''}
           </div>
-          <span class="badge-chip">${roleLabel}</span>
+          <span class="badge-chip">${roleLabel}</span>${isBanned(u)?'<span class="badge-chip" style="background:var(--danger-tint);color:var(--danger);margin-inline-start:4px">محظور</span>':''}
         </div>
+        ${isBanned(u)&&u.bannedReason?`<div style="font-size:12px;color:var(--ink-soft);margin-top:6px">سبب الحظر: ${esc(u.bannedReason)}</div>`:''}
+        ${canManageAdmins&&canBan(true,u,S.user.uid)?`<div style="margin-top:8px">${isBanned(u)?`<button class="btn btn-ghost btn-sm" style="width:auto" onclick="unbanMember('${u._id}')"><i class="fa-solid fa-unlock"></i> فك الحظر</button>`:`<button class="btn btn-danger btn-sm" style="width:auto" onclick="banMember('${u._id}')"><i class="fa-solid fa-ban"></i> حظر العضو</button>`}</div>`:''}
         ${canManageAdmins ? `<div class="member-role-actions" style="display:flex;gap:4px;flex-wrap:nowrap;margin-top:8px">
           ${u.role==='CUSTOMER' && !u.merchantId && !u.deliveryAgentId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT')"><i class="fa-solid fa-store"></i> تعيين تاجر</button><button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','DELIVERY')"><i class="fa-solid fa-motorcycle"></i> تعيين مندوب</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT','service')"><i class="fa-solid fa-calendar-check"></i> مقدم خدمة</button>`:''}` : ''}
           ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
@@ -6539,6 +6547,31 @@ window.promoteToSuperAdmin = async (uid_)=>{
   await updateDoc(doc(db,'users',uid_), { adminRole:'SUPER' });
   await logAudit('ترقية أدمن مساعد لإدارة الموقع', uid_);
   UI.toast('تمت الترقية لإدارة الموقع');
+};
+window.banMember = async uid_=>{
+  const u=(S.allUsers||[]).find(x=>x._id===uid_);
+  if(!isSuperAdmin()||!canBan(true,u,S.user.uid)){ UI.toast('مش مسموح'); return; }
+  const name=((u.firstName||'')+' '+(u.lastName||'')).trim()||u.email||'العضو';
+  const extra=(u.role==='MERCHANT'||u.role==='DELIVERY')?'\nملاحظة: متجره أو حسابه كمندوب مش بيتعلّق لوحده. علّقه من صفحة التجار أو المناديب.':'';
+  const reason=prompt('حظر '+name+'؟ هيتمنع من الدخول للموقع لحد ما تفك الحظر.\nسبب الحظر (اختياري، بيظهر للإدارة بس):'+extra);
+  if(reason===null) return;
+  try{
+    await updateDoc(doc(db,'users',uid_), banPatch(S.user.uid,reason,nowMs()));
+    Object.assign(u, banPatch(S.user.uid,reason,nowMs()));
+    await logAudit('حظر عضو', uid_);
+    UI.toast('تم حظر العضو'); renderMain();
+  }catch(e){ console.error('ban failed',e); UI.toast('تعذّر الحظر'); }
+};
+window.unbanMember = async uid_=>{
+  const u=(S.allUsers||[]).find(x=>x._id===uid_);
+  if(!isSuperAdmin()||!u) return;
+  if(!confirm('فك الحظر عن هذا العضو؟')) return;
+  try{
+    await updateDoc(doc(db,'users',uid_), unbanPatch());
+    Object.assign(u, unbanPatch());
+    await logAudit('فك حظر عضو', uid_);
+    UI.toast('تم فك الحظر'); renderMain();
+  }catch(e){ console.error('unban failed',e); UI.toast('تعذّر فك الحظر'); }
 };
 window.demoteAdmin = async (uid_)=>{
   if(!isSuperAdmin()) return;
