@@ -603,7 +603,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/fireba
 import {
   getAuth, onAuthStateChanged, createUserWithEmailAndPassword,
   signInWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail, sendEmailVerification, reload,
-  updatePassword, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider, signInWithPopup
+  updatePassword, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider, signInWithPopup, deleteUser
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
@@ -1022,11 +1022,20 @@ const Auth = {
       const inviteInput = document.getElementById('regReferral').value.trim().toUpperCase();
       const IG = window.InviteGate;
       const inv = (IG && inviteInput) ? await IG.lookup(inviteInput) : null;
-      if(IG && IG.on() && (!inv || inv.full)){
+      if(IG && IG.on() && ((!inv && !inviteInput) || (inv && inv.full))){
         applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden');
         Auth.showError(inv&&inv.full ? 'كود الدعوة ده خلّص دعواته. اطلب كود تاني أو انضم لقائمة الانتظار.' : 'التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح أو انضم لقائمة الانتظار.'); return;
       }
       const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // كود مسوّق/إحالة/إدارة: بيتفحص بعد ما الدخول يتعمل (القواعد بتقرا referralCodes للمسجلين بس). لو غلط نمسح الحساب الجديد قبل ما أي بيانات تتكتب.
+      if(IG && IG.on() && !inv){
+        const anyInv = await IG.lookupAny(inviteInput);
+        if(!anyInv){
+          let removed=true; try{ await deleteUser(cred.user); }catch(e){ removed=false; try{ await signOut(auth); }catch(e2){} }
+          applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden');
+          Auth.showError(removed ? 'كود الدعوة ده مش صحيح. اكتب كود صح أو انضم لقائمة الانتظار.' : 'كود الدعوة ده مش صحيح، ومتعملش حساب جديد. تواصل مع الإدارة لو بريدك اتحجز.'); return;
+        }
+      }
       await updateProfile(cred.user, { displayName: (first+' '+last).trim() });
       Auth.verificationNotice = '';
       // onAuthStateChanged waits until the customer profile has been saved below.
@@ -1048,7 +1057,7 @@ const Auth = {
       const referralInput = document.getElementById('regReferral').value.trim().toUpperCase();
       if(inv && !inv.full){
         try{ await window.InviteGate.redeem(cred.user.uid, inv, first); }catch(e){ console.error('invite redeem failed', e); }
-      } else if(referralInput){
+      } else if(referralInput && !referralInput.startsWith('WL-')){
         try{
           const referrerId = await RefCodes.lookup({doc,getDoc},db,referralInput);
           if(referrerId){
@@ -1062,7 +1071,7 @@ const Auth = {
         }catch(e){ console.error('referral code lookup failed', e); }
       }
 
-      await window.Program?.recordSignup(referralInput||new URLSearchParams(location.search).get('marketer')||'');
+      await window.Program?.recordSignup(referralInput.startsWith('WL-')?'':(referralInput||new URLSearchParams(location.search).get('marketer')||''));
 
       try{
         await sendEmailVerification(cred.user); Auth.verificationSentAt = Date.now();
@@ -1162,8 +1171,8 @@ async function bootAuthUser(user) {
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
     let gInv=null;
     if(window.InviteGate?.on()){
-      gInv = await window.InviteGate.lookup(googleSignupCode);
-      if(!gInv || gInv.full){ await signOut(auth); resetSession(); showSignedOut(); applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden'); Auth.showError('التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح في الخانة قبل ما تكمل بجوجل، أو انضم لقائمة الانتظار.'); return; }
+      gInv = googleSignupCode ? await window.InviteGate.lookupAny(googleSignupCode) : null;
+      if(!gInv || gInv.full){ await signOut(auth); resetSession(); showSignedOut(); applyInviteUi(); document.getElementById('inviteGate')?.classList.remove('hidden'); Auth.switchTab('register'); document.getElementById('regReferral')?.focus(); Auth.showError('التسجيل دلوقتي بالدعوة بس. اكتب كود دعوة صحيح في الخانة قبل ما تكمل بجوجل، أو انضم لقائمة الانتظار.'); return; }
     }
     const consented = await TermsConsent.askGoogleConsent();
     if(!consented){ await signOut(auth); resetSession(); showSignedOut(); return; }
@@ -1176,8 +1185,8 @@ async function bootAuthUser(user) {
     });
     await saveTermsConsent(user.uid, 'google');
     try{ sessionStorage.setItem('inviteStepPending','1'); }catch(e){}
-    if(gInv){ try{ await window.InviteGate.redeem(user.uid, gInv, user.displayName||''); }catch(e){ console.error('invite redeem failed', e); } }
-    await window.Program?.recordSignup(googleSignupCode);
+    if(gInv && gInv.kind==='friend'){ try{ await window.InviteGate.redeem(user.uid, gInv, user.displayName||''); }catch(e){ console.error('invite redeem failed', e); } }
+    await window.Program?.recordSignup(String(googleSignupCode).toUpperCase().startsWith('WL-')?'':googleSignupCode);
   }
   bootStage='profile-read-back';
   const finalSnap = psnap.exists() ? psnap : await getDoc(doc(db,'users',user.uid));
@@ -2120,7 +2129,15 @@ async function lookupInvite(raw){
     const v=d.data(); return {code, ownerId:v.ownerId, ownerName:v.ownerName||'', used:v.used||0, full:(v.used||0)>=inviteLimit()};
   }catch(e){ return null; }
 }
-window.InviteGate = {on:inviteOn, lookup:lookupInvite, redeem:redeemInvite};
+// أي كود مقبول: كود دعوة صديق، أو كود مسوّق/إحالة (referralCodes)، أو كود من الإدارة (WL-). لازم يكون المستخدم داخل (القواعد بتقرا referralCodes للمسجلين بس).
+async function lookupAnyInvite(raw){
+  const code=String(raw||'').trim().toUpperCase();
+  if(!code) return null;
+  const f=await lookupInvite(code); if(f) return {...f,kind:'friend'};
+  try{ const owner=await RefCodes.lookup({doc,getDoc},db,code); if(owner) return {code,ownerId:owner,full:false,kind:code.startsWith('WL-')?'wl':'ref'}; }catch(e){}
+  return null;
+}
+window.InviteGate = {on:inviteOn, lookup:lookupInvite, lookupAny:lookupAnyInvite, redeem:redeemInvite};
 window.applyInviteUi = ()=>{
   const g=document.getElementById('inviteGate'); if(g) g.classList.toggle('hidden', !inviteOn());
   const l=document.querySelector('#regReferral')?.closest('.field')?.querySelector('label');
@@ -6182,9 +6199,31 @@ window.saveAutoApproveSwitch = async ()=>{
 window.showWaitlist = async ()=>{
   try{
     const q=await getDocs(query(collection(db,'waitlist'),orderBy('createdAt','desc'),limit(100)));
-    const rows=q.docs.map(d=>d.data()).map(w=>`<div class="card" style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px"><span>${esc(w.name||'')}</span><a dir="ltr" href="${waLink(w.phone||'','')}" target="_blank" rel="noopener">${esc(w.phone||'')}</a></div>`).join('');
+    const sup=isSuperAdmin(); window._wl=Object.fromEntries(q.docs.map(d=>[d.id,d.data()]));
+    const rows=q.docs.map(d=>{ const w=d.data(); const t=w.createdAt?new Date(w.createdAt).toLocaleString('ar-EG',{timeZone:'Africa/Cairo'}):'';
+      return `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(w.name||'')}</b><a dir="ltr" href="${waLink(w.phone||'','')}" target="_blank" rel="noopener">${esc(w.phone||'')}</a></div><div style="font-size:12px;color:var(--ink-soft);margin:4px 0 8px">${esc(t)}</div><div style="display:flex;gap:8px">${sup?`<button class="btn btn-primary btn-sm" style="width:auto;flex:1" onclick="approveWaitlist('${d.id}')">موافقة وإرسال كود</button>`:''}<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="rejectWaitlist('${d.id}')">رفض</button></div></div>`; }).join('');
     UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار (${q.size})</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>${rows||'<p>لسه مفيش حد.</p>'}`);
   }catch(e){ UI.toast('تعذّر تحميل القائمة (محتاج قواعد Firebase الجديدة)'); }
+};
+// موافقة: كود دعوة جديد بإسم الإدارة (WL-xxxxxx) بيشتغل زي كود المسوّق، بيتبعت للشخص على واتساب، ويتشال من القائمة. لإدارة الموقع بس.
+window.approveWaitlist = async id=>{
+  const w=(window._wl||{})[id]; if(!w) return;
+  if(!isSuperAdmin()){ UI.toast('الموافقة لإدارة الموقع فقط'); return; }
+  const b=new Uint8Array(6); crypto.getRandomValues(b); const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const code='WL-'+[...b].map(x=>A[x%A.length]).join('');
+  try{
+    await setDoc(doc(db,'referralCodes',code),{uid:auth.currentUser.uid});
+    await deleteDoc(doc(db,'waitlist',id));
+    try{ await logAudit('موافقة قائمة الانتظار',code); }catch(e){}
+    const msg='أهلاً '+(w.name||'')+'، تمت الموافقة على تسجيلك في على بابك. كود الدعوة بتاعك: '+code+'\nسجّل من هنا: https://3alababk.com/';
+    UI.openModal(`<div class="modal-head"><h3>تمت الموافقة</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="line-height:1.9">الكود: <b dir="ltr">${esc(code)}</b></p><a class="btn btn-primary" target="_blank" rel="noopener" href="${waLink(w.phone||'',msg)}"><i class="fa-brands fa-whatsapp"></i> ابعته على واتساب</a><button class="btn btn-ghost" style="margin-top:8px" onclick="showWaitlist()">رجوع للقائمة</button>`);
+  }catch(e){ UI.toast('تعذّر إنشاء الكود'); }
+};
+window.rejectWaitlist = async id=>{
+  if(!(window._wl||{})[id]) return;
+  if(!confirm('رفض الطلب وحذفه من القائمة؟')) return;
+  try{ await deleteDoc(doc(db,'waitlist',id)); try{ await logAudit('رفض قائمة الانتظار',id); }catch(e){} showWaitlist(); }
+  catch(e){ UI.toast('تعذّر الرفض'); }
 };
 window.saveDeliverySubSettings = async ()=>{
   const n=(id,d)=>{ const v=parseFloat(document.getElementById(id).value); return Number.isFinite(v)&&v>=0?v:d; };
