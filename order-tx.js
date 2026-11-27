@@ -7,8 +7,10 @@ export const TERMINAL_BAD = ['REJECTED','CANCELLED'];
 // sub: the sub order being cancelled (state BEFORE this change). siblings: all sub orders of the parent order,
 // INCLUDING sub. order: the parent order. Returns {stock:[{productId,qty}], restoreDiscount, coupon, points}.
 export function planRestore(sub, siblings, order){
-  const out = {stock:[], restoreDiscount:false, coupon:null, points:0};
+  const out = {stock:[], restoreDiscount:false, coupon:null, points:0, storePoints:0};
   if(!sub || sub.restocked || TERMINAL_BAD.includes(sub.status) || sub.status==='DELIVERED') return out;
+  // Store points are paid by that store only, so they go back with this sub order alone.
+  if(Number(sub.storePointsRedeemed)>0 && !sub.storePointsRestored) out.storePoints = Math.floor(Number(sub.storePointsRedeemed));
   out.stock = (sub.items||[]).filter(i=>i.productId && i.quantity>0).map(i=>({productId:i.productId, qty:i.quantity}));
   const allGone = (siblings||[]).every(s => s.id===sub.id || TERMINAL_BAD.includes(s.status));
   const already = (siblings||[]).some(s => s.discountRestored);
@@ -38,11 +40,15 @@ export async function cancelSubOrderWithRestore(api, db, s, extra, opts={}){
     const prodSnaps = await Promise.all(plan.stock.map(r=>tx.get(doc(db,'products', r.productId))));
     const couponRef = plan.restoreDiscount && plan.coupon ? doc(db,'coupons', plan.coupon) : null;
     const couponSnap = couponRef ? await tx.get(couponRef) : null;
+    const spRef = plan.storePoints>0 && sub.merchantId && sub.customerId ? doc(db,'users', sub.customerId,'storePoints', sub.merchantId) : null;
+    const spSnap = spRef ? await tx.get(spRef) : null;
     // all reads done, now writes
     const patch = {...extra};
+    if(spRef) patch.storePointsRestored = true;
     if(plan.stock.length) patch.restocked = true;
     if(plan.restoreDiscount) patch.discountRestored = true;
     tx.update(subRef, patch);
+    if(spRef) tx.set(spRef, { points: ((spSnap.exists()?spSnap.data().points:0)||0) + plan.storePoints, restoredFor: s.id, updatedAt: Date.now() }, {merge:true});
     plan.stock.forEach((r,i)=>{ if(prodSnaps[i].exists()) tx.update(doc(db,'products', r.productId), { stock: increment(r.qty) }); });
     if(plan.restoreDiscount){
       if(couponSnap && couponSnap.exists() && (couponSnap.data().usedCount||0)>0) tx.update(couponRef, { usedCount: increment(-1) });
