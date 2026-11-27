@@ -3385,11 +3385,21 @@ const closedNow=()=>_closedDraft||Services.normalizeSchedule(S.mySchedule).close
 window.addClosedDate=()=>{ const v=document.getElementById('schClosedAdd').value; if(!/^\d{4}-\d{2}-\d{2}$/.test(v)) return; _closedDraft=[...new Set([...closedNow(),v])].sort(); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
 window.removeClosedDate=d=>{ _closedDraft=closedNow().filter(x=>x!==d); const keep=readDraftForm(); S.mySchedule={...Services.normalizeSchedule(keep),closedDates:_closedDraft}; renderMain(); };
 function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow()); }catch(e){ return S.mySchedule; } }
+function scheduleLockHTML(){
+  const un=!!S.schedUnlocked;
+  return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:13px">${un?'🔓 المواعيد مفتوحة للتعديل':'🔒 المواعيد مقفولة'}</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()">${un?'قفل بدون حفظ':'فتح للتعديل'}</button></div><fieldset ${un?'':'disabled'} style="border:0;padding:0;margin:0;min-width:0;${un?'':'opacity:.65'}"><style>fieldset[disabled] .btn-primary,fieldset[disabled] .btn-ghost{display:none}</style>${Services.scheduleEditorHTML(S.mySchedule,esc)}</fieldset>`;
+}
+window.toggleScheduleLock = async ()=>{
+  if(!S.schedUnlocked){ S.schedUnlocked=true; renderMain(); return; }
+  S.schedUnlocked=false; _closedDraft=null;
+  try{ const d=await getDoc(doc(db,'serviceSchedules',S.profile.merchantId)); S.mySchedule=d.exists()?d.data():null; }catch(e){}
+  renderMain();
+};
 window.saveProviderSchedule = async ()=>{
   const mId=S.profile.merchantId; if(!mId) return;
   try{
     const sch=Services.readScheduleForm((id,f)=>document.getElementById(id)[f==='checked'?'checked':'value'],closedNow());
-    await setDoc(doc(db,'serviceSchedules',mId),{merchantId:mId,...sch,updatedAt:nowMs()}); _closedDraft=null; UI.toast('تم حفظ المواعيد ✅');
+    await setDoc(doc(db,'serviceSchedules',mId),{merchantId:mId,...sch,updatedAt:nowMs()}); _closedDraft=null; S.schedUnlocked=false; renderMain(); UI.toast('تم حفظ المواعيد ✅');
   }catch(e){ UI.toast(e.message||'تعذر الحفظ'); }
 };
 window.setServiceType=t=>{ S.serviceType=t; renderMain(); };
@@ -3428,12 +3438,22 @@ function providerBookingsView(){
 window.setBookedDay=d=>{ S.bookedDay=/^\d{4}-\d{2}-\d{2}$/.test(d||'')?d:''; renderMain(); };
 function renderProviderSchedule(){
   if(S.role!=='merchant'||!Services.isServiceProvider(S.myMerchant)) return '';
-  return `${Services.bookedTableHTML(S.providerBookings||[],esc,Date.now(),S.bookedDay)}<div class="section-head"><h3>مواعيد الشغل</h3></div>${Services.scheduleEditorHTML(S.mySchedule,esc)}${remindersOn()?reminderPrefsHTML():''}`;
+  return `${Services.bookedTableHTML(S.providerBookings||[],esc,Date.now(),S.bookedDay)}<div class="section-head"><h3>مواعيد التشغيل</h3></div>${scheduleLockHTML()}${remindersOn()?reminderPrefsHTML():''}`;
 }
 const REM_PREFS=[['reminder1h','تذكير قبل الميعاد بساعة'],['unanswered2h','تنبيه لو حجز مستني ردك أكتر من ساعتين'],['tomorrowSummary','ملخص حجوزات بكرة الساعة 8 مساءً']];
 const remPref=k=>{ try{ return localStorage.getItem('rem_'+k+'_'+S.profile.merchantId)!=='0'; }catch(e){ return true; } };
+const SUMMARY_HOURS=[12,13,14,15,16,17,18,19,20,21,22,23];
+const summaryHour=()=>{ try{ const h=Number(localStorage.getItem('rem_summaryHour_'+S.profile.merchantId)); return SUMMARY_HOURS.includes(h)?h:20; }catch(e){ return 20; } };
+window.saveSummaryHour = async v=>{
+  const mid=S.profile.merchantId, h=Number(v); if(!mid||!SUMMARY_HOURS.includes(h)) return;
+  const ok=await TelegramNotify.reminderPrefs(mid,{summaryHour:h});
+  if(ok){ try{ localStorage.setItem('rem_summaryHour_'+mid,String(h)); }catch(e){} UI.toast('تم'); }
+  else{ const e=document.getElementById('rp_hour'); if(e) e.value=String(summaryHour()); UI.toast('تعذر الحفظ، جرّب تاني'); }
+};
 function reminderPrefsHTML(){
-  return `<div class="card" style="margin-top:16px"><b><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> تذكيرات تليجرام</b><p class="hint-box" style="padding:10px;margin:8px 0">بتوصلك على تليجرام بس لو رابط حسابك بالبوت.</p>${REM_PREFS.map(([k,l])=>`<label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="rp_${k}" ${remPref(k)?'checked':''} onchange="saveReminderPref('${k}',this.checked)"> ${l}</label>`).join('')}</div>`;
+  return `<div class="card" style="margin-top:16px"><b><i class="fa-brands fa-telegram" style="color:var(--teal)"></i> تذكيرات تليجرام</b><p class="hint-box" style="padding:10px;margin:8px 0">بتوصلك على تليجرام بس لو رابط حسابك بالبوت.</p>${REM_PREFS.map(([k,l])=>k==='tomorrowSummary'
+    ?`<label style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap"><input type="checkbox" id="rp_${k}" ${remPref(k)?'checked':''} onchange="saveReminderPref('${k}',this.checked)"> ملخص حجوزات بكرة الساعة <select id="rp_hour" style="width:auto" onchange="saveSummaryHour(this.value)">${SUMMARY_HOURS.map(h=>`<option value="${h}" ${summaryHour()===h?'selected':''}>${h===12?'12 الضهر':(h-12)+' مساءً'}</option>`).join('')}</select></label>`
+    :`<label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="rp_${k}" ${remPref(k)?'checked':''} onchange="saveReminderPref('${k}',this.checked)"> ${l}</label>`).join('')}</div>`;
 }
 window.saveReminderPref = async (k,on)=>{
   const mid=S.profile.merchantId; if(!mid) return;
