@@ -1,11 +1,14 @@
 // إشعارات الطلبات على تليجرام عبر Cloudflare Worker خاص بـ«على بابك».
 // موديول خفيف: دوال نقية + نداءات شبكة بسيطة. مفيش أي وصول لـ Firebase Firestore من هنا.
-// ملاحظة أمنية: APP_SECRET ظاهر في سورس الصفحة زي باقي كود الواجهة، فهو بس بيقلل العبث العشوائي
-// في endpoint الإشعارات (تأثيره إشعار مزعج، مش بيانات). ربط الحساب نفسه محمي بتوكن Firebase ID الحقيقي.
+// الأمان: مفيش أي سر مشترك في الواجهة. كل نداء للـ Worker بيروح بتوكن Firebase ID بتاع المستخدم الحالي،
+// والـ Worker بيحدد دوره من Firestore بنفسه. التوكن بييجي من setTokenProvider (بيتسجل مرة بعد تسجيل الدخول).
 
 export const WORKER_URL = 'https://ala-babk-tg-notify.iemasam89.workers.dev';
-// نفس القيمة المتحطوطة في الـ Worker كسر APP_SECRET (قيمة واجهة مش سر حقيقي — شوف التعليق فوق).
-export const APP_SECRET = '64e91e0c81d615163ab84f1ea8058f59b50a685f312b1d79';
+let tokenProvider = null;
+export function setTokenProvider(fn) { tokenProvider = typeof fn === 'function' ? fn : null; }
+async function currentToken() {
+  try { return tokenProvider ? await tokenProvider() : null; } catch { return null; }
+}
 
 export const ADMIN_KEY = 'role:ADMIN';
 export const merchantKey = merchantId => 'm:' + merchantId;
@@ -15,8 +18,9 @@ const MAX_TITLE = 200, MAX_MESSAGE = 3000;
 
 async function post(path, body, {token, fetchImpl} = {}) {
   const doFetch = fetchImpl || globalThis.fetch;
-  const headers = {'content-type': 'application/json', 'x-app-secret': APP_SECRET};
-  if (token) headers['authorization'] = 'Bearer ' + token;
+  const headers = {'content-type': 'application/json'};
+  const tk = token || await currentToken();
+  if (tk) headers['authorization'] = 'Bearer ' + tk;
   const res = await doFetch(WORKER_URL + path, {method: 'POST', headers, body: JSON.stringify(body || {})});
   if (!res.ok) throw new Error('telegram worker http ' + res.status);
   return res.json();
@@ -25,7 +29,8 @@ async function post(path, body, {token, fetchImpl} = {}) {
 async function get(path, {token, fetchImpl} = {}) {
   const doFetch = fetchImpl || globalThis.fetch;
   const headers = {};
-  if (token) headers['authorization'] = 'Bearer ' + token;
+  const tk = token || await currentToken();
+  if (tk) headers['authorization'] = 'Bearer ' + tk;
   const res = await doFetch(WORKER_URL + path, {headers});
   if (!res.ok) throw new Error('telegram worker http ' + res.status);
   return res.json();
