@@ -25,6 +25,30 @@ export function cairoNow(ms=Date.now()){
 export const addDays=(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 export const weekday=date=>new Date(date+'T12:00:00Z').getUTCDay();
 export function dateOptions(ms=Date.now(),n=14){const t=cairoNow(ms).date;return Array.from({length:n},(_,i)=>addDays(t,i));}
+// تقويم الحجز: شهر كامل، الأسبوع بيبدأ السبت. أيام الحجز المتاحة من النهاردة لحد BOOK_WINDOW يوم.
+export const BOOK_WINDOW=90;
+export const MONTH_NAMES=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+export const CAL_HEAD=['سبت','أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة'];
+export const monthOf=date=>String(date).slice(0,7);
+export function addMonths(ym,n){const [y,m]=ym.split('-').map(Number),t=y*12+(m-1)+n;return `${Math.floor(t/12)}-${String(t%12+1).padStart(2,'0')}`;}
+// weeks: array of 7-item rows, null for empty cells before/after the month
+export function monthGrid(ym){
+  const first=ym+'-01',[y,m]=ym.split('-').map(Number),days=new Date(Date.UTC(y,m,0)).getUTCDate(),lead=(weekday(first)+1)%7;
+  const cells=[...Array(lead).fill(null),...Array.from({length:days},(_,i)=>ym+'-'+String(i+1).padStart(2,'0'))];
+  while(cells.length%7)cells.push(null);
+  return Array.from({length:cells.length/7},(_,i)=>cells.slice(i*7,i*7+7));
+}
+export function calendarHTML({mid,ym,sel,today,lastDay,count},esc){
+  const prevOk=ym>monthOf(today),nextOk=monthOf(lastDay)>ym,[y,m]=ym.split('-').map(Number);
+  const nav=(to,ok,icon,label)=>`<button type="button" class="bk-cal-nav" aria-label="${label}" ${ok?`onclick="pickBookMonth('${esc(mid)}','${to}')"`:'disabled'}><i class="fa-solid ${icon}"></i></button>`;
+  const cell=d=>{if(!d)return '<span class="bk-cal-empty"></span>';
+    const n=d<today||d>lastDay?0:count(d),dn=Number(d.slice(8));
+    return `<button type="button" class="bk-cal-day ${d===sel?'active':''} ${n?'':'off'} ${d===today?'today':''}" ${n?`onclick="pickBookDate('${esc(mid)}','${d}')"`:'disabled'} aria-label="${fmtDay(d)}${n?'':' مقفول'}"><span>${dn}</span>${n?'<i class="bk-cal-dot"></i>':''}</button>`;};
+  return `<div class="bk-cal"><div class="bk-cal-head">${nav(addMonths(ym,-1),prevOk,'fa-chevron-right','الشهر اللي فات')}<strong class="bk-cal-title">${MONTH_NAMES[m-1]} ${y}</strong>${nav(addMonths(ym,1),nextOk,'fa-chevron-left','الشهر اللي جاي')}</div>
+    <div class="bk-cal-grid bk-cal-names">${CAL_HEAD.map(n=>`<span>${n}</span>`).join('')}</div>
+    <div class="bk-cal-grid">${monthGrid(ym).map(w=>w.map(cell).join('')).join('')}</div>
+    <div class="bk-cal-key"><span><i class="bk-cal-dot"></i> فيه مواعيد</span><span class="off">رمادي: مقفول أو اتملا</span></div></div>`;
+}
 // times that can still be booked on `date`. booked: Set of 'HH:MM' that are active.
 export function slotsFor(schedule,date,booked=new Set(),ms=Date.now()){
   const s=normalizeSchedule(schedule),day=s.days[String(weekday(date))],now=cairoNow(ms);
@@ -66,6 +90,9 @@ export function trainerNote({goal,level,place,extra}){
 }
 // أنواع خدمات تانية: كل نوع ليه حقول بسيطة (اختيار أو نص قصير) بتتجمع في حقل note الموجود (300 حرف). [الاسم, النوع, الاختيارات أو أقصى طول, إجباري]
 export const TYPE_FIELDS={"حلاقة رجالي": [["الخدمة", "select", ["قص شعر", "دقن", "قص شعر ودقن", "حلاقة عريس"], 1], ["المكان", "select", ["في الصالون", "في البيت"], 1], ["ملاحظات", "text", 60, 0]], "صالون تجميل وميك أب": [["الخدمة", "select", ["شعر", "ميك أب", "أظافر", "بشرة", "عروسة"], 1], ["المكان", "select", ["في الصالون", "في البيت"], 1], ["ملاحظات", "text", 60, 0]], "تنظيف منازل": [["نوع التنظيف", "select", ["عادي", "عميق", "بعد تشطيب"], 1], ["حجم المكان", "select", ["شقة صغيرة", "شقة متوسطة", "شقة كبيرة", "فيلا"], 1], ["العنوان", "text", 90, 1]], "غسيل سجاد وكنب": [["القطع", "select", ["سجاد", "كنب", "ستائر", "مراتب", "أكتر من نوع"], 1], ["العدد التقريبي", "text", 30, 1], ["العنوان", "text", 90, 1]], "نقل أثاث وونش": [["الخدمة", "select", ["نقل أثاث", "ونش", "نقل وفك وتركيب"], 1], ["من عنوان", "text", 90, 1], ["إلى عنوان", "text", 90, 1]], "صيانة سيارات": [["نوع السيارة وموديلها", "text", 60, 1], ["العطل", "text", 140, 1], ["المكان", "select", ["في الورشة", "في مكاني"], 1]], "غسيل سيارات متنقل": [["حجم السيارة", "select", ["صغيرة", "سيدان", "SUV", "ميني فان"], 1], ["نوع الغسيل", "select", ["خارجي", "داخلي", "كامل"], 1], ["العنوان", "text", 90, 1]], "تصوير": [["المناسبة", "select", ["فرح", "خطوبة", "عيد ميلاد", "منتجات", "بورتريه", "أخرى"], 1], ["مكان التصوير", "text", 90, 1], ["ملاحظات", "text", 80, 0]], "تنظيم حفلات": [["نوع الحفل", "select", ["فرح", "خطوبة", "عيد ميلاد", "شركات", "أخرى"], 1], ["عدد الحضور", "select", ["أقل من 30", "30 إلى 100", "100 إلى 300", "أكتر من 300"], 1], ["مكان الحفل", "text", 90, 1]], "رعاية أطفال وكبار": [["الرعاية لـ", "select", ["طفل", "كبير سن"], 1], ["المدة", "select", ["ساعات", "يوم كامل", "مبيت"], 1], ["العنوان", "text", 90, 1], ["ملاحظات", "text", 60, 0]], "بيطري وخدمات حيوانات": [["الحيوان", "select", ["قطة", "كلب", "طيور", "أخرى"], 1], ["الخدمة", "select", ["كشف", "تطعيم", "استحمام وتجميل", "إقامة"], 1], ["ملاحظات", "text", 80, 0]], "عيادات": [["نوع الزيارة", "select", ["كشف جديد", "متابعة", "استشارة"], 1], ["سبب الزيارة (اختياري)", "text", 80, 0]]};
+// المدرسين: الطالب يختار السنة الدراسية (بتظهر للمدرس في الحجز والإشعار والجدول لأنها بتتكتب في أول سطر من note).
+export const GRADES=['ابتدائي - الصف الأول','ابتدائي - الصف الثاني','ابتدائي - الصف الثالث','ابتدائي - الصف الرابع','ابتدائي - الصف الخامس','ابتدائي - الصف السادس','إعدادي - الصف الأول','إعدادي - الصف الثاني','إعدادي - الصف الثالث','ثانوي - الصف الأول','ثانوي - الصف الثاني','ثانوي - الصف الثالث','جامعي','أخرى'];
+TYPE_FIELDS['مدرسين']=[['السنة الدراسية','select',GRADES,1],['المادة أو ملاحظة (اختياري)','text',80,0]];
 export function typeNote(type,values){
   const fs=TYPE_FIELDS[String(type||'').trim()];if(!fs)throw Error('نوع الخدمة غير معروف');
   const out=[];
@@ -120,14 +147,14 @@ export function seriesInfo({schedule,booked,date,time,weeks},ms=Date.now()){
   const n=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0];
   return Array.from({length:n},(_,i)=>{const d=addDays(date,7*i);return {date:d,ok:slotsFor(schedule,d,bookedSetFor(booked,d,capacityOf(schedule)),ms).includes(time)};});
 }
-export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,weeks},esc,ms=Date.now()){
+export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,weeks,month},esc,ms=Date.now()){
   const bf=d=>bookedSetFor(booked,d,capacityOf(schedule));
-  const days=dateOptions(ms),sel=days.includes(date)?date:days.find(d=>slotsFor(schedule,d,bf(d),ms).length)||days[0],slots=slotsFor(schedule,sel,bf(sel),ms);
+  const days=dateOptions(ms,BOOK_WINDOW),sel=days.includes(date)?date:days.find(d=>slotsFor(schedule,d,bf(d),ms).length)||days[0],slots=slotsFor(schedule,sel,bf(sel),ms);
   const person=((profile?.firstName||'')+' '+(profile?.lastName||'')).trim(),ph=String(profile?.phone||'').trim(),known=!!person&&/^\+?[\d\s()-]{7,25}$/.test(ph),ready=!!(time&&slots.includes(time)),wk=repeat==='weekly',wn=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0],ser=wk&&ready?seriesInfo({schedule,booked,date:sel,time,weeks:wn},ms):[],okN=ser.filter(x=>x.ok).length;
   const dayChip=d=>{const n=slotsFor(schedule,d,bf(d),ms).length,f=fmtDay(d).split(' ');return `<button type="button" class="bk-day ${d===sel?'active':''} ${n?'':'off'}" ${n?`onclick="pickBookDate('${esc(m.id)}','${d}')"`:'disabled'}><strong>${f[0]}</strong><span>${f[1]}</span><small>${n?n+' ميعاد':'مقفول'}</small></button>`;};
   return `<div class="card bk-panel" id="bookPanel" style="margin-bottom:16px"><h3 style="margin:0 0 14px">احجز ميعاد</h3>
     <div class="bk-label">1. اختار اليوم</div>
-    <div class="bk-days">${days.map(dayChip).join('')}</div>
+    ${calendarHTML({mid:m.id,ym:/^\d{4}-\d{2}$/.test(String(month||''))&&month>=monthOf(days[0])&&month<=monthOf(days[days.length-1])?month:monthOf(sel),sel,today:days[0],lastDay:days[days.length-1],count:d=>slotsFor(schedule,d,bf(d),ms).length},esc)}
     <div class="bk-label">2. اختار الميعاد ${fmtDay(sel)}</div>
     ${slots.length?`<div class="bk-slots">${slots.map(t=>`<button type="button" class="bk-slot ${t===time?'active':''}" onclick="pickBookTime('${esc(m.id)}','${sel}','${t}')">${fmtTime(t)}</button>`).join('')}</div>`:'<p class="hint-box">مفيش مواعيد فاضية فى اليوم ده.</p>'}
     ${ready?`<div class="bk-label">3. نوع الحجز</div>
