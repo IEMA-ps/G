@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {isBanned,canBan,banPatch,unbanPatch,cleanReason,BAN_FIELDS} from './member-ban.js';
+assert.equal(isBanned(null),false);assert.equal(isBanned({}),false);assert.equal(isBanned({banned:false}),false);assert.equal(isBanned({banned:'true'}),false);
+assert.equal(isBanned({banned:true,role:'CUSTOMER'}),true);assert.equal(isBanned({banned:true}),true);
+assert.equal(isBanned({banned:true,role:'ADMIN'}),false,'an admin is never locked out by the flag');
+assert.equal(canBan(true,{_id:'u1',role:'CUSTOMER'},'a'),true);
+assert.equal(canBan(true,{_id:'u1',role:'MERCHANT'},'a'),true);
+assert.equal(canBan(false,{_id:'u1',role:'CUSTOMER'},'a'),false,'staff admin cannot ban');
+assert.equal(canBan(true,{_id:'a',role:'CUSTOMER'},'a'),false,'not yourself');
+assert.equal(canBan(true,{_id:'x',role:'ADMIN'},'a'),false,'not an admin');
+assert.equal(canBan(true,null,'a'),false);assert.equal(canBan(true,{role:'CUSTOMER'},'a'),false);
+const p=banPatch('a','  سبب   طويل \n ',5);assert.deepEqual(p,{banned:true,bannedAt:5,bannedBy:'a',bannedReason:'سبب طويل'});
+assert.equal(cleanReason('x'.repeat(500)).length,200);assert.equal(cleanReason(null),'');
+const u=unbanPatch();assert.equal(u.banned,false);assert.deepEqual(Object.keys(p).sort(),BAN_FIELDS.slice().sort());assert.deepEqual(Object.keys(u).sort(),BAN_FIELDS.slice().sort());
+console.log('member-ban tests passed');
