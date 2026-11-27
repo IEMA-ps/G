@@ -164,6 +164,11 @@ const SUMMARY_HOUR = 20; // ملخص حجوزات بكرة الساعة 8 مسا
 const REM_ID = /^[A-Za-z0-9_\-]{1,120}$/;
 const REM_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const REM_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+// ساعة ملخص بكرة اللي التاجر اختارها (12 الضهر لـ11 بالليل بتوقيت القاهرة)، وغير كده الافتراضي.
+export function summaryHourFor(prefs) {
+  const h = prefs && prefs.summaryHour;
+  return Number.isInteger(h) && h >= 12 && h <= 23 ? h : SUMMARY_HOUR;
+}
 const DEFAULT_PREFS = {reminder1h: true, unanswered2h: true, tomorrowSummary: true};
 
 async function getPrefs(env, merchantId) {
@@ -219,6 +224,10 @@ async function handleReminderPrefs(request, env) {
   if (!body || typeof body.merchantId !== 'string' || !/^[A-Za-z0-9_\-]{1,64}$/.test(body.merchantId)) return json({error: 'bad request'}, 400);
   const prefs = await getPrefs(env, body.merchantId);
   let touched = false;
+  if (body.summaryHour !== undefined) {
+    if (!Number.isInteger(body.summaryHour) || body.summaryHour < 12 || body.summaryHour > 23) return json({error: 'bad request'}, 400);
+    prefs.summaryHour = body.summaryHour; touched = true;
+  }
   for (const k of ['reminder1h', 'unanswered2h', 'tomorrowSummary']) {
     if (typeof body[k] === 'boolean') { prefs[k] = body[k]; touched = true; }
   }
@@ -253,7 +262,6 @@ async function runCron(env, now = Date.now()) {
   const tomorrowD = new Date(Date.parse(today + 'T12:00:00Z'));
   tomorrowD.setUTCDate(tomorrowD.getUTCDate() + 1);
   const tomorrow = tomorrowD.toISOString().slice(0, 10);
-  const inSummaryWindow = Number(p.hour) === SUMMARY_HOUR;
 
   const pendingByMerchant = new Map(), tomorrowByMerchant = new Map();
   const saves = [];
@@ -284,7 +292,7 @@ async function runCron(env, now = Date.now()) {
       pendingByMerchant.get(e.merchantId).push(e);
     }
 
-    if (inSummaryWindow && e.status === 'ACCEPTED' && e.date === tomorrow && e.summaryFor !== tomorrow && prefs.tomorrowSummary !== false) {
+    if (Number(p.hour) === summaryHourFor(prefs) && e.status === 'ACCEPTED' && e.date === tomorrow && e.summaryFor !== tomorrow && prefs.tomorrowSummary !== false) {
       if (!tomorrowByMerchant.has(e.merchantId)) tomorrowByMerchant.set(e.merchantId, []);
       tomorrowByMerchant.get(e.merchantId).push(e);
     }
@@ -714,7 +722,7 @@ async function route(request, env) {
 }
 
 // للاختبار المحلي: نقدر نستبدل التحقق والإرسال ببدائل وهمية.
-const internals = {verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
+const internals = {summaryHourFor, verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
 export const _internals = internals;
 
 export default {

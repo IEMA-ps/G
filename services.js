@@ -50,7 +50,7 @@ export function providerStats(bookings,ms=Date.now()){
 const field=(id,label,v,esc)=>`<div class="field"><label>${label}</label>${v}</div>`;
 export function scheduleEditorHTML(schedule,esc){
   const s=normalizeSchedule(schedule);
-  return `<div class="card" style="margin-bottom:14px"><b>مواعيد الشغل</b>
+  return `<div class="card" style="margin-bottom:14px"><b>مواعيد التشغيل</b>
     <div class="field" style="margin-top:10px"><label>مدة الحجز</label><select id="schSlot">${SLOT_OPTIONS.map(n=>`<option value="${n}" ${s.slotMinutes===n?'selected':''}>${n} دقيقة</option>`).join('')}</select></div>
     ${DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:6px;margin:8px 0;align-items:center"><label style="min-width:70px;flex-shrink:0"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:0;min-width:0;flex:1"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:0;min-width:0;flex:1"></div>`;}).join('')}
     <div class="field"><label>أيام إجازة (اختياري)</label><div style="display:flex;gap:8px"><input type="date" id="schClosedAdd"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="addClosedDate()">إضافة</button></div>
