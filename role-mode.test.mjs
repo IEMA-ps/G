@@ -11,4 +11,7 @@ assert.equal(m.cartHasOwnStore('merchant',{merchantId:'m1'},['m2','m1']),true);
 assert.equal(m.cartHasOwnStore('merchant',{merchantId:'m1'},['m2']),false);
 assert.equal(m.cartHasOwnStore('merchant',{merchantId:'m1'},undefined),false);
 assert.equal(m.backLabel('delivery'),'رجوع للوحة المندوب');
+assert.equal(m.ordersBadge('merchant',[{status:'SENT_TO_MERCHANT'},{status:'DONE'}]),1);
+assert.equal(m.ordersBadge('delivery',[{status:'SENT_TO_MERCHANT'}]),0);
+assert.equal(m.ordersBadge('merchant',undefined),0);
 console.log('role-mode ok');
