@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const m=await import('data:text/javascript;base64,'+Buffer.from(readFileSync('role-mode.js')).toString('base64'));
+for(const r of ['merchant','delivery','marketer']) assert.equal(m.canShop(r),true);
+for(const r of ['customer','admin',undefined]) assert.equal(m.canShop(r),false);
+assert.equal(m.ownStoreBlocked('merchant',{merchantId:'m1'},'m1'),true);
+assert.equal(m.ownStoreBlocked('merchant',{merchantId:'m1'},'m2'),false);
+assert.equal(m.ownStoreBlocked('merchant',{},'m1'),false);
+assert.equal(m.ownStoreBlocked('delivery',{merchantId:'m1'},'m1'),false);
+assert.equal(m.cartHasOwnStore('merchant',{merchantId:'m1'},['m2','m1']),true);
+assert.equal(m.cartHasOwnStore('merchant',{merchantId:'m1'},['m2']),false);
+assert.equal(m.cartHasOwnStore('merchant',{merchantId:'m1'},undefined),false);
+assert.equal(m.backLabel('delivery'),'رجوع للوحة المندوب');
+console.log('role-mode ok');

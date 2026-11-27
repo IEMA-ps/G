@@ -132,6 +132,7 @@ img{max-width:100%; display:block;}
 #mainContent{flex:1; padding:16px 16px 90px;}
 /* على الموبايل الزر العايم (دعم فني) وفقاعة التثبيت كانوا بيغطوا آخر صفوف الفورم، فبنسيب مساحة تحتهم */
 @media (max-width:600px){ #mainContent{padding-bottom:220px;} }
+#topbar .tb-switch{border:0;background:rgba(255,255,255,.95);color:var(--teal);border-radius:999px;padding:8px 12px;font-weight:700;font-size:12.5px;font-family:inherit;white-space:nowrap;cursor:pointer}
 #cartBar{position:fixed; bottom:var(--cb-bottom,112px); left:50%; transform:translateX(-50%); width:calc(100% - 28px); max-width:452px; z-index:19; display:flex; justify-content:space-between; align-items:center; background:var(--teal); color:#fff; border:none; border-radius:16px; padding:11px 16px; font-family:inherit; box-shadow:0 6px 18px rgba(0,0,0,.28); cursor:pointer;}
 #cartBar .cb-info{display:flex; flex-direction:column; align-items:flex-start; font-size:12.5px; font-weight:600; line-height:1.4;}
 #cartBar .cb-info b{font-size:15px; font-weight:800;}
@@ -579,6 +580,7 @@ import * as AdSlots from '/ad-slots.js?v=ads-2';
 import * as Favorites from '/favorites.js?v=fav-1';
 import * as FeatureFlags from '/feature-flags.js?v=flags-3';
 import * as StorePhoto from '/store-photo.js?v=photo-1';
+import * as RoleMode from '/role-mode.js?v=rm-1';
 import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
 import * as OrderTimeline from '/order-timeline.js?v=tl-1';
 import * as MarketerInsights from '/marketer-insights.js?v=mki-1';
@@ -1189,6 +1191,7 @@ async function bootAuthUser(user) {
   if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
   bootStage='app-open';
   S.role = (S.profile.role||'CUSTOMER').toLowerCase();
+  S.realRole = S.role; S.shopping = false;
   loadCart();
   loadWishlist();
   document.getElementById('authScreen').classList.add('hidden');
@@ -2676,6 +2679,7 @@ function renderShell(){
 
   tb.innerHTML = `
     <div class="tb-title">${esc(title)}<small>${esc(sub)}</small></div>
+    ${S.shopping?`<button class="tb-switch" onclick="switchRoleMode(false)">↩ ${RoleMode.backLabel(S.realRole)}</button>`:(RoleMode.canShop(S.realRole)&&S.role===S.realRole?`<button class="tb-switch" onclick="switchRoleMode(true)"><i class="fa-solid fa-cart-shopping"></i> اطلب كعميل</button>`:'')}
     <button class="icon-btn" onclick="go('notifications')"><i class="fa-solid fa-bell"></i>${unreadCount()>0?'<span class="dot"></span>':''}</button>
     <button class="icon-btn" aria-label="تسجيل الخروج" title="تسجيل الخروج" onclick="Auth.logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i></button>
   `;
@@ -2799,6 +2803,19 @@ window.addEventListener('hashchange', ()=>{
   if(t && t!==S.tab){ if(t==='home') S.searchQuery=''; S.tab = t; window.scrollTo(0,0); renderShell(); }
 });
 // الشاشات اللي ينفع تتفتح من الـ hash لكل دور (الشاشات اللي محتاجة بيانات مختارة زي orderDetail/merchantPage مستثناة)
+window.switchRoleMode = (toCustomer)=>{
+  const real = S.realRole || S.role;
+  if(!RoleMode.canShop(real) || !S.user) return;
+  clearSubs();
+  S.role = toCustomer ? 'customer' : real; S.shopping = !!toCustomer;
+  S.searchQuery = '';
+  subscribeShared();
+  if(S.role==='customer') subscribeCustomer();
+  if(S.role==='merchant') subscribeMerchant();
+  if(S.role==='marketer') subscribeMarketer();
+  if(S.role==='delivery') subscribeDeliveryAgent();
+  S.tab = null; go(defaultTabForRole());
+};
 function defaultTabForRole(){
   return S.role==='customer' ? 'home' : S.role==='marketer' ? 'mk_dashboard' : S.role==='merchant' ? 'm_dashboard' : S.role==='delivery' ? 'd_dashboard' : 'a_dashboard';
 }
@@ -3254,6 +3271,7 @@ window.addToCart = (pid, qty=1)=>{
   const p = getProduct(pid);
   if(!p || !MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)){ UI.toast('هذا المتجر لا يستقبل طلبات حاليًا'); return; }
   if(!DeliveryBatch.canAddStore(cartLines().map(l=>l.product.merchantId), p.merchantId)){ UI.toast(`تقدر تطلب من ${DeliveryBatch.MAX_STORES_PER_ORDER} متاجر كحد أقصى في الطلب الواحد. أكمل طلبك الحالي الأول.`); return; }
+  if(RoleMode.ownStoreBlocked(S.realRole,S.profile,p.merchantId)){ UI.toast('مينفعش تطلب من متجرك'); return; }
   const ex = S.cart.find(c=>c.productId===pid);
   const desired = (ex?ex.quantity:0) + qty;
   if(p && p.stock!=null && desired>p.stock){
@@ -3810,6 +3828,7 @@ const PAYMENT_METHODS = [
 ];
 const paymentLabel = ()=> (PAYMENT_METHODS.find(m=>m.id===(S.paymentMethod||'COD')&&m.enabled) || PAYMENT_METHODS[0]).label;
 window.submitOrder = async ()=>{
+  if(RoleMode.cartHasOwnStore(S.realRole,S.profile,cartLines().map(l=>l.product&&l.product.merchantId))){ UI.toast('السلة فيها منتجات من متجرك. شيلها علشان تكمل الطلب.'); return; }
   const btn = document.querySelector('#mainContent button[onclick="submitOrder()"]');
   if(btn){ if(btn.disabled) return; btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> جاري إنشاء الطلب...'; }
   try{
