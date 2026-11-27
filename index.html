@@ -14,7 +14,7 @@
 <meta property="og:image" content="https://3alababk.com/icon-512.png">
 <meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="/shared-catalog.css?v=shared-2">
-<link rel="stylesheet" href="/product-list.css?v=list-1">
+<link rel="stylesheet" href="/product-list.css?v=list-2">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
 <link rel="icon" type="image/svg+xml" href="/icon.svg">
@@ -587,7 +587,7 @@ import * as MarketerInsights from '/marketer-insights.js?v=mki-1';
 import * as MarketerContest from '/marketer-contest.js?v=ctst-1';
 import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
-import {productRow} from '/product-list.js?v=list-1';
+import {productRow} from '/product-list.js?v=list-2';
 import {installSheet} from '/product-sheet-ui.js?v=sheet-1';
 import {installPaste} from '/product-paste-ui.js?v=paste-1';
 import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-5';
@@ -608,7 +608,7 @@ import {
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   collection, query, where, orderBy, onSnapshot, serverTimestamp,
-  writeBatch, runTransaction, increment, limit, startAfter, documentId
+  writeBatch, runTransaction, increment, limit, startAfter, documentId, deleteField
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-functions.js";
 
@@ -4573,6 +4573,7 @@ window.openProductForm = (pid)=>{
       <div class="field" style="flex:1"><label>مدة العرض (ساعات)</label><input id="pfFlashHours" type="number" min="0" max="168" placeholder="مثلًا 6"></div>
     </div>
     <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="pfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
+    <div class="field"><label>حجم الصورة للعميل</label><select id="pfImgSize"><option value="small"${p&&p.imageSize!=='large'||!p?' selected':''}>صغيرة (جنب الاسم)</option><option value="large"${p&&p.imageSize==='large'?' selected':''}>كبيرة (فوق الاسم)</option></select></div>
     <div class="divider"></div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px"><i class="fa-solid fa-people-group"></i> تجميعة الجيران (اختياري): خلّي العملاء يجمعوا طلبات مع جيرانهم ويكسبوا خصم أكبر</p>
     <div style="display:flex;gap:10px">
@@ -4601,6 +4602,7 @@ window.saveProduct = async (pid)=>{
     groupMinParticipants: parseInt(document.getElementById('pfGroupMin').value)||3,
     imageUrl: document.getElementById('pfImg').value.trim()
   };
+  const bigImg = document.getElementById('pfImgSize').value==='large';
   // العرض المحدود
   const fPrice = parseFloat(document.getElementById('pfFlashPrice').value);
   const fHoursRaw = document.getElementById('pfFlashHours').value.trim();
@@ -4615,10 +4617,11 @@ window.saveProduct = async (pid)=>{
     data.flashPrice = null; data.flashEndsAt = null;                       // لا يوجد عرض / تم إلغاؤه
   }
   if(pid){
-    await updateDoc(doc(db,'products',pid), data);
+    await updateDoc(doc(db,'products',pid), {...data, imageSize: bigImg ? 'large' : deleteField()});
     UI.toast('تم حفظ التعديلات');
   } else {
     const id = 'prod_' + uid();
+    if(bigImg) data.imageSize = 'large';
     await setDoc(doc(db,'products',id), {id, merchantId:S.profile.merchantId, isActive:true, isPopular:false, isNew:true, rating:4.7, ...data});
     UI.toast('تمت إضافة المنتج بنجاح');
   }
@@ -5659,6 +5662,7 @@ window.openAdminProductForm = (pid)=>{
     </div>
     <div class="field"><label>الكمية بالمخزون</label><input id="apfStock" type="number" value="${p?p.stock:50}"></div>
     <div class="field"><label>رابط صورة المنتج (اختياري)</label><input id="apfImg" value="${p?esc(p.imageUrl):''}" placeholder="https://..."></div>
+    <div class="field"><label>حجم الصورة للعميل</label><select id="apfImgSize"><option value="small"${p&&p.imageSize!=='large'||!p?' selected':''}>صغيرة (جنب الاسم)</option><option value="large"${p&&p.imageSize==='large'?' selected':''}>كبيرة (فوق الاسم)</option></select></div>
     <div class="divider"></div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 10px"><i class="fa-solid fa-people-group"></i> تجميعة الجيران (اختياري)</p>
     <div style="display:flex;gap:10px">
@@ -5682,11 +5686,13 @@ window.saveAdminProduct = async (pid)=>{
     groupMinParticipants: parseInt(document.getElementById('apfGroupMin').value)||3,
     imageUrl: document.getElementById('apfImg').value.trim()
   };
+  const bigImg = document.getElementById('apfImgSize').value==='large';
   if(pid){
-    await updateDoc(doc(db,'products',pid), data);
+    await updateDoc(doc(db,'products',pid), {...data, imageSize: bigImg ? 'large' : deleteField()});
     UI.toast('تم حفظ التعديلات');
   } else {
     const merchantId = document.getElementById('apfMerchant').value;
+    if(bigImg) data.imageSize = 'large';
     if(!merchantId){ UI.toast('اختر التاجر'); return; }
     const id = 'prod_' + uid();
     await setDoc(doc(db,'products',id), {id, merchantId, isActive:true, isPopular:false, isNew:true, rating:4.7, ...data});
