@@ -50,7 +50,7 @@ async function load(){
   if(m.status!=='ACTIVE'||!(m.subEndsAt>Date.now())||!['PROFILE','ORDERING'].includes(m.subPlanType)){unavailable();return;}
   shareUrl=publicStoreUrl({...m,id});
   document.title=(m.businessName||'صفحة المتجر')+' | على بابك';
-  const W=({'مدرسين':{own:'الأستاذ',with:'الأستاذ'},'عيادات':{own:'العيادة',with:'العيادة'},'صيانة منزلية':{own:'الفني',with:'الفني'}})[String(m.activityType||'').trim()]||{own:'متجرنا',with:'المتجر'};
+  const W=({'مدرسين':{own:'الأستاذ',with:'الأستاذ'},'عيادات':{own:'العيادة',with:'العيادة'},'صيانة منزلية':{own:'الفني',with:'الفني'},'تدريب بدني شخصي':{own:'المدرب',with:'المدرب'}})[String(m.activityType||'').trim()]||{own:'متجرنا',with:'المتجر'};
   $('contactH').textContent='تواصل مع '+W.with;
   if(m.subPlanType==='PROFILE')$('profileNote').textContent='دي صفحة تعرفك بـ'+W.own+'. لو عندك سؤال، كلّمه مباشرة. الباقة دي مش بتوفر طلب أو دفع أو توصيل من التطبيق.';
   for(const [key,value] of Object.entries({name:m.businessName||'متجر',activity:m.activityType||'غير محدد',description:m.description||('أهلًا بيك في صفحة '+W.own+' على بابك.'),address:m.address||('تواصل مع '+W.with+' لمعرفة العنوان.'),hours:m.openTime&&m.closeTime?'ساعات العمل: '+m.openTime+' إلى '+m.closeTime:''})) $(key).textContent=value;

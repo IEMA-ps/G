@@ -1,5 +1,5 @@
 // Business activity is not a subscription plan or a product category.
-export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية'];
+export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية','تدريب بدني شخصي'];
 export const STORE_TYPES=['مطاعم','سوبر ماركت','خضار وفاكهة','لحوم ودواجن وأسماك','حلويات','مشروبات','صيدلية','عناية وتجميل','عطور','إلكترونيات','ملابس','مستلزمات أطفال','مستلزمات منزلية','ورد وهدايا','حيوانات أليفة','مكتبات وقرطاسية','مخابز وأفران','مغاسل ومكوجى'];
 export const typeLabel=m=>String(m?.activityType||'').trim()||'غير محدد';
 export function typePicker(id,current,esc,services=false,only=null){
