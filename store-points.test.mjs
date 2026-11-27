@@ -44,4 +44,10 @@ const base=()=>({'users/c':{loyaltyPoints:5},'merchants/m1':{businessName:'حل�
 { // flag off: old behaviour exactly
   const d=base();const r=await Tx.deliverSubOrder(fake(d),null,{id:'S1'},{status:'DELIVERED'},{earnRate:0.1});
   eq(r.pointsEarned,19);eq(d['users/c'].loyaltyPoints,24);eq('users/c/storePoints/m1' in d,false);}
+{ // referral bonus: per-store on -> inviteCredit (platform-paid), old loyaltyPoints untouched; off -> old field
+  const mk=()=>{const d=base();d['referrals/c']={status:'PENDING',referrerId:'r'};d['users/r']={loyaltyPoints:7};return d;};
+  let d=mk();await Tx.deliverSubOrder(fake(d),null,{id:'S1'},{status:'DELIVERED'},{bonusPoints:50,storePointsOn:true,nowMs:1});
+  eq(d['users/r'].inviteCredit,50);eq(d['users/r'].loyaltyPoints,7);
+  d=mk();await Tx.deliverSubOrder(fake(d),null,{id:'S1'},{status:'DELIVERED'},{bonusPoints:50});
+  eq(d['users/r'].loyaltyPoints,57);eq('inviteCredit' in d['users/r'],false);}
 console.log(`store-points: ${n} checks passed`);
