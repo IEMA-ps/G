@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#C9401D"><meta name="referrer" content="strict-origin-when-cross-origin">
+<title>شوف صفحة متجرك قبل ما تسجّل | على بابك</title>
+<meta name="description" content="جرّب شكل صفحة متجرك على على بابك: الاسم والشعار واللون والمنتجات، وشوف الباقات قبل ما تسجّل.">
+<link rel="icon" href="/favicon.png"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#30251F;--muted:#7B6A5B;--brand:#C9401D;--line:#EDDFCF;--paper:#FFF8EE;--surface:#FFFDFA}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:Cairo,sans-serif;line-height:1.7}
+a{color:inherit}
+header{max-width:1040px;margin:auto;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+header img{height:34px}
+header .muted{color:var(--muted);font-size:14px}
+main{max-width:1040px;margin:auto;padding:0 20px 56px}
+h1{font-size:26px;margin:6px 0 4px}
+.lead{color:var(--muted);margin:0 0 20px}
+.layout{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.card h2{font-size:17px;margin:0 0 12px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:13.5px;font-weight:600;margin-bottom:4px}
+.field input[type=text],.field input[type=number],.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--brand);outline-offset:1px}
+.hint{font-size:12.5px;color:var(--muted);margin:4px 0 0}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sw{width:34px;height:34px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.sw[aria-pressed=true]{box-shadow:0 0 0 2px var(--ink)}
+.swatches input[type=color]{width:42px;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+.prow{display:grid;grid-template-columns:1fr 90px 36px;gap:8px;margin-bottom:8px}
+.prow input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);font:inherit;font-weight:700;cursor:pointer;text-decoration:none}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.small{padding:6px 10px;font-size:13px}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.sticky{position:sticky;top:12px}
+.phone{width:300px;margin:0 auto;border:9px solid #2a2320;border-radius:34px;background:#fff;overflow:hidden;box-shadow:0 12px 32px rgba(48,37,31,.2)}
+.screen{height:560px;overflow:auto;background:var(--paper);font-size:13px}
+.pv-top{padding:18px 14px 14px;display:flex;gap:10px;align-items:center;background:var(--pv);color:var(--pvfg)}
+.pv-logo{width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.92);color:var(--pv);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;overflow:hidden;flex:0 0 auto}
+.pv-logo img{width:100%;height:100%;object-fit:cover}
+.pv-name{font-weight:800;font-size:16px;line-height:1.3;word-break:break-word}
+.pv-type{font-size:12px;opacity:.9}
+.pv-desc{padding:10px 14px 0;color:var(--muted);font-size:12.5px;word-break:break-word}
+.pv-h{padding:12px 14px 6px;font-weight:800}
+.pv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px 14px}
+.pv-p{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px}
+.pv-img{height:54px;border-radius:8px;background:var(--pvtint);margin-bottom:6px}
+.pv-pn{font-weight:700;font-size:12.5px;word-break:break-word}
+.pv-pp{color:var(--pv);font-weight:800;margin:2px 0 6px}
+.pv-add{width:100%;border:0;border-radius:8px;padding:5px;background:var(--pv);color:var(--pvfg);font:inherit;font-size:12px;font-weight:700}
+.pv-empty{padding:0 14px 14px;color:var(--muted);font-size:12.5px}
+.pv-nav{position:sticky;bottom:0;display:flex;justify-content:space-around;background:#fff;border-top:1px solid var(--line);padding:8px 0;font-size:11px;color:var(--muted)}
+.pv-nav b{color:var(--pv)}
+.note{font-size:12.5px;color:var(--muted);text-align:center;margin:10px 0 0}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.plans{margin-top:26px}
+.plans h2{font-size:21px;margin:0 0 4px}
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:separate;border-spacing:0}
+th,td{padding:12px 10px;text-align:center;border-bottom:1px solid var(--line)}
+th{font-size:14px}
+th.kind small{display:block;font-weight:400;color:var(--muted);font-size:12.5px}
+td.dur{text-align:start;font-weight:800}
+td .price{font-size:20px;font-weight:800}
+td .per{display:block;font-size:12.5px;color:var(--muted)}
+tr.best td{background:#fff3df}
+.tag{display:inline-block;background:var(--brand);color:#fff;font-size:11px;font-weight:700;border-radius:99px;padding:1px 8px;margin-inline-start:6px}
+.feat{margin:12px 0 0;padding:0;list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;font-size:13.5px}
+.feat li::before{content:"\2713";color:var(--brand);font-weight:800;margin-inline-end:6px}
+footer{max-width:1040px;margin:auto;padding:0 20px 30px;color:var(--muted);font-size:12.5px}
+@media(max-width:860px){.layout{grid-template-columns:1fr}.feat{grid-template-columns:1fr}h1{font-size:22px}
+aside.sticky{order:-1;position:sticky;top:0;z-index:5;background:var(--paper);padding:6px 0 4px;box-shadow:0 6px 10px -8px rgba(48,37,31,.35)}
+.phone{width:250px;border-width:7px;border-radius:26px}.screen{height:230px}.note{display:none}
+th,td{padding:10px 4px}th{font-size:13px}td .price{font-size:16px}td .per{font-size:11.5px}.tag{display:block;width:max-content;margin:2px 0 0}}
+</style>
+</head>
+<body>
+<header><a href="/"><img src="/brand-lockup.svg" alt="على بابك"></a><span class="muted">جرّب صفحة متجرك</span></header>
+<main>
+<h1>شوف صفحة متجرك قبل ما تسجّل</h1>
+<p class="lead">اكتب اسم متجرك، اختار اللون وارفع الشعار، وشوف الصفحة بتتغير قدامك. ده مجرد عرض تجريبي: مفيش حاجة بتتحفظ ولا بتترفع على أي سيرفر.</p>
+<div class="layout">
+<section aria-label="بيانات المتجر">
+<div class="card">
+<h2>بيانات المتجر</h2>
+<div class="field"><label for="name">اسم المتجر</label><input type="text" id="name" maxlength="40" placeholder="مثال: حلويات السعادة" autocomplete="off"></div>
+<div class="field"><label for="type">نوع المتجر</label><select id="type"></select></div>
+<div class="field"><label for="desc">وصف قصير (اختياري)</label><textarea id="desc" rows="2" maxlength="120" placeholder="مثال: حلويات شرقي وغربي طازة كل يوم"></textarea></div>
+<div class="field"><label for="logo">الشعار (اختياري)</label><input type="file" id="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml"><p class="hint" id="logoMsg">الصورة بتظهر هنا بس، ومش بتتبعت لأي مكان. أقصى حجم 2 ميجا.</p><button type="button" class="btn small" id="logoClear" hidden>شيل الشعار</button></div>
+<div class="field"><label>لون المتجر</label><div class="swatches" id="swatches" role="group" aria-label="ألوان جاهزة"></div><p class="hint">اختار لون جاهز أو اختار لونك من المربع الأخير.</p></div>
+</div>
+<div class="card" style="margin-top:14px">
+<h2>منتجات تجريبية</h2>
+<div id="prows"></div>
+<button type="button" class="btn small" id="padd">+ ضيف منتج</button>
+<p class="hint">لحد 6 منتجات. الأسعار بالجنيه.</p>
+</div>
+<div class="actions">
+<button type="button" class="btn" id="wa">ابعت المعاينة على واتساب</button>
+<a class="btn primary" href="/register">سجّل متجرك</a>
+</div>
+</section>
+<aside class="sticky" aria-label="معاينة الصفحة">
+<div class="phone"><div class="screen" id="screen">
+<div class="pv-top"><div class="pv-logo" id="pvLogo"></div><div><div class="pv-name" id="pvName"></div><div class="pv-type" id="pvType"></div></div></div>
+<div class="pv-desc" id="pvDesc"></div>
+<div class="pv-h">المنتجات</div>
+<div class="pv-grid" id="pvGrid"></div>
+<div class="pv-empty" id="pvEmpty" hidden>ضيف منتجات من الجنب وهتظهر هنا.</div>
+<div class="pv-nav"><span><b>المتجر</b></span><span>السلة</span><span>طلباتي</span></div>
+</div></div>
+<p class="note">معاينة تقريبية. شكل الصفحة الحقيقية ممكن يختلف شوية.</p>
+</aside>
+</div>
+
+<section class="plans card" aria-labelledby="plansH">
+<h2 id="plansH">الباقات: اختار المدة اللي تناسبك</h2>
+<p class="hint" style="margin-bottom:12px">كل باقة بتتدفع مرة واحدة للمدة كلها (3 أو 6 أو 12 شهر). كل ما المدة أطول، الشهر بيبقى أرخص.</p>
+<div class="tbl-wrap"><table id="plansT"><caption class="hint" style="caption-side:bottom;padding-top:8px;text-align:start">الأسعار بالجنيه المصري.</caption></table></div>
+<ul class="feat" id="feat"></ul>
+</section>
+</main>
+<footer>على بابك · ده عرض تجريبي ومش بيسجّل أي بيانات.</footer>
+<script type="module">
+import {PLAN_TEMPLATES} from '/merchant-plans.js?v=offer2-1';
+import {STORE_TYPES,SERVICE_TYPES} from '/store-types.js?v=1';
+const $=id=>document.getElementById(id);
+const COLORS=['#C9401D','#D9822B','#2E8B57','#1E7F8C','#2F6FDE','#6A4FC2','#C2397F','#3C3C3C'];
+const st={name:'',type:STORE_TYPES[0]||'',desc:'',color:COLORS[0],logo:'',products:[{n:'منتج 1',p:'50'},{n:'منتج 2',p:'75'},{n:'منتج 3',p:'120'}]};
+// type select
+for(const t of [...STORE_TYPES,...SERVICE_TYPES]){const o=document.createElement('option');o.value=t;o.textContent=t;$('type').appendChild(o);}
+// color helpers
+const hex=c=>/^#[0-9a-f]{6}$/i.test(c)?c:'#C9401D';
+function lum(c){const n=parseInt(hex(c).slice(1),16),f=v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4)};return 0.2126*f(n>>16&255)+0.7152*f(n>>8&255)+0.0722*f(n&255);}
+const fg=c=>lum(c)>0.45?'#2a2320':'#ffffff';
+function tint(c){const n=parseInt(hex(c).slice(1),16),m=(v)=>Math.round(v+(255-v)*0.85);return 'rgb('+m(n>>16&255)+','+m(n>>8&255)+','+m(n&255)+')';}
+// swatches
+const sw=$('swatches');
+for(const c of COLORS){const b=document.createElement('button');b.type='button';b.className='sw';b.style.background=c;b.dataset.c=c;b.setAttribute('aria-label','لون '+c);b.setAttribute('aria-pressed',c===st.color?'true':'false');b.onclick=()=>{st.color=c;$('picker').value=c;render();};sw.appendChild(b);}
+const picker=document.createElement('input');picker.type='color';picker.id='picker';picker.value=st.color;picker.setAttribute('aria-label','اختار لونك');picker.oninput=()=>{st.color=picker.value;render();};sw.appendChild(picker);
+// products rows
+const prows=$('prows');
+function drawRows(){
+  prows.textContent='';
+  st.products.forEach((p,i)=>{
+    const r=document.createElement('div');r.className='prow';
+    const n=document.createElement('input');n.type='text';n.maxLength=30;n.value=p.n;n.placeholder='اسم المنتج';n.setAttribute('aria-label','اسم المنتج '+(i+1));n.oninput=()=>{p.n=n.value;render(true);};
+    const pr=document.createElement('input');pr.type='number';pr.min='0';pr.max='99999';pr.value=p.p;pr.placeholder='السعر';pr.setAttribute('aria-label','سعر المنتج '+(i+1));pr.oninput=()=>{p.p=pr.value;render(true);};
+    const d=document.createElement('button');d.type='button';d.className='btn small';d.textContent='✕';d.setAttribute('aria-label','احذف المنتج '+(i+1));d.onclick=()=>{st.products.splice(i,1);drawRows();render();};
+    r.append(n,pr,d);prows.appendChild(r);
+  });
+  $('padd').hidden=st.products.length>=6;
+}
+$('padd').onclick=()=>{if(st.products.length<6){st.products.push({n:'',p:''});drawRows();render();}};
+// inputs
+$('name').oninput=e=>{st.name=e.target.value;render(true);};
+$('desc').oninput=e=>{st.desc=e.target.value;render(true);};
+$('type').onchange=e=>{st.type=e.target.value;render(true);};
+$('logo').onchange=e=>{
+  const f=e.target.files&&e.target.files[0];if(!f)return;
+  if(!/^image\/(png|jpeg|webp|svg\+xml)$/.test(f.type)){$('logoMsg').textContent='اختار صورة PNG أو JPG أو WEBP أو SVG.';e.target.value='';return;}
+  if(f.size>2*1024*1024){$('logoMsg').textContent='الصورة أكبر من 2 ميجا. اختار صورة أصغر.';e.target.value='';return;}
+  if(st.logo)URL.revokeObjectURL(st.logo);
+  st.logo=URL.createObjectURL(f);$('logoMsg').textContent='تمام. الشعار ظاهر في المعاينة.';$('logoClear').hidden=false;render(true);
+};
+$('logoClear').onclick=()=>{if(st.logo)URL.revokeObjectURL(st.logo);st.logo='';$('logo').value='';$('logoClear').hidden=true;$('logoMsg').textContent='الصورة بتظهر هنا بس، ومش بتتبعت لأي مكان. أقصى حجم 2 ميجا.';render(true);};
+// render preview
+const money=v=>{const n=Number(v);return Number.isFinite(n)&&String(v).trim()!==''?n.toLocaleString('ar-EG')+' ج.م':'';};
+function render(noRows){
+  const c=hex(st.color),s=$('screen');
+  s.style.setProperty('--pv',c);s.style.setProperty('--pvfg',fg(c));s.style.setProperty('--pvtint',tint(c));
+  sw.querySelectorAll('.sw').forEach(b=>b.setAttribute('aria-pressed',b.dataset.c.toLowerCase()===c.toLowerCase()?'true':'false'));
+  const name=st.name.trim()||'اسم متجرك';
+  $('pvName').textContent=name;$('pvType').textContent=st.type;
+  $('pvDesc').textContent=st.desc.trim();$('pvDesc').hidden=!st.desc.trim();
+  const lg=$('pvLogo');lg.textContent='';
+  if(st.logo){const im=document.createElement('img');im.src=st.logo;im.alt='';lg.appendChild(im);}else lg.textContent=[...name][0]||'ع';
+  const g=$('pvGrid');g.textContent='';
+  const list=st.products.filter(p=>p.n.trim());
+  for(const p of list){
+    const d=document.createElement('div');d.className='pv-p';
+    const im=document.createElement('div');im.className='pv-img';
+    const pn=document.createElement('div');pn.className='pv-pn';pn.textContent=p.n.trim();
+    const pp=document.createElement('div');pp.className='pv-pp';pp.textContent=money(p.p)||'—';
+    const b=document.createElement('button');b.type='button';b.className='pv-add';b.textContent='أضف للسلة';b.tabIndex=-1;
+    d.append(im,pn,pp,b);g.appendChild(d);
+  }
+  $('pvEmpty').hidden=list.length>0;
+}
+// plans table (prices from the plan templates in merchant-plans.js)
+function drawPlans(){
+  const t=$('plansT');
+  const kinds=[['PROFILE','الصفحة التعريفية','عشان العملاء يعرفوك'],['ORDERING','باقة الطلبات','عشان تستقبل طلبات']];
+  const by=k=>PLAN_TEMPLATES.filter(p=>p.kind===k).sort((a,b)=>a.months-b.months);
+  const months=[3,6,12];
+  const thead=document.createElement('thead'),hr=document.createElement('tr');
+  const th0=document.createElement('th');th0.scope='col';th0.textContent='المدة';hr.appendChild(th0);
+  for(const [,n,s] of kinds){const th=document.createElement('th');th.scope='col';th.className='kind';th.textContent=n;const sm=document.createElement('small');sm.textContent=s;th.appendChild(sm);hr.appendChild(th);}
+  thead.appendChild(hr);t.appendChild(thead);
+  const tb=document.createElement('tbody');
+  for(const m of months){
+    const tr=document.createElement('tr');if(m===12)tr.className='best';
+    const d=document.createElement('td');d.className='dur';d.scope='row';d.textContent=m===12?'سنة (12 شهر)':m+' شهور';
+    if(m===12){const tg=document.createElement('span');tg.className='tag';tg.textContent='الأوفر';d.appendChild(tg);}
+    tr.appendChild(d);
+    for(const [k] of kinds){
+      const p=by(k).find(x=>x.months===m),td=document.createElement('td');
+      if(p){const pr=document.createElement('span');pr.className='price';pr.textContent=p.price.toLocaleString('ar-EG')+' ج.م';const per=document.createElement('span');per.className='per';per.textContent='يعني '+Math.round(p.price/m).toLocaleString('ar-EG')+' ج.م في الشهر';td.append(pr,per);}
+      else td.textContent='—';
+      tr.appendChild(td);
+    }
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb);
+  const comm=(by('ORDERING')[0]||{}).orderCommissionPercent;
+  const feats=['الصفحة التعريفية: صفحة لمتجرك فيها العنوان واللوكيشن وأرقام التواصل',
+    'باقة الطلبات: كل ده، وكمان منتجاتك وطلبات العملاء من التطبيق'+(comm?' (عمولة '+comm.toLocaleString('ar-EG')+'٪ على الطلبات)':''),
+    'ممكن تترقى من التعريفية لباقة الطلبات في أي وقت',
+    'التسجيل مجاني، والدفع بعد ما الإدارة توافق على متجرك'];
+  const ul=$('feat');for(const f of feats){const li=document.createElement('li');li.textContent=f;ul.appendChild(li);}
+}
+// WhatsApp share (opens WhatsApp so he picks who to send to)
+$('wa').onclick=()=>{
+  const lines=['معاينة صفحة متجري على على بابك:','الاسم: '+(st.name.trim()||'—'),'النوع: '+st.type,'اللون: '+hex(st.color)];
+  const ps=st.products.filter(p=>p.n.trim()).map(p=>'- '+p.n.trim()+(money(p.p)?' ('+money(p.p)+')':''));
+  if(ps.length)lines.push('المنتجات:',...ps);
+  lines.push('جرّب صفحتك: '+location.origin+'/try');
+  window.open('https://wa.me/?text='+encodeURIComponent(lines.join('\n')),'_blank','noopener');
+};
+drawRows();drawPlans();render();
+</script>
+</body>
+</html>
