@@ -570,6 +570,7 @@ import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import * as AdSlots from '/ad-slots.js?v=ads-2';
 import * as Favorites from '/favorites.js?v=fav-1';
 import * as FeatureFlags from '/feature-flags.js?v=flags-1';
+import * as StorePhoto from '/store-photo.js?v=photo-1';
 import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
 import * as OrderTimeline from '/order-timeline.js?v=tl-1';
 import * as MarketerInsights from '/marketer-insights.js?v=mki-1';
@@ -2298,6 +2299,7 @@ window.openMarketerMerchantForm = ()=>{
     ${locationPicker('mkLoc')}<div class="field"><label>العنوان التفصيلي</label><input id="mkAddress"></div>
     ${MerchantPlans.mapField('mkMap',{},esc)}
     <div class="field"><label>نبذة (اختياري)</label><textarea id="mkDesc"></textarea></div>
+    ${StorePhoto.isOn(S.settings)?StorePhoto.fieldHTML('mkPhoto','صورة المتجر (أو صورة شخصية لو مقدم خدمة)','',esc,true):''}
     <button class="btn btn-primary" onclick="saveMarketerMerchant()">إرسال للمراجعة</button>`);
 };
 window.saveMarketerMerchant = async ()=>{
@@ -2307,13 +2309,15 @@ window.saveMarketerMerchant = async ()=>{
   const businessName = document.getElementById('mkBusiness').value.trim();
   const phone = document.getElementById('mkPhone').value.trim();
   if(!businessName || !phone){ UI.toast('أدخل اسم المتجر ورقم الهاتف على الأقل'); return; }
+  const photo=StorePhoto.isOn(S.settings)?StorePhoto.value('mkPhoto',''):'';
+  if(StorePhoto.isOn(S.settings)&&!StorePhoto.validNew(photo)){ UI.toast('الصورة مطلوبة: اختار صورة المتجر أو الصورة الشخصية'); return; }
   const id = 'merch_' + uid();
   await setDoc(doc(db,'merchants',id), {
     id, businessName, managerName: document.getElementById('mkManager').value.trim(), phone,
     whatsappNumber: document.getElementById('mkWhats').value.trim() || phone,
     email: document.getElementById('mkEmail').value.trim(), activityType,
     categoryIds:'', address: locationAddress, ...mapPatch, description: document.getElementById('mkDesc').value.trim(),
-    logoUrl:'', coverUrl:'', ...(S.settings.merchantPlansV2?{subscriptionModel:MerchantPlans.MODEL,subPlanType:null}:{}), status:'PENDING', rating:4.8, totalOrdersCount:0, ownerId:null, registeredAt: nowMs(),
+    logoUrl:photo, coverUrl:'', ...(S.settings.merchantPlansV2?{subscriptionModel:MerchantPlans.MODEL,subPlanType:null}:{}), status:'PENDING', rating:4.8, totalOrdersCount:0, ownerId:null, registeredAt: nowMs(),
     marketerId: S.user.uid, marketerName: ((S.profile.firstName||'')+' '+(S.profile.lastName||'')).trim(), marketerSince: nowMs()
   });
   try{ await pushNotification('ADMIN','ALL','محل جديد من مسوّق 📣', `المسوّق ${(S.profile.firstName||'')} سجّل محل "${businessName}" وينتظر مراجعتك.`, id); }catch(e){}
@@ -3439,7 +3443,7 @@ function renderMyBookings(){
 }
 function providerBookingsView(){
   const st=Services.providerStats(S.providerBookings||[]);
-  return `<div class="card" style="margin-bottom:14px"><div class="row-between"><div><b>${st.pending}</b><div style="font-size:12px;color:var(--ink-soft)">مستنية ردك</div></div><div><b>${st.today}</b><div style="font-size:12px;color:var(--ink-soft)">النهاردة</div></div><div><b>${st.upcoming}</b><div style="font-size:12px;color:var(--ink-soft)">الجاية</div></div></div></div>${Services.providerScheduleViewHTML(S.providerBookings||[],esc)}`;
+  return `${StorePhoto.isOn(S.settings)&&S.myMerchant?StorePhoto.promptHTML(S.myMerchant,true,esc):''}<div class="card" style="margin-bottom:14px"><div class="row-between"><div><b>${st.pending}</b><div style="font-size:12px;color:var(--ink-soft)">مستنية ردك</div></div><div><b>${st.today}</b><div style="font-size:12px;color:var(--ink-soft)">النهاردة</div></div><div><b>${st.upcoming}</b><div style="font-size:12px;color:var(--ink-soft)">الجاية</div></div></div></div>${Services.providerScheduleViewHTML(S.providerBookings||[],esc)}`;
 }
 window.setBookedDay=d=>{ S.bookedDay=/^\d{4}-\d{2}-\d{2}$/.test(d||'')?d:''; renderMain(); };
 function renderProviderSchedule(){
@@ -4238,6 +4242,7 @@ function renderMerchantDashboard(){
   const myProds = S.myProducts||[];
   return `
     ${_sb}
+    ${StorePhoto.isOn(S.settings)&&S.myMerchant?StorePhoto.promptHTML(S.myMerchant,Services.isServiceProvider(S.myMerchant),esc):''}
     ${onboardingCard()}
     ${storePageCard(m)}
     <div class="stat-grid" style="margin-top:14px">
@@ -4577,6 +4582,7 @@ function renderMerchantProfile(){
   `;
 }
 window.updateStoreMapPreview = id=>{const input=document.getElementById(id),preview=document.getElementById(id+'Preview');if(input&&preview)preview.innerHTML=MerchantPlans.mapPreviewHTML(input.value,esc);};
+window.pickStorePhoto = async (id,el)=>{ try{ await StorePhoto.pick(id,el,esc); }catch(e){ UI.toast(e.message||'تعذر قراءة الصورة'); } };
 window.openMerchantEdit = ()=>{
   const m = S.myMerchant;
   UI.openModal(`
@@ -4589,7 +4595,7 @@ window.openMerchantEdit = ()=>{
     <div class="field"><label>رقم واتساب</label><input id="meWa" value="${esc(m.whatsappNumber)}"></div>
     ${locationPicker('meLoc')}<div class="field"><label>العنوان الحالي / التفاصيل</label><input id="meAddr" value="${esc(m.address)}"></div>
     ${MerchantPlans.mapField('meMap',m,esc)}
-    <div class="field"><label>رابط الشعار</label><input id="meLogo" value="${esc(m.logoUrl||'')}" placeholder="https://..."></div>
+    ${StorePhoto.isOn(S.settings)?StorePhoto.fieldHTML('meLogo',StorePhoto.labelFor(m,Services.isServiceProvider(m)),m.logoUrl,esc,false):`<div class="field"><label>رابط الشعار</label><input id="meLogo" value="${esc(m.logoUrl||'')}" placeholder="https://..."></div>`}
     ${Services.isServiceProvider(m)?'':`<div style="display:flex;gap:10px">
       <div class="field" style="flex:1"><label>وقت الفتح</label><input id="meOpen" type="time" value="${esc(m.openTime||'09:00')}"></div>
       <div class="field" style="flex:1"><label>وقت الغلق</label><input id="meClose" type="time" value="${esc(m.closeTime||'23:00')}"></div>
@@ -4601,6 +4607,7 @@ window.openMerchantEdit = ()=>{
   `);
 };
 window.saveMerchantEdit = async ()=>{
+  const m0=S.myMerchant;
   let locationAddress;try{locationAddress=EgyptLocations.address('meLoc',document.getElementById('meAddr').value);}catch(e){UI.toast(e.message);return;}
   let mapPatch;try{mapPatch=MerchantPlans.mapLocationPatch(document.getElementById('meMap').value,S.myMerchant);}catch{UI.toast('أدخل رابط Google Maps صحيح');return;}
   await updateDoc(doc(db,'merchants',S.myMerchant.id), {
@@ -4610,7 +4617,7 @@ window.saveMerchantEdit = async ()=>{
     description: document.getElementById('meDesc').value.trim(),
     whatsappNumber: document.getElementById('meWa').value.trim(),
     address: locationAddress,
-    logoUrl: document.getElementById('meLogo').value.trim(),
+    logoUrl: StorePhoto.isOn(S.settings)?StorePhoto.value('meLogo',m0.logoUrl):document.getElementById('meLogo').value.trim(),
     ...(document.getElementById('meOpen')?{openTime: document.getElementById('meOpen').value,
     closeTime: document.getElementById('meClose').value,
     closedDays: [...document.querySelectorAll('#meDays input:checked')].map(x=>Number(x.value)),
@@ -5152,6 +5159,7 @@ window.openAdminMerchantForm = ()=>{
     ${MerchantPlans.mapField('amMap',{},esc)}
     <div class="field"><label>نبذة عن المتجر (اختياري)</label><textarea id="amDescription"></textarea></div>
     <div class="field"><label>نسبة عمولة المنصة لهذا التاجر (%) — اختياري</label><input id="amCommission" type="number" step="0.1" min="0" max="100" placeholder="افتراضي: ${S.settings.platformCommissionPercent}%"></div>
+    ${StorePhoto.isOn(S.settings)?StorePhoto.fieldHTML('amPhoto','صورة المتجر (أو صورة شخصية لو مقدم خدمة)','',esc,true):''}
     <div class="divider"></div>
     <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 8px">حساب دخول التاجر (اختياري، ويمكن إنشاؤه لاحقًا):</p>
     <div class="field"><label>اسم المستخدم (إنجليزي)</label><input id="amUser" dir="ltr" autocapitalize="none" style="text-align:right"></div>
@@ -5167,6 +5175,8 @@ window.saveAdminMerchant = async ()=>{
   const phone = document.getElementById('amPhone').value.trim();
   const whatsappNumber = document.getElementById('amWhatsapp').value.trim() || phone;
   if(!businessName || !phone){ UI.toast('أدخل اسم المتجر ورقم الهاتف على الأقل'); return; }
+  const photo=StorePhoto.isOn(S.settings)?StorePhoto.value('amPhoto',''):'';
+  if(StorePhoto.isOn(S.settings)&&!StorePhoto.validNew(photo)){ UI.toast('الصورة مطلوبة: اختار صورة المتجر أو الصورة الشخصية'); return; }
   const merchantId = 'merch_' + uid();
   const commRaw = document.getElementById('amCommission').value;
   const commissionPercent = commRaw==='' ? null : Math.max(0, Math.min(100, parseFloat(commRaw)));
@@ -5177,7 +5187,7 @@ window.saveAdminMerchant = async ()=>{
     email:'', activityType,
     categoryIds:'', address: locationAddress, ...mapPatch,
     description: document.getElementById('amDescription').value.trim(),
-    logoUrl:'', coverUrl:'', status:'ACTIVE', rating:4.8, totalOrdersCount:0,
+    logoUrl:photo, coverUrl:'', status:'ACTIVE', rating:4.8, totalOrdersCount:0,
     commissionPercent,
     ownerId: null, registeredAt: nowMs()
   });
