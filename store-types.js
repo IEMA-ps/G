@@ -1,6 +1,6 @@
 // Business activity is not a subscription plan or a product category.
 export const SERVICE_TYPES=['عيادات','مدرسين','صيانة منزلية','تدريب بدني شخصي','حلاقة رجالي','صالون تجميل وميك أب','تنظيف منازل','غسيل سجاد وكنب','نقل أثاث وونش','صيانة سيارات','غسيل سيارات متنقل','تصوير','تنظيم حفلات','رعاية أطفال وكبار','بيطري وخدمات حيوانات'];
-export const STORE_TYPES=['مطاعم','سوبر ماركت','خضار وفاكهة','لحوم ودواجن وأسماك','حلويات','مشروبات','صيدلية','عناية وتجميل','عطور','إلكترونيات','ملابس','مستلزمات أطفال','مستلزمات منزلية','ورد وهدايا','حيوانات أليفة','مكتبات وقرطاسية','مخابز وأفران','مغاسل ومكوجى'];
+export const STORE_TYPES=['مطاعم','سوبر ماركت','خضار وفاكهة','لحوم ودواجن وأسماك','حلويات','مشروبات','صيدلية','عناية وتجميل','عطور','إلكترونيات','ملابس','مستلزمات أطفال','مستلزمات منزلية','ورد وهدايا','حيوانات أليفة','مكتبات وقرطاسية','مخابز وأفران','مغاسل ومكوجى','دعاية وإعلان ومطبوعات'];
 export const typeLabel=m=>String(m?.activityType||'').trim()||'غير محدد';
 export function typePicker(id,current,esc,services=false,only=null){
  const value=String(current||'').trim(),svc=services||SERVICE_TYPES.includes(value),all=only||(svc?[...STORE_TYPES,...SERVICE_TYPES]:STORE_TYPES),known=all.includes(value),other=!!value&&!known;
