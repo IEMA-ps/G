@@ -4922,6 +4922,7 @@ function renderAdminMerchants(providersOnly){
           ${m.status==='REJECTED'?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="returnMerchantToReview('${m.id}')">إعادة للمراجعة</button>`:''}
           ${m.status!=='ACTIVE'?`<button class="btn btn-primary btn-sm" style="width:auto;flex:1" onclick="setMerchantStatus('${m.id}','ACTIVE')">تفعيل</button>`:''}
           ${m.status!=='SUSPENDED'?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1" onclick="setMerchantStatus('${m.id}','SUSPENDED')">تعليق</button>`:''}
+          ${isSuperAdmin()?`<button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMerchantActivity('${m.id}')"><i class="fa-solid fa-tags"></i> نوع النشاط</button>`:''}
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openStoreShare('${m.id}')">رابط المتجر وQR</button>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openGrantSub('${m.id}')"><i class="fa-solid fa-gem"></i> اشتراك</button>
           <button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMerchantAccount('${m.id}')"><i class="fa-solid fa-key"></i> يوزر وباسورد</button>
@@ -4983,6 +4984,22 @@ window.saveAdminMerchant = async ()=>{
   }
   UI.closeModal();
   UI.toast('تمت إضافة التاجر بنجاح ✅');
+};
+window.openMerchantActivity = (id)=>{
+  if(!isSuperAdmin()) return;
+  const m = S.allMerchants.find(x=>x.id===id); if(!m) return;
+  UI.openModal(`
+    <div class="modal-head"><h3>نوع النشاط — ${esc(m.businessName)}</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7">الحالي: <b>${esc(m.activityType||'—')}</b>. جدول الحجوزات والمواعيد بيظهر بس لو النوع واحد من: عيادات، مدرسين، صيانة منزلية.</p>
+    ${typePicker('maActivityType',m.activityType||'',esc,true)}
+    <button class="btn btn-primary" onclick="saveMerchantActivity('${id}')">حفظ</button>`);
+};
+window.saveMerchantActivity = async (id)=>{
+  if(!isSuperAdmin()) return;
+  let activityType; try{ activityType=StoreTypes.read('maActivityType'); }catch(e){ UI.toast(e.message); return; }
+  await updateDoc(doc(db,'merchants',id),{activityType});
+  await logAudit('تعديل نوع نشاط متجر', id+' → '+activityType);
+  UI.closeModal(); UI.toast('تم تحديث نوع النشاط ✅');
 };
 window.openMerchantCommission = (id)=>{
   if(MerchantPlans.isNewMerchant(S.allMerchants.find(m=>m.id===id))){UI.toast('عمولة الباقة الجديدة ثابتة: الطلبات 2% والتعريفية بدون طلبات. النسبة القديمة محفوظة للتسويات السابقة.');return;}
