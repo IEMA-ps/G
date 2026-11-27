@@ -173,6 +173,15 @@ body.has-cartbar #mainContent{padding-bottom:300px;}
 .bk-day strong{font-size:12.5px}.bk-day span{font-size:15px;font-weight:800}.bk-day small{font-size:10.5px;color:var(--ink-soft)}
 .bk-day.active{background:var(--teal);border-color:var(--teal);color:#fff}.bk-day.active small{color:#fff}
 .bk-day.off{opacity:.45;cursor:default}
+.bk-cal{border:1px solid var(--line);border-radius:var(--radius-s);padding:10px;background:var(--surface)}
+.bk-cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.bk-cal-title{font-size:15px;font-weight:800}
+.bk-cal-nav{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}.bk-cal-nav:disabled{opacity:.35;cursor:default}
+.bk-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.bk-cal-names span{text-align:center;font-size:11px;color:var(--ink-soft);padding:4px 0}
+.bk-cal-day{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid transparent;border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;font-weight:800;font-size:14px;cursor:pointer;padding:0}
+.bk-cal-day.today{border-color:var(--teal)}.bk-cal-day.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.bk-cal-day.off{color:var(--ink-soft);opacity:.4;cursor:default;font-weight:600}.bk-cal-empty{aspect-ratio:1}
+.bk-cal-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--teal)}.bk-cal-day.active .bk-cal-dot{background:#fff}
+.bk-cal-key{display:flex;gap:14px;justify-content:center;font-size:11px;color:var(--ink-soft);margin-top:8px}
 .bk-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px}
 .bk-slot{padding:11px 4px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--surface);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
 .bk-slot.active{background:var(--teal);border-color:var(--teal);color:#fff}
@@ -3491,7 +3500,8 @@ window.loadBookingData = async (mid)=>{
 };
 // booked set is date|time; panel needs per-day set
 const bookedFor=(mid,date)=>Services.bookedSetFor(S.book?.[mid]?.booked,date,Services.capacityOf(S.book?.[mid]?.schedule));
-window.pickBookDate=(mid,date)=>{ const st=S.book[mid]; st.date=date; st.time=''; renderMain(); };
+window.pickBookDate=(mid,date)=>{ const st=S.book[mid]; st.date=date; st.month=date.slice(0,7); st.time=''; renderMain(); };
+window.pickBookMonth=(mid,ym)=>{ S.book[mid].month=ym; renderMain(); };
 window.pickBookRepeat=(mid,r)=>{ S.book[mid].repeat=r; renderMain(); };
 window.pickBookWeeks=(mid,n)=>{ S.book[mid].weeks=n; renderMain(); };
 window.pickBookTime=(mid,date,time)=>{ const st=S.book[mid]; st.date=date; st.time=time; renderMain(); };
@@ -3692,7 +3702,7 @@ function renderMerchantPage(){
     </div>
     ${merchantContactCard(m)}
     ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم مقدم الخدمة مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
-    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,repeat:S.book[m.id].repeat,weeks:S.book[m.id].weeks,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
+    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,repeat:S.book[m.id].repeat,weeks:S.book[m.id].weeks,month:S.book[m.id].month,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
     ${canOrder&&!isSvc?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
     ${canOrder&&!isSvc?(prods.length? `<div class="product-grid pl-list">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
     ${canOrder && S.storePages?.[m.id]?.more?`<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreStoreProducts('${m.id}')" ${S.storePages[m.id].busy?'disabled':''}>${S.storePages[m.id].busy?'جاري التحميل...':'عرض باقي منتجات المتجر'}</button>`:''}
