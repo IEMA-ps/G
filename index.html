@@ -619,6 +619,7 @@ import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as BcAud from '/broadcast-audience.js';
 import * as PushClient from '/push-client.js';
+import * as CartReminder from '/cart-reminder.js?v=cr-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-1';
@@ -788,7 +789,11 @@ const S = {
 const INITIAL_STATE = JSON.parse(JSON.stringify(S));
 window.S = S; // لازم تتعرض على window عشان أي onclick="S...." في الـ HTML يقدر يوصلها (السكريبت type="module" فمتغيرات المستوى الأعلى مش بتبقى على window تلقائيًا)
 
-function saveCart(){ if(S.user) localStorage.setItem('mosh_cart_'+S.user.uid, JSON.stringify(S.cart)); }
+const cartSync = CartReminder.makeScheduler({send: async summary=>{
+  try{ if(S.user) await CartReminder.post({summary, token:await S.user.getIdToken(), workerUrl:TelegramNotify.WORKER_URL, fetchImpl:fetch.bind(window)}); }catch(e){ console.warn('cart reminder sync failed', e); }
+}});
+// تذكير السلة المتروكة: مقفول بمفتاح cartReminderEnabled. بيبعت ملخص صغير للـ Worker بعد كل تغيير في السلة.
+function saveCart(){ if(S.user){ localStorage.setItem('mosh_cart_'+S.user.uid, JSON.stringify(S.cart)); if(S.role==='customer' && FeatureFlags.isOn(S.settings,'cartReminderEnabled')) cartSync(CartReminder.summarize(cartLines(), effPrice)); } }
 function loadCart(){ if(S.user){ try{ S.cart = JSON.parse(localStorage.getItem('mosh_cart_'+S.user.uid)||'[]'); }catch(e){ S.cart=[]; } } }
 function saveWishlist(){ if(S.user) localStorage.setItem('mosh_wishlist_'+S.user.uid, JSON.stringify(S.wishlist)); }
 function loadWishlist(){ if(S.user){ try{ S.wishlist = JSON.parse(localStorage.getItem('mosh_wishlist_'+S.user.uid)||'[]'); }catch(e){ S.wishlist=[]; } try{ S.favStores = JSON.parse(localStorage.getItem('mosh_favstores_'+S.user.uid)||'[]'); }catch(e){ S.favStores=[]; } S._favSynced=false; syncFavoritesFromAccount(); } }

@@ -508,6 +508,63 @@ async function pushFanOut(env, keys, title, message) {
   return {pushed, gone};
 }
 
+// ---------- تذكير السلة المتروكة ----------
+// التطبيق بيبعت ملخص السلة (بتوكن Firebase) بعد كل تغيير. الكرون بيبعت بوش واحد بس لو السلة ساكتة ساعتين.
+// ملخص صغير بس (عدد، إجمالي، أول 3 أسماء)، مش السلة كاملة. بيتمسح لما السلة تفضى أو الطلب يتأكد، وبيتشال لوحده بعد 3 أيام.
+const CART_PREFIX = 'cart:';
+const CART_IDLE_MS = 2 * 3600 * 1000;
+const CART_MAX_AGE_MS = 30 * 3600 * 1000;
+const CART_TTL_SECONDS = 3 * 86400;
+async function handleCartSync(request, env) {
+  const uid = await authedUid(request, env);
+  if (!uid) return json({error: 'unauthorized'}, 401);
+  let body;
+  try { body = await request.json(); } catch { return json({error: 'bad json'}, 400); }
+  const count = Math.floor(Number(body && body.count) || 0);
+  if (count <= 0) { await env.TG_LINKS.delete(CART_PREFIX + uid); return json({ok: true, cleared: true}); }
+  const titles = (Array.isArray(body.titles) ? body.titles : []).slice(0, 3).map(t => String(t || '').slice(0, 40)).filter(Boolean);
+  const total = Math.max(0, Math.round((Number(body.total) || 0) * 100) / 100);
+  let prev = {};
+  try { prev = JSON.parse(await env.TG_LINKS.get(CART_PREFIX + uid) || '{}'); } catch {}
+  // لو التذكير اتبعت لنفس السلة قبل كده ما نبعتش تاني، وبعد ما السلة تفضى وتتملي من جديد بيبدأ من الأول.
+  const entry = {uid, count: Math.min(count, 999), total, titles, updatedAt: Date.now(), sentAt: prev.sentAt || 0};
+  await env.TG_LINKS.put(CART_PREFIX + uid, JSON.stringify(entry), {expirationTtl: CART_TTL_SECONDS});
+  return json({ok: true});
+}
+function cartMessage(e) {
+  const names = (e.titles || []).join('، ');
+  const more = e.count > (e.titles || []).length ? ' وغيرهم' : '';
+  return {title: 'سلتك لسه مستنياك 🛒', body: `عندك ${e.count} ${e.count === 1 ? 'منتج' : 'منتجات'} في السلة${names ? ' (' + names + more + ')' : ''}${e.total ? ' بإجمالي ' + e.total + ' ج.م' : ''}. كمّل طلبك قبل ما ينفذ.`};
+}
+// مفيش تذكير بالليل: من 9 الصبح لـ 10 بالليل بتوقيت القاهرة بس.
+function cartHourOk(now) { const h = Number(cairoParts(now).hour); return h >= 9 && h < 22; }
+async function runCartCron(env, now = Date.now()) {
+  if (!cartHourOk(now)) return {sent: 0};
+  const keys = [];
+  let cursor;
+  do {
+    const res = await env.TG_LINKS.list(cursor ? {prefix: CART_PREFIX, cursor} : {prefix: CART_PREFIX});
+    for (const k of res.keys || []) keys.push(k.name);
+    cursor = res.list_complete === false ? res.cursor : null;
+  } while (cursor);
+  let sent = 0;
+  for (const key of keys) {
+    let e = null;
+    try { e = JSON.parse(await env.TG_LINKS.get(key) || 'null'); } catch {}
+    if (!e || e.sentAt) continue;
+    const age = now - (e.updatedAt || 0);
+    if (age < CART_IDLE_MS) continue;
+    if (age > CART_MAX_AGE_MS) { await env.TG_LINKS.delete(key); continue; }
+    // نعلّم قبل الإرسال عشان الفشل ما يكررش التذكير
+    e.sentAt = now;
+    await env.TG_LINKS.put(key, JSON.stringify(e), {expirationTtl: CART_TTL_SECONDS});
+    const m = cartMessage(e);
+    const r = await internals.pushFanOut(env, ['uid:' + e.uid], m.title, m.body);
+    if (r && r.pushed > 0) sent++;
+  }
+  return {sent};
+}
+
 // ---------- المسارات ----------
 async function handleLinkStart(request, env) {
   const uid = await authedUid(request, env);
@@ -717,12 +774,13 @@ async function route(request, env) {
   if (url.pathname === '/push/unsubscribe' && request.method === 'POST') return handlePushUnsubscribe(request, env);
   if (url.pathname === '/reminders/sync' && request.method === 'POST') return handleReminderSync(request, env);
   if (url.pathname === '/reminders/prefs' && request.method === 'POST') return handleReminderPrefs(request, env);
+  if (url.pathname === '/cart/sync' && request.method === 'POST') return handleCartSync(request, env);
   if (url.pathname === '/broadcast' && request.method === 'POST') return handleBroadcast(request, env);
   return json({error: 'not found'}, 404);
 }
 
 // للاختبار المحلي: نقدر نستبدل التحقق والإرسال ببدائل وهمية.
-const internals = {summaryHourFor, verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
+const internals = {runCartCron, cartMessage, summaryHourFor, verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
 export const _internals = internals;
 
 export default {
@@ -736,5 +794,6 @@ export default {
   // كرون كل 10 دقايق — شوف runCron فوق
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(internals.runCron(env));
+    ctx.waitUntil(internals.runCartCron(env));
   }
 };

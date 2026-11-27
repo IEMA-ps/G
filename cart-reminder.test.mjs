@@ -1,0 +1,13 @@
+import * as CR from './cart-reminder.js';
+import assert from 'node:assert/strict';
+const price = p => p.price;
+const s = CR.summarize([{product:{title:'كنافة',price:50},quantity:2},{product:{title:'بسبوسة',price:10.5},quantity:1},{product:{title:'ج',price:1},quantity:1},{product:{title:'د',price:1},quantity:1}], price);
+assert.deepEqual(s, {count:5,total:112.5,titles:['كنافة','بسبوسة','ج']});
+assert.deepEqual(CR.summarize([], price), {count:0,total:0,titles:[]});
+let timers=[], sent=[];
+const sch = CR.makeScheduler({send:x=>sent.push(x),setT:(f)=>{timers.push(f);return timers.length;},clearT:(h)=>{timers[h-1]=null;}});
+sch({count:1}); sch({count:2}); timers.filter(Boolean).forEach(f=>f());
+assert.deepEqual(sent,[{count:2}]);
+let req; const ok = await CR.post({summary:{count:1},token:'T',workerUrl:'https://w',fetchImpl:async(u,o)=>{req={u,o};return {ok:true};}});
+assert.equal(ok,true); assert.equal(req.u,'https://w/cart/sync'); assert.equal(req.o.headers.authorization,'Bearer T');
+console.log('cart-reminder: ok');
