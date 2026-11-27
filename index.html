@@ -564,7 +564,7 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
 import * as MarketerOffer from '/marketer-offer.js?v=offer2-1';
 import * as AdSlots from '/ad-slots.js?v=ads-2';
 import * as Favorites from '/favorites.js?v=fav-1';
-import * as FeatureFlags from '/feature-flags.js?v=flags-1';
+import * as FeatureFlags from '/feature-flags.js?v=flags-2';
 import * as MerchantRatings from '/merchant-ratings.js?v=rat-1';
 import * as OrderTimeline from '/order-timeline.js?v=tl-1';
 import * as MarketerInsights from '/marketer-insights.js?v=mki-1';
@@ -606,7 +606,8 @@ import * as Services from '/services.js?v=svc-6';
 import * as OrderMoney from '/order-money.js?v=money-1';
 import * as StoreHours from '/store-hours.js?v=hours-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
-import * as PointsTx from '/order-points-tx.js?v=points-1';
+import * as PointsTx from '/order-points-tx.js?v=points-2';
+import * as StorePoints from '/store-points.js?v=sp-1';
 import { nearbyStores } from '/nearby-stores.js?v=nearby-1';
 import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as BcAud from '/broadcast-audience.js';
@@ -4084,6 +4085,17 @@ window.prepareSupportRequest = (ev,kind)=>{
   }catch(e){ error.textContent=e.message; }
 };
 
+function storePointsCard(){
+  if(S.role!=='customer'||!FeatureFlags.isOn(S.settings,'storePointsEnabled')||!S.user) return '';
+  if(!S.storePtsLoaded && !S.storePtsLoading){
+    S.storePtsLoading=true;
+    getDocs(collection(db,'users',S.user.uid,'storePoints')).then(snap=>{ S.storePts=snap.docs.map(d=>({id:d.id,...d.data()})); }).catch(e=>{ console.error('storePoints load failed',e); S.storePts=[]; }).finally(()=>{ S.storePtsLoaded=true; S.storePtsLoading=false; renderMain(); });
+  }
+  const list=(S.storePts||[]).filter(x=>(x.points||0)>0);
+  return `<div class="card" style="margin-top:12px"><h3 style="font-size:16px;margin-bottom:8px"><i class="fa-solid fa-gift" style="color:var(--gold)"></i> نقطي في المتاجر</h3>`+
+    (list.length?list.map(x=>`<div class="row-between" style="padding:6px 0;font-size:13.5px"><span>${esc(x.storeName||'متجر')}</span><b>${Number(x.points)||0} نقطة</b></div>`).join('')
+      :`<p style="font-size:13px;color:var(--ink-soft);margin:0">${S.storePtsLoaded?'لسه معندكش نقط. اطلب من متجر عليه نقط وهتتجمع هنا بعد التسليم.':'جاري التحميل...'}</p>`)+`</div>`;
+}
 function renderProfile(){
   const points = S.profile.loyaltyPoints || 0;
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
@@ -4095,13 +4107,14 @@ function renderProfile(){
       <div style="width:64px;height:64px;border-radius:50%;background:var(--teal-tint);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 10px"><i class="fa-solid fa-user"></i></div>
       <h3 style="margin:0">${esc((S.profile.firstName||'')+' '+(S.profile.lastName||''))}</h3>
       <p style="color:var(--ink-soft);font-size:13px;margin:4px 0 0">${esc(S.profile.email||'')}</p>
-      ${S.settings.loyaltyEnabled!==false?`<div class="badge-chip" style="margin-top:10px;display:inline-flex;gap:6px"><i class="fa-solid fa-gift" style="color:var(--gold)"></i> ${points} نقطة ولاء${redeemValue?' (تساوي '+fmtMoney(roundMoney(points*redeemValue))+')':''}</div>`:''}
+      ${S.settings.loyaltyEnabled!==false&&!FeatureFlags.isOn(S.settings,'storePointsEnabled')?`<div class="badge-chip" style="margin-top:10px;display:inline-flex;gap:6px"><i class="fa-solid fa-gift" style="color:var(--gold)"></i> ${points} نقطة ولاء${redeemValue?' (تساوي '+fmtMoney(roundMoney(points*redeemValue))+')':''}</div>`:''}
     </div>
     ${S.settings.deliverySubOn&&S.role==='customer'?(()=>{const st=DeliverySub.subState(S.profile,S.settings,nowMs()),c=st.cfg;
       const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,'مرحبًا، عايز أشترك في اشتراك التوصيل');
       return `<div class="card" style="margin-top:12px"><p style="margin:0 0 6px;font-weight:700"><i class="fa-solid fa-crown" style="color:var(--gold)"></i> اشتراك التوصيل</p>`+
       (st.active?`<p style="margin:0;font-size:13px;line-height:1.8">شغال حتى ${new Date(S.profile.deliverySubUntil).toLocaleDateString('ar-EG')}. ${st.usedThis?'خصم الأسبوع ده اتستخدم، الجاي '+new Date(st.nextAt).toLocaleDateString('ar-EG')+'.':'توصيلة الأسبوع ده متاحة دلوقتي.'}</p>`
       :`<p style="margin:0 0 10px;font-size:13px;line-height:1.8">${fmtMoney(c.price)} في ${c.days} يوم: توصيل مجاني مرة كل 7 أيام للطلب من متجر واحد (أو خصم ${fmtMoney(c.discount)} لو من أكتر من متجر)، للطلبات من ${fmtMoney(c.minOrder)}. الدفع كاش.</p>${href?`<a class="btn btn-primary btn-sm" style="width:auto" href="${href}" target="_blank" rel="noopener">اشترك عن طريق الدعم</a>`:''}`)+`</div>`;})():''}
+    ${storePointsCard()}
     ${S.profile.referralCode?`<div class="card" style="margin-top:12px;text-align:center">
       <p style="font-size:13px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-user-group" style="color:var(--teal)"></i> ادعُ صديقك وخدوا نقاط مع بعض</p>
       <div class="profile-referral-code" dir="ltr" style="font-size:19px;font-weight:800;letter-spacing:2px;color:var(--teal);margin-bottom:10px;max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-all;white-space:normal;line-height:1.6;unicode-bidi:isolate">${esc(myCode())}</div>
@@ -4270,7 +4283,7 @@ window.updateSubOrderStatus = async (subId, status, reason=null)=>{
     catch(err){ console.error('cancel+restore failed', err); UI.toast('تعذّر الإلغاء وإرجاع المخزون: '+(err&&err.message?err.message:err)); return; }
   } else if(status==='DELIVERED'){
     // تسليم: الحالة + نقاط الولاء + مكافأة دعوة الصديق في Transaction واحدة، فمستحيل تتدفع مرتين لو ضغطتين مع بعض
-    try{ award = await PointsTx.deliverSubOrder(OT_API, db, s, extra, {earnRate:S.settings.loyaltyEarnRate||0, loyaltyEnabled:S.settings.loyaltyEnabled!==false, bonusPoints:S.settings.referralBonusPoints||0}); }
+    try{ award = await PointsTx.deliverSubOrder(OT_API, db, s, extra, {earnRate:S.settings.loyaltyEarnRate||0, loyaltyEnabled:S.settings.loyaltyEnabled!==false, bonusPoints:S.settings.referralBonusPoints||0, storePointsOn:FeatureFlags.isOn(S.settings,'storePointsEnabled')}); }
     catch(err){ console.error('deliver+points failed', err); UI.toast('تعذّر تحديث الحالة: '+(err&&err.message?err.message:err)); return; }
   } else {
     await updateDoc(doc(db,'subOrders', s.id), extra);
@@ -4569,11 +4582,28 @@ window.openMerchantEdit = ()=>{
     </div>
     <div class="field"><label>أيام الإجازة الأسبوعية</label><div id="meDays" style="display:flex;flex-wrap:wrap;gap:8px">${StoreHours.DAY_NAMES.map((n,i)=>`<label style="display:flex;align-items:center;gap:4px;font-size:12.5px"><input type="checkbox" value="${i}" ${(m.closedDays||[]).map(Number).includes(i)?'checked':''}> ${n}</label>`).join('')}</div></div>
     <div class="field"><label>إغلاق مؤقت (المتجر مش هيستقبل طلبات لحد ما تفتحه)</label><select id="meTemp"><option value="0" ${m.temporarilyClosed===true?'':'selected'}>المتجر شغال</option><option value="1" ${m.temporarilyClosed===true?'selected':''}>مقفول مؤقتًا</option></select></div>
-    <div class="field"><label>الحد الأدنى لقيمة الطلب (جنيه) — 0 يعني بدون حد أدنى</label><input id="meMinOrder" type="number" step="1" min="0" value="${m.minOrderAmount||0}"></div>`}
+    <div class="field"><label>الحد الأدنى لقيمة الطلب (جنيه) — 0 يعني بدون حد أدنى</label><input id="meMinOrder" type="number" step="1" min="0" value="${m.minOrderAmount||0}"></div>
+    ${FeatureFlags.isOn(S.settings,'storePointsEnabled')?(()=>{const sp=StorePoints.config(m.storePoints);const raw=m.storePoints||{};return `<div class="card" style="margin:10px 0"><b><i class="fa-solid fa-gift" style="color:var(--gold)"></i> نقط متجرك</b>
+      <p style="font-size:12px;color:var(--ink-soft);margin:6px 0 10px;line-height:1.7">العميل يجمع نقط من طلباته المسلّمة عندك ويستبدلها عندك بس. الخصم بتتحمله إنت.</p>
+      <div class="field"><label>نقط المتجر</label><select id="meSpOn"><option value="0" ${sp.on?'':'selected'}>مقفولة</option><option value="1" ${sp.on?'selected':''}>شغالة</option></select></div>
+      <div class="field"><label>كل كام جنيه يكسب العميل نقطة؟</label><input id="meSpEgp" type="number" step="1" min="1" value="${raw.egpPerPoint||''}" oninput="spPreview()"></div>
+      <div class="field"><label>قيمة النقطة عند الاستبدال (جنيه خصم)</label><input id="meSpVal" type="number" step="0.05" min="0.05" value="${raw.pointValue||''}" oninput="spPreview()"></div>
+      <p id="meSpHint" style="font-size:12.5px;color:var(--teal);margin:0"></p></div>`})():''}`}
     <button class="btn btn-primary" onclick="saveMerchantEdit()">حفظ</button>
   `);
 };
+window.spPreview = ()=>{
+  const el=document.getElementById('meSpHint'); if(!el) return;
+  const p=StorePoints.cashbackPercent({egpPerPoint:parseFloat(document.getElementById('meSpEgp').value)||0, pointValue:parseFloat(document.getElementById('meSpVal').value)||0});
+  el.textContent = p>0 ? `يعني العميل بيرجّع له تقريبًا ${p}% من كل طلب، وإنت اللي بتدفعهم.` : '';
+};
 window.saveMerchantEdit = async ()=>{
+  let spPatch={};
+  if(document.getElementById('meSpOn')){
+    const r=StorePoints.fromForm({on:document.getElementById('meSpOn').value==='1', egpPerPoint:document.getElementById('meSpEgp').value, pointValue:document.getElementById('meSpVal').value});
+    if(r.error){ UI.toast(r.error); return; }
+    spPatch={storePoints:r.value};
+  }
   let locationAddress;try{locationAddress=EgyptLocations.address('meLoc',document.getElementById('meAddr').value);}catch(e){UI.toast(e.message);return;}
   let mapPatch;try{mapPatch=MerchantPlans.mapLocationPatch(document.getElementById('meMap').value,S.myMerchant);}catch{UI.toast('أدخل رابط Google Maps صحيح');return;}
   await updateDoc(doc(db,'merchants',S.myMerchant.id), {
@@ -4588,7 +4618,7 @@ window.saveMerchantEdit = async ()=>{
     closeTime: document.getElementById('meClose').value,
     closedDays: [...document.querySelectorAll('#meDays input:checked')].map(x=>Number(x.value)),
     temporarilyClosed: document.getElementById('meTemp').value==='1',
-    minOrderAmount: Math.max(0, parseFloat(document.getElementById('meMinOrder').value)||0)}:{})
+    minOrderAmount: Math.max(0, parseFloat(document.getElementById('meMinOrder').value)||0), ...spPatch}:{})
   });
   if(MerchantPlans.isNewMerchant(S.myMerchant)){
     try{const d=await getDoc(doc(db,'merchants',S.myMerchant.id));await setDoc(doc(db,'publicMerchantProfiles',S.myMerchant.id),publicMerchantData(d.data()));}
