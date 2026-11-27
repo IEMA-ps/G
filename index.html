@@ -644,7 +644,7 @@ import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as BcAud from '/broadcast-audience.js';
 import * as PushClient from '/push-client.js';
 import * as CartReminder from '/cart-reminder.js?v=cr-1';
-import * as TelegramNotify from '/telegram-notify.js?v=tg-3';
+import * as TelegramNotify from '/telegram-notify.js?v=tg-4';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-2';
 import * as SupportChat from '/support-chat.js?v=support-4';
@@ -1279,6 +1279,7 @@ onAuthStateChanged(auth, async user=>{
   catch(e){ showAccountLoadFailure(e);
   }
 });
+TelegramNotify.setTokenProvider(()=>auth.currentUser?auth.currentUser.getIdToken():null);
 
 installProgram({state:()=>S,db,auth,api:{doc,collection,query,where,onSnapshot,getDoc,getDocs,setDoc,runTransaction,serverTimestamp},ui:UI,esc,superAdmin:isSuperAdmin,logAudit,render,totals:mkMyTotals,referralReport,referralReportHTML});
 
@@ -5021,13 +5022,13 @@ window.enablePush = async ()=>{
   try{
     const e=await pushEnv();
     const kind=S.tgLinkKind;const keys=kind==='merchant'?[TelegramNotify.merchantKey(S.profile.merchantId)]:kind==='delivery'?[TelegramNotify.agentKey(S.profile.deliveryAgentId)]:kind==='admin'?[TelegramNotify.ADMIN_KEY]:[];
-    const r=await PushClient.enable({keys,reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o),requestPermission:()=>Notification.requestPermission()});
+    const r=await PushClient.enable({keys,reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,fetchImpl:(u,o)=>fetch(u,o),requestPermission:()=>Notification.requestPermission()});
     b.innerHTML=PushClient.modalHTML(r);
   }catch(err){ b.innerHTML=PushClient.modalHTML('unavailable'); }
 };
 window.disablePush = async ()=>{
   const b=document.getElementById('pushBody'); if(!b) return;
-  try{ const e=await pushEnv(); await PushClient.disable({reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,appSecret:TelegramNotify.APP_SECRET,fetchImpl:(u,o)=>fetch(u,o)}); UI.toast('اتوقفت الإشعارات الفورية على الجهاز ده'); }catch(err){}
+  try{ const e=await pushEnv(); await PushClient.disable({reg:e.reg,token:await S.user.getIdToken(),workerUrl:TelegramNotify.WORKER_URL,fetchImpl:(u,o)=>fetch(u,o)}); UI.toast('اتوقفت الإشعارات الفورية على الجهاز ده'); }catch(err){}
   refreshPush();
 };
 window.checkTelegramLink = async ()=>{
