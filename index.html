@@ -2861,6 +2861,22 @@ const getCategory = id => S.categories.find(c=>c.id===id);
 function activeProducts(){ return S.products.filter(p=>p.isActive && MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)); }
 function cartLines(){ return S.cart.map(c=>({...c, product:getProduct(c.productId)})).filter(l=>l.product); }
 function cartTotal(){ return cartLines().reduce((a,l)=>a+effPrice(l.product)*l.quantity,0); }
+// نقاط المتجر عند الدفع (التاجر هو اللي بيتحمّل الخصم). مقفولة لحد ما الأدمن يفتح storePointsEnabled و storePointsRedeemEnabled
+const spOn = ()=> FeatureFlags.isOn(S.settings,'storePointsEnabled') && FeatureFlags.isOn(S.settings,'storePointsRedeemEnabled') && !!S.user;
+function spEnsureLoaded(){
+  if(!spOn() || S.storePtsLoaded || S.storePtsLoading) return;
+  S.storePtsLoading=true;
+  getDocs(collection(db,'users',S.user.uid,'storePoints')).then(snap=>{ S.storePts=snap.docs.map(d=>({id:d.id,...d.data()})); }).catch(e=>{ console.error('storePoints load failed',e); S.storePts=[]; }).finally(()=>{ S.storePtsLoaded=true; S.storePtsLoading=false; renderMain(); });
+}
+function spGoodsBy(){ const g={}; cartLines().forEach(l=>{ const id=l.product.merchantId; g[id]=(g[id]||0)+effPrice(l.product)*l.quantity; }); return g; }
+function spPlan(){
+  if(!spOn()) return {byStore:{},total:0};
+  const goodsBy=spGoodsBy(), cfgBy={}, balances={};
+  Object.keys(goodsBy).forEach(id=>{ const m=getMerchant(id); cfgBy[id]=m&&m.storePoints; });
+  (S.storePts||[]).forEach(x=>{ balances[x.id]=x.points||0; });
+  return StorePoints.planCart({use:S.storePtsUse||{}, balances, goodsBy, cfgBy});
+}
+window.toggleStorePts = mid=>{ S.storePtsUse=S.storePtsUse||{}; S.storePtsUse[mid]=!S.storePtsUse[mid]; refreshDiscounts(); renderMain(); };
 function cartMerchantCount(){ return new Set(cartLines().map(l=>l.product.merchantId)).size; }
 function cartDeliveryQuote(count){
   const q = DeliveryBatch.deliveryQuote(count==null?cartMerchantCount():count, S.settings.defaultDeliveryFee||0, S.settings.multiStoreDeliveryDiscountPercent);
@@ -3200,8 +3216,9 @@ function refreshDiscounts(){
   // الخصم لازم يتحسب من السلة الحالية دايمًا: أي تغيير في السلة بيعيد حساب الكوبون والنقاط
   const cp = S.appliedCoupon, pt = S.appliedPoints;
   if(!cp && !pt) return;
+  const spD = spPlan().total;
   const fee = cartDeliveryQuote().net;
-  const r = OrderMoney.priceOrder({subtotal:cartTotal(), fee, coupon:cp&&cp.def, pointsWanted:pt?pt.points:0,
+  const r = OrderMoney.priceOrder({subtotal:cartTotal()-spD, fee, coupon:cp&&cp.def, pointsWanted:pt?pt.points:0,
     availablePoints:(S.profile&&S.profile.loyaltyPoints)||0, rate:S.settings.loyaltyRedeemValue||0});
   if(cp){
     if(r.couponOk) S.appliedCoupon = {...cp, discount:r.couponDiscount};
@@ -3222,7 +3239,7 @@ window.setCartQty = (pid, qty)=>{
   }
   refreshDiscounts(); saveCart(); renderMain(); renderShell();
 };
-window.clearCart = ()=>{ S.cart=[]; S.appliedCoupon=null; S.appliedPoints=null; saveCart(); renderMain(); renderShell(); };
+window.clearCart = ()=>{ S.cart=[]; S.storePtsUse={}; S.appliedCoupon=null; S.appliedPoints=null; saveCart(); renderMain(); renderShell(); };
 
 function qtyInCart(pid){ const c = S.cart.find(c=>c.productId===pid); return c?c.quantity:0; }
 
@@ -3565,7 +3582,8 @@ function renderCheckout(){
   const pts = S.appliedPoints;
   const pointsDiscount = pts ? pts.discount : 0;
   const totalDiscount = couponDiscount + pointsDiscount;
-  const grandTotal = Math.max(0, cartTotal()+fee-totalDiscount);
+  const spp = spPlan(); spEnsureLoaded();
+  const grandTotal = Math.max(0, cartTotal()+fee-totalDiscount-spp.total);
   const availablePoints = (S.profile && S.profile.loyaltyPoints) || 0;
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
 
@@ -3603,8 +3621,17 @@ function renderCheckout(){
       `}
     </div>
 
+    ${spOn()?(()=>{
+      const goodsBy=spGoodsBy(); const rows=Object.keys(goodsBy).map(id=>{
+        const m=getMerchant(id); const cfg=StorePoints.config(m&&m.storePoints); if(!cfg.on) return '';
+        const bal=((S.storePts||[]).find(x=>x.id===id)||{}).points||0; if(bal<=0) return '';
+        const full=StorePoints.redeem(bal,cfg,goodsBy[id]); const used=spp.byStore[id];
+        return `<div class="row-between ck-row" style="padding:6px 0"><span style="font-size:13px"><b>${esc((m&&m.businessName)||'متجر')}</b><br><span style="color:var(--ink-soft)">رصيدك ${bal} نقطة</span>${used?`<br><span style="color:var(--success)">استخدمت ${used.points} نقطة، خصم ${fmtMoney(used.discount)}</span>`:''}</span><button class="btn ${used?'btn-ghost':'btn-primary'} btn-sm" style="width:auto" ${(!used&&full.points<=0)?'disabled':''} onclick="toggleStorePts('${id}')">${used?'إزالة':'استخدام '+full.points+' نقطة'}</button></div>`;
+      }).join('');
+      return rows?`<div class="section-head"><h3>نقاط المتاجر</h3></div><div class="card">${rows}<p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0">الخصم من حساب المتجر نفسه ومش بيدخل رسوم التوصيل.</p></div>`:'';
+    })():''}
     ${S.settings.loyaltyEnabled!==false && redeemValue>0 ? `
-    <div class="section-head"><h3>نقاط الولاء</h3></div>
+    <div class="section-head"><h3>${spOn()?'رصيد الدعوة (من على بابك)':'نقاط الولاء'}</h3></div>
     <div class="card">
       ${pts ? `
         <div class="row-between">
@@ -3628,7 +3655,8 @@ function renderCheckout(){
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
       ${deliveryFeeRows(quote)}
       ${couponDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم الكوبون</span><span>-${fmtMoney(couponDiscount)}</span></div>`:''}
-      ${pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط الولاء</span><span>-${fmtMoney(pointsDiscount)}</span></div>`:''}
+      ${pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>${spOn()?'خصم رصيد الدعوة':'خصم نقاط الولاء'}</span><span>-${fmtMoney(pointsDiscount)}</span></div>`:''}
+      ${spp.total>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط المتاجر</span><span>-${fmtMoney(spp.total)}</span></div>`:''}
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(grandTotal)}</span></div>
     </div>
     ${!addr.length?`<div class="hint-box" style="margin-top:14px;border-color:var(--danger);background:var(--danger-tint);color:var(--danger)"><i class="fa-solid fa-triangle-exclamation"></i> لازم تضيف عنوان توصيل الأول عشان تقدر تأكد الطلب. <button class="btn btn-primary btn-sm" style="width:auto;margin-top:8px" onclick="openAddressForm()">+ إضافة عنوان</button></div>`:''}
@@ -3642,7 +3670,7 @@ window.applyLoyaltyPoints = ()=>{
   const groups = {}; cartLines().forEach(l=>{ (groups[l.product.merchantId]=groups[l.product.merchantId]||[]).push(l); });
   const quote = cartDeliveryQuote(Object.keys(groups).length); const fee = quote.net;
   const couponDiscount = S.appliedCoupon ? S.appliedCoupon.discount : 0;
-  const remaining = Math.max(0, cartTotal()+fee-couponDiscount);
+  const remaining = Math.max(0, cartTotal()-spPlan().total+fee-couponDiscount);
   const maxUsablePoints = OrderMoney.pointsFor(available, available, rate, remaining);
   if(maxUsablePoints<=0){ UI.toast('لا يمكن استخدام النقاط على هذا الطلب حاليًا'); return; }
   const discount = roundMoney(maxUsablePoints*rate);
@@ -3743,6 +3771,7 @@ window.submitOrder = async ()=>{
     const coupon = S.appliedCoupon;
     const wantedPoints = S.appliedPoints ? S.appliedPoints.points : 0;
     const subtotalNow = cartTotal();
+    let spDiscTotal = 0;
     let priced = null;   // الخصم بيتحسب جوه الـ Transaction من الكوبون ورصيد النقاط الحاليين ومن السلة الحالية
     const orderId = newOrderId();
     // نحسب subIds مقدّمًا قبل أي كتابة، عشان نكتب المستند مرة واحدة فقط
@@ -3764,6 +3793,20 @@ window.submitOrder = async ()=>{
       const merchantSnaps=await Promise.all(merchantEntries.map(([mid])=>tx.get(doc(db,'merchants',mid))));
       merchantSnaps.forEach(d=>{if(!d.exists() || !MerchantPlans.canOrder(d.data(),S.settings.subsEnforced)) throw new Error('أحد المتاجر لا يستقبل طلبات حاليًا، راجع السلة');});
       merchantSnaps.forEach(d=>{ if(d.data().temporarilyClosed===true) throw new Error(`${d.data().businessName||'أحد المتاجر'} مقفول مؤقتًا ومش بيستقبل طلبات دلوقتي، شيل منتجاته من السلة أو حاول بعدين`); });
+      // نقاط المتاجر: بتتقرا وبتتحسب من جديد جوه الـ Transaction (قبل أي كتابة). الخصم بيتخصم من حساب التاجر نفسه.
+      let spTx = {byStore:{}, total:0}, spBal = {};
+      if(spOn()){
+        const ids = merchantEntries.map(([mid])=>mid).filter(mid=>S.storePtsUse && S.storePtsUse[mid]);
+        const balSnaps = await Promise.all(ids.map(mid=>tx.get(doc(db,'users',S.user.uid,'storePoints',mid))));
+        const balances = {}, cfgBy = {}, goodsBy = spGoodsBy();
+        ids.forEach((mid,i)=>{ balances[mid] = balSnaps[i].exists() ? (balSnaps[i].data().points||0) : 0; spBal[mid]=balances[mid]; });
+        merchantEntries.forEach(([mid],i)=>{ cfgBy[mid] = merchantSnaps[i].data().storePoints; });
+        spTx = StorePoints.planCart({use:S.storePtsUse||{}, balances, goodsBy, cfgBy});
+        const shown = spPlan();
+        if(Object.keys(shown.byStore).length!==Object.keys(spTx.byStore).length || Object.keys(shown.byStore).some(k=>!spTx.byStore[k] || spTx.byStore[k].points!==shown.byStore[k].points))
+          throw new Error('رصيد نقاط المتجر أو إعداداته اتغيّر، راجع نقاط المتاجر في الدفع وحاول تاني');
+      }
+      spDiscTotal = spTx.total;
       if(quote.subDiscount>0){
         // نتأكد جوه الـ Transaction إن خصم الفترة دي ما اتاخدش قبل كده (مثلاً من تابين مفتوحين).
         const us = await tx.get(doc(db,'users',S.user.uid));
@@ -3772,13 +3815,13 @@ window.submitOrder = async ()=>{
         tx.update(doc(db,'users',S.user.uid), {deliverySubUsedPeriod: quote.subPeriod});
         S.profile.deliverySubUsedPeriod = quote.subPeriod;
       }
-      priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
+      priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow-spDiscTotal, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
       if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
       tx.set(doc(db,'orders',orderId), {
         id:orderId, customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(),
         customerPhone:S.profile.phone, deliveryAddress:address.fullAddressText, notes,
-        subtotal:subtotalNow, deliveryFee:fee, discount:priced.discount, couponCode: coupon?coupon.code:null, couponDiscount:priced.couponDiscount,
+        subtotal:subtotalNow, deliveryFee:fee, discount:priced.discount+spDiscTotal, storePointsDiscount:spDiscTotal, couponCode: coupon?coupon.code:null, couponDiscount:priced.couponDiscount,
         pointsRedeemed: priced.points, pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, deliverySubDiscount:quote.subDiscount||0, deliverySubCourierPay:quote.courierComp||0, deliverySubPeriod:quote.subPeriod??-1, total:priced.total,
         status:orderInit().status, paymentMethod:paymentLabel(), paymentMethodId:(S.paymentMethod||'COD'), merchantCount:Object.keys(groups).length,
         subOrderIds: subIds, createdAt: nowMs()
@@ -3787,10 +3830,15 @@ window.submitOrder = async ()=>{
       Object.entries(groups).forEach(([mid, items], idx)=>{
         const m = merchantSnaps[idx].data();
         const subId = subIds[idx];
+        // خصم نقاط المتجر بيتحمّله التاجر: subtotal بيبقى بعد الخصم (مستحقات التاجر والعمولة والتحصيل بتتحسب منه)، والسعر قبل الخصم محفوظ في subtotalGross
+        const spo = spTx.byStore[mid];
+        const goodsGross = items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0);
+        const goodsNet = roundMoney(goodsGross-(spo?spo.discount:0));
         tx.set(doc(db,'subOrders',subId), {
           id:subId, parentOrderId:orderId, merchantId:mid, merchantName:m?m.businessName:'', merchantWhatsapp:m?(m.whatsappNumber||''):'',
-          subtotal: items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0),
-          ...MerchantPlans.feeSnapshot(m,items.reduce((a,l)=>a+effPrice(l.product)*l.quantity,0)),
+          subtotal: goodsNet,
+          ...(spo?{subtotalGross:goodsGross, storePointsRedeemed:spo.points, storePointsDiscount:spo.discount}:{}),
+          ...MerchantPlans.feeSnapshot(m,goodsNet),
           status:orderInit().status, ...orderInit().sub,
           customerId:S.user.uid,
           customerName:(S.profile.firstName+' '+S.profile.lastName).trim(), customerPhone:S.profile.phone,
@@ -3804,7 +3852,9 @@ window.submitOrder = async ()=>{
       });
       if(coupon){ tx.update(doc(db,'coupons', coupon.code), { usedCount: increment(1) }); }
       if(priced.points>0){ tx.update(doc(db,'users', S.user.uid), { loyaltyPoints: increment(-priced.points) }); }
+      Object.entries(spTx.byStore).forEach(([mid,r])=>{ const m=merchantSnaps[merchantEntries.findIndex(e=>e[0]===mid)].data(); tx.set(doc(db,'users',S.user.uid,'storePoints',mid), { points: spBal[mid]-r.points, storeName:String(m.businessName||'').slice(0,100), updatedAt: nowMs() }, {merge:true}); });
     });
+    if(spDiscTotal>0){ S.storePtsUse={}; S.storePtsLoaded=false; }
     S.appliedCoupon = null;
     S.appliedPoints = null;
     // تنبيه التاجر لو مخزون أي منتج قرب يخلص أو خلص فعلاً بعد خصم هذا الطلب
@@ -3827,7 +3877,7 @@ window.submitOrder = async ()=>{
     await pushNotification('ADMIN', 'ALL', 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}${autoApprove()?'، واتبعت للتاجر تلقائيًا.':'، في انتظار المراجعة والإرسال للتاجر.'}`, orderId);
     // إشعار تليجرام للإدارة بنفس نص إشعار التطبيق (fire-and-forget — فشله مش بيأثر على الطلب)
     TelegramNotify.send([TelegramNotify.ADMIN_KEY], 'طلب جديد 🔔', `تم استلام طلب جديد من ${(S.profile.firstName+' '+S.profile.lastName).trim()} برقم #${orderId}${autoApprove()?'، واتبعت للتاجر تلقائيًا.':'، في انتظار المراجعة والإرسال للتاجر.'}`);
-    S.lastOrderSummary = { id:orderId, total:priced.total, fee, discount:priced.discount, address:address.fullAddressText, payment:paymentLabel(),
+    S.lastOrderSummary = { id:orderId, total:priced.total, fee, discount:priced.discount+spDiscTotal, address:address.fullAddressText, payment:paymentLabel(),
       items: lines.map(l=>({title:l.product.title, qty:l.quantity, price:effPrice(l.product)})) };
     S.tab = 'orderDone';   // قبل clearCart عشان شاشة الدفع الفاضية ماترجّعش للسلة
     window.clearCart();
@@ -4002,6 +4052,7 @@ function renderOrderDetail(){
         ${o.merchantCount>1?`<p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0">الجزء ${partIdx+1} من ${subs.length}</p>`:''}
         <div class="divider"></div>
         ${(s.items||[]).map(it=>`<div class="row-between" style="font-size:13px;margin-bottom:6px"><span>${esc(it.productTitle)} × ${it.quantity}</span><span>${fmtMoney(it.price*it.quantity)}</span></div>`).join('')}
+        ${s.storePointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط المتجر (${s.storePointsRedeemed} نقطة)</span><span>-${fmtMoney(s.storePointsDiscount)}</span></div>`:''}
         <div class="summary-row total"><span>إجمالي هذا الجزء</span><span>${fmtMoney(s.subtotal)}</span></div>
         ${(s.status==='PENDING_ADMIN'||s.status==='SENT_TO_MERCHANT') ? `<button class="btn btn-danger btn-sm" style="width:100%;margin-top:10px" onclick="openCustomerCancel('${s._id||s.id}')"><i class="fa-solid fa-ban"></i> إلغاء الطلب</button><p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0">تقدر تلغي قبل ما التاجر يقبل الطلب.</p>` : ''}
         ${s.status==='DELIVERED' ? (myRating
@@ -4017,7 +4068,8 @@ function renderOrderDetail(){
       <div class="summary-row"><span>${o.deliveryDiscount>0?'رسوم التوصيل بعد الخصم':'رسوم التوصيل'}</span><span>${fmtMoney(o.deliveryFee)}</span></div>
       ${o.couponDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم الكوبون${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.couponDiscount)}</span></div>`:''}
       ${o.pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط الولاء (${o.pointsRedeemed} نقطة)</span><span>-${fmtMoney(o.pointsDiscount)}</span></div>`:''}
-      ${!o.couponDiscount && !o.pointsDiscount && o.discount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.discount)}</span></div>`:''}
+      ${o.storePointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط المتجر</span><span>-${fmtMoney(o.storePointsDiscount)}</span></div>`:''}
+      ${!o.couponDiscount && !o.pointsDiscount && !o.storePointsDiscount && o.discount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم${o.couponCode?' ('+esc(o.couponCode)+')':''}</span><span>-${fmtMoney(o.discount)}</span></div>`:''}
       <div class="summary-row total"><span>الإجمالي الكلي</span><span>${fmtMoney(o.total)}</span></div>
     </div>
     <button class="btn btn-primary" style="margin-top:14px" onclick="reorderOrder('${o.id}')"><i class="fa-solid fa-rotate-right"></i> اطلب تاني</button>
@@ -4255,6 +4307,7 @@ function subOrderCard(s, forAdminOrMerchant=true){
     ${s.deliveryAgentName?`<p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px"><i class="fa-solid fa-motorcycle"></i> مسند لمندوب: ${esc(s.deliveryAgentName)}</p>`:''}
     ${s.cancelReason?`<p style="font-size:12px;color:var(--danger);margin:0 0 8px"><i class="fa-solid fa-circle-info"></i> سبب الإلغاء: ${esc(s.cancelReason)}</p>`:''}
     ${(s.items||[]).map(it=>`<div class="row-between order-item"><span><span class="qty-badge">${it.quantity}×</span> ${esc(it.productTitle)}</span><span>${fmtMoney(it.price*it.quantity)}</span></div>`).join('')}
+    ${s.storePointsDiscount>0?`<div class="summary-row" style="color:var(--danger)"><span>خصم نقاط العميل (على حسابك) ${s.storePointsRedeemed} نقطة</span><span>-${fmtMoney(s.storePointsDiscount)}</span></div>`:''}
     <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(s.subtotal)}</span></div>
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       ${nextActions.map(([st2,label,cls])=>{
