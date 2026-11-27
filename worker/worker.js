@@ -3,7 +3,7 @@
 // الحسابات بتليجرام (KV) ويبعت الرسايل عن طريق Bot API.
 //
 // المتغيرات (wrangler.toml [vars]): BOT_USERNAME, FIREBASE_PROJECT_ID
-// الأسرار (wrangler secret put): BOT_TOKEN, APP_SECRET, WEBHOOK_SECRET
+// الأسرار (wrangler secret put): BOT_TOKEN, WEBHOOK_SECRET (APP_SECRET اتلغى: كان ظاهر في كود الموقع. كل المسارات دلوقتي بتوكن Firebase والدور بيتحدد من Firestore)
 // KV binding: TG_LINKS
 
 const TG_API = 'https://api.telegram.org';
@@ -13,14 +13,20 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_NOTIFY_KEYS = 10, MAX_TEXT = 3500;
 const KEY_PATTERN = /^(m:|a:)[A-Za-z0-9_\-]{1,64}$/;
 
-const cors = {
-  'access-control-allow-origin': '*',
+const ALLOWED_ORIGINS = new Set(['https://3alababk.com', 'https://www.3alababk.com', 'https://3alababk.pages.dev']);
+const corsBase = {
   'access-control-allow-methods': 'GET,POST,OPTIONS',
-  'access-control-allow-headers': 'content-type,authorization,x-app-secret'
+  'access-control-allow-headers': 'content-type,authorization',
+  'vary': 'Origin'
 };
+function corsFor(request) {
+  const origin = request.headers.get('origin') || '';
+  const ok = ALLOWED_ORIGINS.has(origin) || /^https:\/\/[a-z0-9-]+\.3alababk\.pages\.dev$/.test(origin);
+  return ok ? {...corsBase, 'access-control-allow-origin': origin} : corsBase;
+}
 
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {status, headers: {'content-type': 'application/json; charset=utf-8', ...cors}});
+  return new Response(JSON.stringify(data), {status, headers: {'content-type': 'application/json; charset=utf-8'}});
 }
 
 // ---------- تليجرام ----------
@@ -79,14 +85,80 @@ async function verifyFirebaseIdToken(token, projectId, fetchImpl = fetch, nowSec
   return payload.sub;
 }
 
-async function authedUid(request, env) {
+async function authedCtx(request, env) {
   const auth = request.headers.get('authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   try {
-    return await internals.verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || 'ala-babk');
+    const uid = await internals.verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID || 'ala-babk');
+    return uid ? {uid, token} : null;
   } catch {
     return null;
   }
+}
+async function authedUid(request, env) {
+  const c = await authedCtx(request, env);
+  return c ? c.uid : null;
+}
+
+// ---------- قراءة Firestore بتوكن المستخدم نفسه ----------
+// الـ Worker مالوش حساب خدمة. بنقرا مستند بتوكن المتصل، فقواعد Firestore هي اللي بتقرر يقدر يشوفه ولا لأ،
+// والدور (ADMIN/MERCHANT/...) بييجي من users/{uid} (المستخدم نفسه ميقدرش يعدّله: القواعد بتمنعه).
+function fsValue(v) {
+  if (!v || typeof v !== 'object') return undefined;
+  if ('stringValue' in v) return v.stringValue;
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return v.doubleValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('timestampValue' in v) return Date.parse(v.timestampValue);
+  return undefined;
+}
+const FS_PATH = /^[A-Za-z0-9_\-]+(\/[A-Za-z0-9_\-]+)*$/;
+async function fsGetDoc(env, token, path, fetchImpl = fetch) {
+  if (!FS_PATH.test(path)) return null;
+  const project = env.FIREBASE_PROJECT_ID || 'ala-babk';
+  const res = await fetchImpl(`https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents/${path}`, {
+    headers: {authorization: 'Bearer ' + token}
+  });
+  if (!res.ok) return null; // 404 (مفيش) أو 403 (القواعد منعت): الاتنين = مفيش صلاحية
+  const data = await res.json().catch(() => null);
+  if (!data || !data.fields) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(data.fields)) { const x = fsValue(v); if (x !== undefined) out[k] = x; }
+  return out;
+}
+// {uid, token, role, merchantId, deliveryAgentId} أو null لو المستخدم ملوش ملف في users.
+async function loadCaller(env, ctx) {
+  const doc = await internals.fsGetDoc(env, ctx.token, 'users/' + ctx.uid);
+  if (!doc) return null;
+  return {
+    uid: ctx.uid, token: ctx.token,
+    role: typeof doc.role === 'string' ? doc.role : '',
+    merchantId: typeof doc.merchantId === 'string' && doc.merchantId ? doc.merchantId : null,
+    deliveryAgentId: typeof doc.deliveryAgentId === 'string' && doc.deliveryAgentId ? doc.deliveryAgentId : null
+  };
+}
+async function requireCaller(request, env) {
+  const ctx = await authedCtx(request, env);
+  if (!ctx) return {err: json({error: 'unauthorized'}, 401)};
+  const caller = await loadCaller(env, ctx);
+  if (!caller) return {err: json({error: 'forbidden'}, 403)};
+  return {caller};
+}
+// المتصل يقدر يستهدف المفتاح ده؟ أدمن: role:ADMIN بس. تاجر: m:<merchantId بتاعه>. مندوب: a:<agentId بتاعه>.
+function ownsKey(caller, k) {
+  if (k === ADMIN_LIST_KEY) return caller.role === 'ADMIN';
+  if (k.startsWith('m:')) return caller.merchantId === k.slice(2);
+  if (k.startsWith('a:')) return caller.deliveryAgentId === k.slice(2);
+  return false;
+}
+// حد أقصى بسيط للطلبات (نافذة ثابتة في KV): تقريبي لأن KV مش لحظي، بس بيوقف الإغراق.
+async function rateLimit(env, name, id, max, windowSec) {
+  const bucket = Math.floor(Date.now() / (windowSec * 1000));
+  const key = `rl:${name}:${id}:${bucket}`;
+  const n = Number(await env.TG_LINKS.get(key)) || 0;
+  if (n >= max) return false;
+  await env.TG_LINKS.put(key, String(n + 1), {expirationTtl: Math.max(60, windowSec * 2)});
+  return true;
 }
 
 // ---------- توقيت القاهرة (الحجوزات بتتسجل بتاريخ وساعة القاهرة) ----------
@@ -178,12 +250,24 @@ async function getPrefs(env, merchantId) {
 }
 
 // مرآة حجز/حجوزات من التطبيق: PENDING/ACCEPTED بتتخزن، غير كده (إلغاء/رفض/انتهاء) بتمسح.
+// الأمان: لازم توكن Firebase. وبنقرا مستند الحجز من Firestore بتوكن المتصل (القواعد بتسمح بس للعميل صاحب الحجز
+// أو صاحب المتجر أو الأدمن)، وبنخزن بيانات المستند نفسه مش اللي العميل بعته. فمحدش يقدر يزوّر مرآة حجز مش بتاعه.
 async function handleReminderSync(request, env) {
-  if ((request.headers.get('x-app-secret') || '') !== env.APP_SECRET) return json({error: 'unauthorized'}, 401);
+  const ctx = await authedCtx(request, env);
+  if (!ctx) return json({error: 'unauthorized'}, 401);
+  if (!(await rateLimit(env, 'rsync', ctx.uid, 60, 600))) return json({error: 'too many requests'}, 429);
   const body = await request.json().catch(() => null);
-  const list = body && Array.isArray(body.bookings) ? body.bookings.slice(0, 100) : null;
-  if (!list || !list.length) return json({error: 'bad request'}, 400);
+  const input = body && Array.isArray(body.bookings) ? body.bookings.slice(0, 20) : null;
+  if (!input || !input.length) return json({error: 'bad request'}, 400);
   let stored = 0, deleted = 0, skipped = 0;
+  const list = [];
+  for (const raw of input) {
+    if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !REM_ID.test(raw.id)) { skipped++; continue; }
+    const doc = await internals.fsGetDoc(env, ctx.token, 'bookings/' + raw.id);
+    if (!doc) { skipped++; continue; }
+    list.push({id: raw.id, merchantId: doc.merchantId, customerName: doc.customerName, date: doc.date, time: doc.time, status: doc.status,
+      createdAt: typeof doc.createdAt === 'number' && isFinite(doc.createdAt) ? doc.createdAt : (typeof raw.createdAt === 'number' ? raw.createdAt : NaN)});
+  }
   for (const b of list) {
     const okShape = b && typeof b === 'object'
       && typeof b.id === 'string' && REM_ID.test(b.id)
@@ -218,10 +302,19 @@ async function handleReminderSync(request, env) {
 }
 
 // تفضيلات التذكير لكل مقدم خدمة — التطبيق بيبعتها لما التاجر يغيّر المفاتيح. الافتراضي: الكل شغال.
+// الأمان: توكن Firebase، والمتصل لازم يكون أدمن أو صاحب المتجر ده.
 async function handleReminderPrefs(request, env) {
-  if ((request.headers.get('x-app-secret') || '') !== env.APP_SECRET) return json({error: 'unauthorized'}, 401);
+  const r = await requireCaller(request, env);
+  if (r.err) return r.err;
   const body = await request.json().catch(() => null);
   if (!body || typeof body.merchantId !== 'string' || !/^[A-Za-z0-9_\-]{1,64}$/.test(body.merchantId)) return json({error: 'bad request'}, 400);
+  if (!(await rateLimit(env, 'rprefs', r.caller.uid, 30, 600))) return json({error: 'too many requests'}, 429);
+  let allowed = r.caller.role === 'ADMIN' || r.caller.merchantId === body.merchantId;
+  if (!allowed) {
+    const m = await internals.fsGetDoc(env, r.caller.token, 'merchants/' + body.merchantId);
+    allowed = !!(m && m.ownerId === r.caller.uid);
+  }
+  if (!allowed) return json({error: 'forbidden'}, 403);
   const prefs = await getPrefs(env, body.merchantId);
   let touched = false;
   if (body.summaryHour !== undefined) {
@@ -457,8 +550,10 @@ async function handlePushKey(_request, env) {
 }
 
 async function handlePushSubscribe(request, env) {
-  const uid = await authedUid(request, env);
-  if (!uid) return json({error: 'unauthorized'}, 401);
+  const r = await requireCaller(request, env);
+  if (r.err) return r.err;
+  const uid = r.caller.uid;
+  if (!(await rateLimit(env, 'psub', uid, 20, 600))) return json({error: 'too many requests'}, 429);
   const body = await request.json().catch(() => null);
   const s = body && body.subscription;
   const valid = s && typeof s.endpoint === 'string' && s.endpoint.length <= 1024 && s.endpoint.startsWith('https://')
@@ -466,7 +561,7 @@ async function handlePushSubscribe(request, env) {
     && typeof s.keys.auth === 'string' && B64URL_RE.test(s.keys.auth) && s.keys.auth.length <= 64;
   if (!valid) return json({error: 'bad request'}, 400);
   const selectors = (Array.isArray(body.keys) ? body.keys : [])
-    .filter(k => typeof k === 'string' && (k === ADMIN_LIST_KEY || KEY_PATTERN.test(k)))
+    .filter(k => typeof k === 'string' && (k === ADMIN_LIST_KEY || KEY_PATTERN.test(k)) && ownsKey(r.caller, k))
     .slice(0, PUSH_MAX_SELECTORS);
   const uidSel = 'uid:' + uid;
   if (!selectors.includes(uidSel)) selectors.push(uidSel);
@@ -566,18 +661,20 @@ async function runCartCron(env, now = Date.now()) {
 }
 
 // ---------- المسارات ----------
+// الدور بييجي من users/{uid} في Firestore (بتوكن المتصل)، مش من اللي العميل بعته. أي طلب لدور مش بتاعه = 403.
 async function handleLinkStart(request, env) {
-  const uid = await authedUid(request, env);
-  if (!uid) return json({error: 'unauthorized'}, 401);
+  const r = await requireCaller(request, env);
+  if (r.err) return r.err;
+  const c = r.caller;
+  if (!(await rateLimit(env, 'lstart', c.uid, 10, 600))) return json({error: 'too many requests'}, 429);
   const body = await request.json().catch(() => ({}));
-  const link = {
-    uid,
-    merchantId: typeof body.merchantId === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(body.merchantId) ? body.merchantId : null,
-    deliveryAgentId: typeof body.deliveryAgentId === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(body.deliveryAgentId) ? body.deliveryAgentId : null,
-    admin: body.admin === true,
-    customer: body.customer === true,
-    marketer: body.marketer === true
-  };
+  const idOk = v => typeof v === 'string' && /^[A-Za-z0-9_\-]{1,64}$/.test(v);
+  const link = {uid: c.uid, merchantId: null, deliveryAgentId: null, admin: false, customer: false, marketer: false};
+  if (body.admin === true) { if (c.role !== 'ADMIN') return json({error: 'forbidden'}, 403); link.admin = true; }
+  if (idOk(body.merchantId)) { if (c.merchantId !== body.merchantId) return json({error: 'forbidden'}, 403); link.merchantId = body.merchantId; }
+  if (idOk(body.deliveryAgentId)) { if (c.deliveryAgentId !== body.deliveryAgentId) return json({error: 'forbidden'}, 403); link.deliveryAgentId = body.deliveryAgentId; }
+  if (body.marketer === true) { if (c.role !== 'MARKETER') return json({error: 'forbidden'}, 403); link.marketer = true; }
+  if (body.customer === true) link.customer = true; // أي مستخدم له ملف: بيستقبل إشعارات حسابه هو بس
   link.role = link.admin ? 'ADMIN' : link.merchantId ? 'MERCHANT' : link.deliveryAgentId ? 'DELIVERY' : link.customer ? 'CUSTOMER' : link.marketer ? 'MARKETER' : null;
   if (!link.role) return json({error: 'bad request'}, 400);
   const code = newCode();
@@ -610,8 +707,12 @@ async function handleLinkStop(request, env) {
   return json({linked: false});
 }
 
+// الأمان: لازم توكن Firebase لمستخدم له ملف في users، وحد أقصى للطلبات (العادي 30 كل 10 دقايق، الأدمن 300).
+// ملاحظة: مستخدم مسجل لسه يقدر يبعت إشعار لتاجر أو للأدمن (لأن العميل بيبلّغهم بالطلب الجديد)، بس بمعدل محدود ومعروف هويته.
 async function handleNotify(request, env) {
-  if ((request.headers.get('x-app-secret') || '') !== env.APP_SECRET) return json({error: 'unauthorized'}, 401);
+  const r = await requireCaller(request, env);
+  if (r.err) return r.err;
+  if (!(await rateLimit(env, 'notify', r.caller.uid, r.caller.role === 'ADMIN' ? 300 : 30, 600))) return json({error: 'too many requests'}, 429);
   const body = await request.json().catch(() => null);
   if (!body || !Array.isArray(body.keys)) return json({error: 'bad request'}, 400);
   const keys = body.keys.filter(k => typeof k === 'string' && (k === ADMIN_LIST_KEY || KEY_PATTERN.test(k))).slice(0, MAX_NOTIFY_KEYS);
@@ -679,9 +780,11 @@ async function handleWebhook(request, env) {
   return json({ok: true});
 }
 
-// إعداد الـ webhook عند تليجرام — مرة واحدة بعد النشر. محمي بـ APP_SECRET.
+// إعداد الـ webhook عند تليجرام — مرة واحدة بعد النشر. محمي بتوكن Firebase لأدمن.
 async function handleSetupWebhook(request, env) {
-  if ((request.headers.get('x-app-secret') || '') !== env.APP_SECRET) return json({error: 'unauthorized'}, 401);
+  const r = await requireCaller(request, env);
+  if (r.err) return r.err;
+  if (r.caller.role !== 'ADMIN') return json({error: 'forbidden'}, 403);
   const origin = new URL(request.url).origin;
   const res = await fetch(`${TG_API}/bot${env.BOT_TOKEN}/setWebhook`, {
     method: 'POST',
@@ -699,8 +802,12 @@ async function handleSetupWebhook(request, env) {
 // الـ uids اللي ليها ربط تليجرام أو اشتراك بوش.
 // تليجرام بيحدّ ~30 رسالة/ثانية — بنبعت بالتتابع مع مهلة 34ms بين كل رسالة.
 async function handleBroadcast(request, env) {
-  const uid = await authedUid(request, env);
-  if (!uid) return json({error: 'unauthorized'}, 401);
+  const rc = await requireCaller(request, env);
+  if (rc.err) return rc.err;
+  // الدور الحالي من Firestore (لو اتشال من الأدمن يتمنع فورًا) + لازم يكون مربوط كأدمن.
+  if (rc.caller.role !== 'ADMIN') return json({error: 'forbidden'}, 403);
+  if (!(await rateLimit(env, 'bcast', rc.caller.uid, 20, 600))) return json({error: 'too many requests'}, 429);
+  const uid = rc.caller.uid;
   const rawLink = await env.TG_LINKS.get(uidKey(uid));
   let link = {};
   try { link = JSON.parse(rawLink || '{}'); } catch {}
@@ -761,7 +868,7 @@ async function handleBroadcast(request, env) {
 
 async function route(request, env) {
   const url = new URL(request.url);
-  if (request.method === 'OPTIONS') return new Response(null, {status: 204, headers: cors});
+  if (request.method === 'OPTIONS') return new Response(null, {status: 204});
   if (url.pathname === '/health') return json({ok: true});
   if (url.pathname === '/tg/webhook' && request.method === 'POST') return handleWebhook(request, env);
   if (url.pathname === '/tg/setup-webhook' && request.method === 'POST') return handleSetupWebhook(request, env);
@@ -780,13 +887,15 @@ async function route(request, env) {
 }
 
 // للاختبار المحلي: نقدر نستبدل التحقق والإرسال ببدائل وهمية.
-const internals = {runCartCron, cartMessage, summaryHourFor, verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
+const internals = {fsGetDoc, runCartCron, cartMessage, summaryHourFor, verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
 export const _internals = internals;
 
 export default {
   async fetch(request, env, _ctx) {
     try {
-      return await route(request, env);
+      const res = await route(request, env);
+      for (const [k, v] of Object.entries(corsFor(request))) res.headers.set(k, v);
+      return res;
     } catch (e) {
       return json({error: 'internal'}, 500);
     }
