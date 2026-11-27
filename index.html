@@ -6571,7 +6571,26 @@ function applyMarketerLanding(){
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('/sw.js').catch(err=>console.error('SW registration failed', err));
+    navigator.serviceWorker.register('/sw.js').then(reg=>{
+      // للأدمن بس: التاب المفتوح بيفضل بكود قديم لحد ما يتحمّل تاني. بنسأل عن نسخة جديدة كل شوية وأول ما الصفحة تظهر.
+      const isAdmin=()=>!!(window.S&&window.S.role==='admin');
+      const check=()=>{ if(!isAdmin()) return; try{ reg.update(); }catch(e){} };
+      setInterval(check, 10*60*1000);
+      document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) check(); });
+    }).catch(err=>console.error('SW registration failed', err));
+    // لو كان فيه نسخة شغالة وبعدين نزلت نسخة جديدة: نعرض شريط تحديث (ولو التاب مخفي نحدّث لوحده).
+    const hadController=!!navigator.serviceWorker.controller; let shown=false;
+    navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+      // للأدمن بس: صفحات العملاء والتجار والمناديب ماتتغيرش.
+      if(!hadController || shown || !(window.S&&window.S.role==='admin')) return; shown=true;
+      if(document.hidden){ location.reload(); return; }
+      const bar=document.createElement('div');
+      bar.setAttribute('style','position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;background:#1f2937;color:#fff;border-radius:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font:600 14px sans-serif;direction:rtl');
+      bar.innerHTML='<span>في نسخة جديدة من على بابك</span>';
+      const btn=document.createElement('button'); btn.textContent='تحديث الآن';
+      btn.setAttribute('style','background:#c8401c;color:#fff;border:0;border-radius:10px;padding:8px 14px;font:700 14px sans-serif;cursor:pointer');
+      btn.onclick=()=>location.reload(); bar.appendChild(btn); document.body.appendChild(bar);
+    });
   });
 }
 </script>
