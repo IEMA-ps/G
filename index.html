@@ -619,7 +619,7 @@ import {
   updatePassword, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider, signInWithPopup, deleteUser
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
-  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocFromServer, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   collection, query, where, orderBy, onSnapshot, serverTimestamp,
   writeBatch, runTransaction, increment, limit, startAfter, documentId, deleteField
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
@@ -6137,7 +6137,11 @@ window.unmarkSettlementPaid = async (id)=>{
 function renderAdminSettings(){
   if(!S._setFresh || Date.now()-S._setFresh>8000){
     S._setFresh=Date.now();
-    getDoc(doc(db,'settings','app')).then(d=>{ if(d.exists()){ S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()}); if(!S._settingsDirty && S.tab==='a_settings') renderMain(); } }).catch(()=>{});
+    getDocFromServer(doc(db,'settings','app')).then(d=>{
+      S._srv={ok:true,data:d.exists()?d.data():{}};
+      if(d.exists()){ S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()}); }
+      if(!S._settingsDirty && S.tab==='a_settings') renderMain();
+    }).catch(e=>{ S._srv={ok:false,code:(e&&e.code)||'error'}; if(!S._settingsDirty && S.tab==='a_settings') renderMain(); });
   }
   if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات دي لإدارة الموقع بس.</p></div>`;
   const s = S.settings;
@@ -6181,7 +6185,8 @@ function renderAdminSettings(){
       <h3 style="margin:0 0 14px;font-size:15px">دعوة صديق</h3>
       <div class="field"><label>عدد النقاط اللي ياخدها العميل الداعي (الصديق الجديد مبياخدش)</label><input id="setReferralBonus" type="number" step="1" min="0" value="${s.referralBonusPoints||0}"></div>
       <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.7"><i class="fa-solid fa-circle-info"></i> كل عميل عنده كود دعوة خاص بيه يقدر يشاركه مع أصحابه. لما صديقه يسجّل بالكود ده ويكمّل أول طلب ليه، العميل الداعي بس ياخد النقاط دي تلقائيًا.</p>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:10px 0"><input type="checkbox" id="setInviteOnly" ${s.inviteOnly?'checked':''}> التسجيل بالدعوة فقط (مقفول افتراضيًا)</label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin:10px 0"><input type="checkbox" id="setInviteOnly" ${(S._srv&&S._srv.ok?S._srv.data.inviteOnly:s.inviteOnly)?'checked':''}> التسجيل بالدعوة فقط (مقفول افتراضيًا)</label>
+      <p style="font-size:12px;margin:-4px 0 10px;color:${S._srv&&S._srv.ok?'var(--teal)':'#b3261e'}">${S._srv?(S._srv.ok?'القيمة المقروءة من السيرفر الآن: '+(S._srv.data.inviteOnly?'مفعّل':'مقفول'):'تعذّر الاتصال بالسيرفر ('+esc(S._srv.code)+'). القيم المعروضة من نسخة محفوظة على الجهاز وممكن تكون قديمة، ما تحفظش دلوقتي.'):'بنقرا القيمة من السيرفر...'}</p>
       <div class="field"><label>عدد الدعوات لكل عميل</label><input id="setInviteLimit" type="number" step="1" min="1" value="${esc(String(s.inviteLimit||10))}"></div>
       <button class="btn btn-ghost btn-sm" style="width:auto;margin-bottom:10px" onclick="showWaitlist()"><i class="fa-solid fa-list"></i> قائمة الانتظار</button><br>
       <button class="btn btn-primary" onclick="saveReferralSettings()">حفظ</button>
@@ -6227,7 +6232,7 @@ function renderAdminSettings(){
 }
 // حفظ الإعدادات: بنقرأ المستند من السيرفر لحظتها ونكتب الحقول اللي اتغيرت فعلًا بس، فمفيش كتابة قيمة قديمة فوق قيمة جديدة.
 async function saveSettingsDiff(patch){
-  const d=await getDoc(doc(db,'settings','app')); const cur=d.exists()?d.data():{};
+  const d=await getDocFromServer(doc(db,'settings','app')); const cur=d.exists()?d.data():{};
   const out={}; for(const k in patch){ if(JSON.stringify(cur[k])!==JSON.stringify(patch[k])) out[k]=patch[k]; }
   if(Object.keys(out).length) await setDoc(doc(db,'settings','app'), out, {merge:true});
   S._settingsDirty=false;
