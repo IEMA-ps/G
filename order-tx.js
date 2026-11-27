@@ -7,14 +7,16 @@ export const TERMINAL_BAD = ['REJECTED','CANCELLED'];
 // sub: the sub order being cancelled (state BEFORE this change). siblings: all sub orders of the parent order,
 // INCLUDING sub. order: the parent order. Returns {stock:[{productId,qty}], restoreDiscount, coupon, points}.
 export function planRestore(sub, siblings, order){
-  const out = {stock:[], restoreDiscount:false, coupon:null, points:0};
+  const out = {stock:[], restoreDiscount:false, coupon:null, points:0, pointsField:'loyaltyPoints', storePoints:0};
   if(!sub || sub.restocked || TERMINAL_BAD.includes(sub.status) || sub.status==='DELIVERED') return out;
+  // Store points are paid by that store only, so they go back with this sub order alone.
+  if(Number(sub.storePointsRedeemed)>0 && !sub.storePointsRestored) out.storePoints = Math.floor(Number(sub.storePointsRedeemed));
   out.stock = (sub.items||[]).filter(i=>i.productId && i.quantity>0).map(i=>({productId:i.productId, qty:i.quantity}));
   const allGone = (siblings||[]).every(s => s.id===sub.id || TERMINAL_BAD.includes(s.status));
   const already = (siblings||[]).some(s => s.discountRestored);
   if(allGone && !already && order){
     const coupon = order.couponCode || null, points = Number(order.pointsRedeemed)||0;
-    if(coupon || points>0){ out.restoreDiscount = true; out.coupon = coupon; out.points = points; }
+    if(coupon || points>0){ out.restoreDiscount = true; out.coupon = coupon; out.points = points; out.pointsField = order.pointsField==='inviteCredit' ? 'inviteCredit' : 'loyaltyPoints'; }
   }
   return out;
 }
@@ -38,27 +40,31 @@ export async function cancelSubOrderWithRestore(api, db, s, extra, opts={}){
     const prodSnaps = await Promise.all(plan.stock.map(r=>tx.get(doc(db,'products', r.productId))));
     const couponRef = plan.restoreDiscount && plan.coupon ? doc(db,'coupons', plan.coupon) : null;
     const couponSnap = couponRef ? await tx.get(couponRef) : null;
+    const spRef = plan.storePoints>0 && sub.merchantId && sub.customerId ? doc(db,'users', sub.customerId,'storePoints', sub.merchantId) : null;
+    const spSnap = spRef ? await tx.get(spRef) : null;
     // all reads done, now writes
     const patch = {...extra};
+    if(spRef) patch.storePointsRestored = true;
     if(plan.stock.length) patch.restocked = true;
     if(plan.restoreDiscount) patch.discountRestored = true;
     tx.update(subRef, patch);
+    if(spRef) tx.set(spRef, { points: ((spSnap.exists()?spSnap.data().points:0)||0) + plan.storePoints, restoredFor: s.id, updatedAt: Date.now() }, {merge:true});
     plan.stock.forEach((r,i)=>{ if(prodSnaps[i].exists()) tx.update(doc(db,'products', r.productId), { stock: increment(r.qty) }); });
     if(plan.restoreDiscount){
       if(couponSnap && couponSnap.exists() && (couponSnap.data().usedCount||0)>0) tx.update(couponRef, { usedCount: increment(-1) });
-      if(plan.points>0 && order) tx.update(doc(db,'users', order.customerId), { loyaltyPoints: increment(plan.points) });
+      if(plan.points>0 && order) tx.update(doc(db,'users', order.customerId), { [plan.pointsField]: increment(plan.points) });
     }
   });
 }
 
 // Runs INSIDE the checkout transaction, before any write: reads the coupon and the points balance fresh
 // and prices the order from the current cart. Throws if the coupon or points no longer fit.
-export async function priceInTx(api, db, tx, {coupon, wantedPoints, uid, subtotal, fee, rate, now}){
+export async function priceInTx(api, db, tx, {coupon, wantedPoints, uid, subtotal, fee, rate, now, field='loyaltyPoints'}){
   const {doc} = api;
   const couponSnap = coupon ? await tx.get(doc(db,'coupons', coupon.code)) : null;
   const userSnap = wantedPoints>0 ? await tx.get(doc(db,'users', uid)) : null;
   const priced = OrderMoney.priceOrder({subtotal, fee, coupon: couponSnap&&couponSnap.exists()?couponSnap.data():null,
-    pointsWanted:wantedPoints, availablePoints: userSnap&&userSnap.exists()?(userSnap.data().loyaltyPoints||0):0, rate, now});
+    pointsWanted:wantedPoints, availablePoints: userSnap&&userSnap.exists()?(userSnap.data()[field]||0):0, rate, now});
   if(coupon && !priced.couponOk) throw new Error('الكوبون لم يعد صالحًا: '+priced.couponReason+'، أزله وحاول تاني');
   if(wantedPoints>0 && priced.points<wantedPoints) throw new Error('رصيد النقاط أو إجمالي الطلب اتغيّر، أعد تطبيق النقاط وحاول تاني');
   return priced;
