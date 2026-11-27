@@ -2861,6 +2861,9 @@ const getCategory = id => S.categories.find(c=>c.id===id);
 function activeProducts(){ return S.products.filter(p=>p.isActive && MerchantPlans.canOrder(getMerchant(p.merchantId),S.settings.subsEnforced)); }
 function cartLines(){ return S.cart.map(c=>({...c, product:getProduct(c.productId)})).filter(l=>l.product); }
 function cartTotal(){ return cartLines().reduce((a,l)=>a+effPrice(l.product)*l.quantity,0); }
+// لما نقط كل متجر تتفتح: الرصيد العام القديم (loyaltyPoints) ما بقاش بيتحسب، ورصيد الدعوة من المنصة في حقل منفصل (inviteCredit) بيبدأ من صفر
+const creditField = ()=> FeatureFlags.isOn(S.settings,'storePointsEnabled') ? 'inviteCredit' : 'loyaltyPoints';
+const myCredit = ()=> (S.profile && Number(S.profile[creditField()])) || 0;
 // نقاط المتجر عند الدفع (التاجر هو اللي بيتحمّل الخصم). مقفولة لحد ما الأدمن يفتح storePointsEnabled و storePointsRedeemEnabled
 const spOn = ()=> FeatureFlags.isOn(S.settings,'storePointsEnabled') && FeatureFlags.isOn(S.settings,'storePointsRedeemEnabled') && !!S.user;
 function spEnsureLoaded(){
@@ -3219,7 +3222,7 @@ function refreshDiscounts(){
   const spD = spPlan().total;
   const fee = cartDeliveryQuote().net;
   const r = OrderMoney.priceOrder({subtotal:cartTotal()-spD, fee, coupon:cp&&cp.def, pointsWanted:pt?pt.points:0,
-    availablePoints:(S.profile&&S.profile.loyaltyPoints)||0, rate:S.settings.loyaltyRedeemValue||0});
+    availablePoints:myCredit(), rate:S.settings.loyaltyRedeemValue||0});
   if(cp){
     if(r.couponOk) S.appliedCoupon = {...cp, discount:r.couponDiscount};
     else { S.appliedCoupon = null; UI.toast('اتشال الكوبون: '+r.couponReason); }
@@ -3584,7 +3587,7 @@ function renderCheckout(){
   const totalDiscount = couponDiscount + pointsDiscount;
   const spp = spPlan(); spEnsureLoaded();
   const grandTotal = Math.max(0, cartTotal()+fee-totalDiscount-spp.total);
-  const availablePoints = (S.profile && S.profile.loyaltyPoints) || 0;
+  const availablePoints = myCredit();
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
 
   return `
@@ -3631,7 +3634,7 @@ function renderCheckout(){
       return rows?`<div class="section-head"><h3>نقاط المتاجر</h3></div><div class="card">${rows}<p style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 0">الخصم من حساب المتجر نفسه ومش بيدخل رسوم التوصيل.</p></div>`:'';
     })():''}
     ${S.settings.loyaltyEnabled!==false && redeemValue>0 ? `
-    <div class="section-head"><h3>${spOn()?'رصيد الدعوة (من على بابك)':'نقاط الولاء'}</h3></div>
+    <div class="section-head"><h3>${creditField()==='inviteCredit'?'رصيد الدعوة (من على بابك)':'نقاط الولاء'}</h3></div>
     <div class="card">
       ${pts ? `
         <div class="row-between">
@@ -3655,7 +3658,7 @@ function renderCheckout(){
       <div class="summary-row"><span>الإجمالي الفرعي</span><span>${fmtMoney(cartTotal())}</span></div>
       ${deliveryFeeRows(quote)}
       ${couponDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>خصم الكوبون</span><span>-${fmtMoney(couponDiscount)}</span></div>`:''}
-      ${pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>${spOn()?'خصم رصيد الدعوة':'خصم نقاط الولاء'}</span><span>-${fmtMoney(pointsDiscount)}</span></div>`:''}
+      ${pointsDiscount>0?`<div class="summary-row" style="color:var(--success)"><span>${creditField()==='inviteCredit'?'خصم رصيد الدعوة':'خصم نقاط الولاء'}</span><span>-${fmtMoney(pointsDiscount)}</span></div>`:''}
       ${spp.total>0?`<div class="summary-row" style="color:var(--success)"><span>خصم نقاط المتاجر</span><span>-${fmtMoney(spp.total)}</span></div>`:''}
       <div class="summary-row total"><span>الإجمالي</span><span>${fmtMoney(grandTotal)}</span></div>
     </div>
@@ -3664,7 +3667,7 @@ function renderCheckout(){
   `;
 }
 window.applyLoyaltyPoints = ()=>{
-  const available = (S.profile && S.profile.loyaltyPoints) || 0;
+  const available = myCredit();
   const rate = S.settings.loyaltyRedeemValue || 0;
   if(!available || !rate){ UI.toast('لا يوجد رصيد نقاط كافٍ'); return; }
   const groups = {}; cartLines().forEach(l=>{ (groups[l.product.merchantId]=groups[l.product.merchantId]||[]).push(l); });
@@ -3815,14 +3818,14 @@ window.submitOrder = async ()=>{
         tx.update(doc(db,'users',S.user.uid), {deliverySubUsedPeriod: quote.subPeriod});
         S.profile.deliverySubUsedPeriod = quote.subPeriod;
       }
-      priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, subtotal:subtotalNow-spDiscTotal, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
+      priced = await OrderTx.priceInTx(OT_API, db, tx, {coupon, wantedPoints, uid:S.user.uid, field:creditField(), subtotal:subtotalNow-spDiscTotal, fee, rate:S.settings.loyaltyRedeemValue||0, now:nowMs()});
       if(S.paymentMethod && S.paymentMethod!=='COD') throw new Error('الدفع كاش فقط حاليًا');
       // 2) دلوقتي مضمون إن المخزون كافي، نكمل كل عمليات الكتابة
       tx.set(doc(db,'orders',orderId), {
         id:orderId, customerId:S.user.uid, customerName:(S.profile.firstName+' '+S.profile.lastName).trim(),
         customerPhone:S.profile.phone, deliveryAddress:address.fullAddressText, notes,
         subtotal:subtotalNow, deliveryFee:fee, discount:priced.discount+spDiscTotal, storePointsDiscount:spDiscTotal, couponCode: coupon?coupon.code:null, couponDiscount:priced.couponDiscount,
-        pointsRedeemed: priced.points, pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, deliverySubDiscount:quote.subDiscount||0, deliverySubCourierPay:quote.courierComp||0, deliverySubPeriod:quote.subPeriod??-1, total:priced.total,
+        pointsRedeemed: priced.points, ...(creditField()==='inviteCredit'?{pointsField:'inviteCredit'}:{}), pointsDiscount:priced.pointsDiscount, deliveryFeeGross:quote.gross, deliveryDiscountPercent:quote.percent, deliveryDiscount:quote.discount, deliverySubDiscount:quote.subDiscount||0, deliverySubCourierPay:quote.courierComp||0, deliverySubPeriod:quote.subPeriod??-1, total:priced.total,
         status:orderInit().status, paymentMethod:paymentLabel(), paymentMethodId:(S.paymentMethod||'COD'), merchantCount:Object.keys(groups).length,
         subOrderIds: subIds, createdAt: nowMs()
       });
@@ -3851,7 +3854,7 @@ window.submitOrder = async ()=>{
         items.forEach(l=>{ tx.update(doc(db,'products', l.productId), { stock: increment(-l.quantity) }); });
       });
       if(coupon){ tx.update(doc(db,'coupons', coupon.code), { usedCount: increment(1) }); }
-      if(priced.points>0){ tx.update(doc(db,'users', S.user.uid), { loyaltyPoints: increment(-priced.points) }); }
+      if(priced.points>0){ tx.update(doc(db,'users', S.user.uid), { [creditField()]: increment(-priced.points) }); }
       Object.entries(spTx.byStore).forEach(([mid,r])=>{ const m=merchantSnaps[merchantEntries.findIndex(e=>e[0]===mid)].data(); tx.set(doc(db,'users',S.user.uid,'storePoints',mid), { points: spBal[mid]-r.points, storeName:String(m.businessName||'').slice(0,100), updatedAt: nowMs() }, {merge:true}); });
     });
     if(spDiscTotal>0){ S.storePtsUse={}; S.storePtsLoaded=false; }
@@ -4149,7 +4152,7 @@ function storePointsCard(){
       :`<p style="font-size:13px;color:var(--ink-soft);margin:0">${S.storePtsLoaded?'لسه معندكش نقط. اطلب من متجر عليه نقط وهتتجمع هنا بعد التسليم.':'جاري التحميل...'}</p>`)+`</div>`;
 }
 function renderProfile(){
-  const points = S.profile.loyaltyPoints || 0;
+  const points = myCredit();
   const redeemValue = S.settings.loyaltyRedeemValue || 0;
   return `
     ${bookingsProfileCard()}
