@@ -16,6 +16,13 @@ export const FLAGS = [
   {key:'cartReminderEnabled', label:'تذكير السلة المتروكة: إشعار واحد بعد ساعتين من ترك السلة (9 صباحًا إلى 10 مساءً)، لمن فعّل الإشعارات الفورية. يحتاج Worker الإشعارات المحدّث'},
   {key:'smartSupportEnabled', label:'مساعد على بابك: شات دعم ذكي بردود تلقائية جوه الموقع وعلى صفحة البداية (الزائر يسجّل اسمه ورقمه الأول)'}
 ];
+// كل الميزات دي بقت أساسية (شغالة دايمًا). بنفرض قيمها بعد قراءة settings/app، فمفيش مفتاح لها في الأدمن.
+// الأربع مفاتيح اللي ما اتغيرش وضعها (إلزام الاشتراك، الباك إند، الدعوة فقط، العروض، اشتراك التوصيل) مش هنا.
+export const PERMANENT = Object.freeze({
+  ...Object.fromEntries(FLAGS.map(f => [f.key, true])),
+  servicesEnabled:true, memberRequestsEnabled:true, autoApproveOrders:true, loyaltyEnabled:true
+});
+export const withPermanent = o => ({...(o||{}), ...PERMANENT});
 export const isOn = (settings, key) => !!settings && settings[key] === true;
 
 export function cardHTML(settings, esc){
