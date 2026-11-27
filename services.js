@@ -104,6 +104,15 @@ export function providerScheduleViewHTML(bookings,esc,ms=Date.now()){
   const by={};live.forEach(b=>(by[b.date]=by[b.date]||[]).push(b));
   return Object.keys(by).length?Object.entries(by).map(([d,list])=>`<div class="section-head"><h3>${fmtDay(d)}${d===t?' (النهاردة)':''}</h3></div><div class="list-gap">${list.map(b=>bookingCardHTML(b,esc,'provider')).join('')}</div>`).join(''):'<p class="hint-box">مفيش حجوزات جاية لسه.</p>';
 }
+export function bookedTableHTML(bookings,esc,ms=Date.now()){
+  const t=cairoNow(ms).date,live=(bookings||[]).filter(b=>['PENDING','ACCEPTED'].includes(b.status)&&b.date>=t).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  const head='<div class="section-head"><h3>المواعيد المحجوزة</h3></div>';
+  if(!live.length) return head+'<p class="hint-box">مفيش مواعيد محجوزة لسه.</p>';
+  const rows=live.map(b=>{const phone=String(b.customerPhone||'').replace(/\D/g,'').replace(/^0/,'20');
+    const wa=phone?`<a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" rel="noopener" href="https://wa.me/${esc(phone)}"><i class="fa-brands fa-whatsapp"></i> واتساب</a>`:'<span style="color:var(--ink-soft)">لا يوجد رقم</span>';
+    return `<tr><td>${fmtDay(b.date)}${b.date===t?' (النهاردة)':''}</td><td>${fmtTime(b.time)}</td><td><b>${esc(b.customerName||'')}</b>${b.status==='PENDING'?' <span class="status-pill status-pending">مستنية ردك</span>':''}</td><td>${wa}</td></tr>`;}).join('');
+  return head+`<div class="card" style="margin-bottom:14px;overflow-x:auto"><table class="booked-table" style="width:100%;border-collapse:collapse;font-size:13.5px"><thead><tr><th>اليوم</th><th>الميعاد</th><th>العميل</th><th>تواصل</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 export function serviceListHTML(providers,type,esc){
   const list=providers.filter(m=>!type||m.activityType===type);
   return `<div class="cat-scroll" style="margin-bottom:12px"><div class="cat-chip ${!type?'active':''}" onclick="setServiceType('')"><span>الكل</span></div>${SERVICE_TYPES.map(t=>`<div class="cat-chip ${type===t?'active':''}" onclick="setServiceType('${t}')"><span>${t}</span></div>`).join('')}</div>`
