@@ -11,6 +11,8 @@ export const FLAGS = [
   {key:'marketerContestEnabled', label:'مسابقة المسوّقين الشهرية (ترتيب بأول اشتراك مدفوع، الجوائز يدويًا)'},
   {key:'pasteProductsEnabled', label:'إضافة منتجات بلصق رسالة أو قايمة أسعار (معاينة وتعديل قبل الحفظ)'},
   {key:'storePhotoRequired', label:'صورة المتجر / الصورة الشخصية إجبارية للتاجر ومقدم الخدمة الجديد، وتنبيه في اللوحة للحاليين'},
+  {key:'storePointsEnabled', label:'نقط كل متجر بدل النقط العامة (التاجر يحدد المعدل والقيمة، والعميل يشوف رصيده في كل متجر). يحتاج قواعد Firebase v9'},
+  {key:'storePointsRedeemEnabled', label:'استخدام نقط المتجر عند الدفع (التاجر يتحمّل الخصم) ورصيد الدعوة من المنصة. يشتغل مع نقط كل متجر، ويحتاج قواعد Firebase v9 المحدّثة'},
   {key:'smartSupportEnabled', label:'مساعد على بابك: شات دعم ذكي بردود تلقائية جوه الموقع وعلى صفحة البداية (الزائر يسجّل اسمه ورقمه الأول)'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;
