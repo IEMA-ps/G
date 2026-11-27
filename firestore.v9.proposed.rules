@@ -1,3 +1,4 @@
+// v9 + الجزء 2 (استخدام نقط المتجر عند الدفع: خصمها من رصيد العميل وإرجاعها عند الإلغاء). لم يُجرَّب على emulator.
 // v9 (PR نقط كل متجر، فوق v8 المنشورة): merchants.storePoints (التاجر يحدد معدله) + users/{uid}/storePoints/{storeId} (رصيد العميل في كل متجر). لم يُجرَّب على emulator.
 // v8 (PRs #139 auto-approve + #141 invite-only + #142 delivery-sub، فوق v7 المنشورة): (1) subOrders: السماح بإنشاء SENT_TO_MERCHANT بـsentByAdminId=AUTO لما settings.autoApproveOrders شغال. (2) users: قفل حقول اشتراك التوصيل على العميل + السماح له بتسجيل deliverySubUsedPeriod بس. (3) مجموعات جديدة inviteCodes وinviteUses وwaitlist. #140 مفيش له تغيير قواعد. لم يُجرَّب على emulator.
 // v7 (PR #133): تقييد حركة loyaltyPoints (العميل يخصم من نقاطه بس، والتاجر/المندوب يزوّدوا بحد أقصى) وتقييم referrals (إنشاء ذاتي PENDING، وتسليم التاجر/المندوب يحوّلها REWARDED فقط). فوق v6 بدون أي تغيير آخر.
@@ -70,11 +71,22 @@ service cloud.firestore {
       let d=request.resource.data;
       let oldPts = resource == null ? 0 : resource.data.get('points', 0);
       let newPts = d.get('points', 0);
-      return d.keys().hasOnly(['points','storeName','updatedAt'])
+      return d.keys().hasOnly(['points','storeName','updatedAt','restoredFor'])
         && newPts is int && newPts >= 0
         && ((request.auth.uid == uid && newPts <= oldPts)
+          || (request.auth.uid == uid && d.get('restoredFor','') is string && d.get('restoredFor','') != ''
+              && storePointsRestoreOk(uid, mid, d.restoredFor, newPts - oldPts))
           || ((ownsMerchant(mid) || me().get('deliveryAgentId','') != '' || isAdmin())
             && newPts > oldPts && newPts - oldPts <= 100000));
+    }
+    // v9 (الجزء 2): العميل يرجّع نقط متجر اتخصمت من طلب اتلغى، مرة واحدة وبنفس العدد بالظبط، ومربوطة بالطلب نفسه.
+    function storePointsRestoreOk(uid, mid, sid, delta){
+      let before = get(/databases/$(database)/documents/subOrders/$(sid)).data;
+      let after = getAfter(/databases/$(database)/documents/subOrders/$(sid)).data;
+      return after.get('customerId','') == uid && after.get('merchantId','') == mid
+        && after.get('status','') in ['CANCELLED','REJECTED']
+        && before.get('storePointsRestored', false) == false && after.get('storePointsRestored', false) == true
+        && delta == after.get('storePointsRedeemed', 0);
     }
     function validGoogleMapsLink(d){
       let link=d.get('googleMapsUrl','');
@@ -142,16 +154,16 @@ service cloud.firestore {
           || (old.status == 'PREPARING' && d.status in ['OUT_FOR_DELIVERY','CANCELLED']))
         && (d.status == 'OUT_FOR_DELIVERY'
           ? (only(['status','deliveryAgentId','deliveryAgentName','deliveryAgentPhone','statusTimes']) && validAssignment(d))
-          : only(['status','cancelReason','cancelledAt','restocked','discountRestored','statusTimes']));
+          : only(['status','cancelReason','cancelledAt','restocked','discountRestored','storePointsRestored','statusTimes']));
       let customerStep=signedIn() && old.get('customerId','') == request.auth.uid
         && old.status in ['PENDING_ADMIN','SENT_TO_MERCHANT'] && d.status == 'CANCELLED'
-        && only(['status','cancelReason','cancelledAt','restocked','discountRestored']);
+        && only(['status','cancelReason','cancelledAt','restocked','discountRestored','storePointsRestored']);
       let courierStep=signedIn() && old.get('deliveryAgentId','') != ''
         && get(/databases/$(database)/documents/deliveryAgents/$(old.deliveryAgentId)).data.get('ownerId','') == request.auth.uid
         && get(/databases/$(database)/documents/deliveryAgents/$(old.deliveryAgentId)).data.get('status','') == 'ACTIVE'
         && old.status == 'OUT_FOR_DELIVERY' && d.status in ['DELIVERED','CANCELLED']
         && (d.status != 'DELIVERED' || !old.get('batchFlow',false) || old.get('pickedUpAt',null) != null)
-        && only(['status','deliveredAt','cancelReason','cancelledAt','pointsAwarded','restocked','discountRestored']);
+        && only(['status','deliveredAt','cancelReason','cancelledAt','pointsAwarded','restocked','discountRestored','storePointsRestored']);
       let courierPickup=signedIn() && old.get('batchFlow',false)
         && old.get('deliveryAgentId','') != ''
         && get(/databases/$(database)/documents/deliveryAgents/$(old.deliveryAgentId)).data.get('ownerId','') == request.auth.uid
@@ -164,7 +176,7 @@ service cloud.firestore {
         && d.status in ['PENDING_ADMIN','SENT_TO_MERCHANT','ACCEPTED','PREPARING',
           'OUT_FOR_DELIVERY','DELIVERED','REJECTED','CANCELLED']
         && only(['status','merchantContactStatus','merchantContactedAt','sentByAdminId',
-          'cancelReason','cancelledAt','deliveryAgentId','deliveryAgentName','deliveryAgentPhone','deliveredAt','pickedUpAt','pointsAwarded','restocked','discountRestored','statusTimes'])
+          'cancelReason','cancelledAt','deliveryAgentId','deliveryAgentName','deliveryAgentPhone','deliveredAt','pickedUpAt','pointsAwarded','restocked','discountRestored','storePointsRestored','statusTimes'])
         && (d.status == 'DELIVERED' ? d.get('deliveredAt',null) == request.time : !touches(['deliveredAt']))
         && (d.status != 'OUT_FOR_DELIVERY' || validAssignment(d));
     }
