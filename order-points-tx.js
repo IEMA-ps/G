@@ -6,6 +6,8 @@ import * as StorePoints from './store-points.js';
 // Returns {awarded:boolean, pointsEarned, bonus, referrerId}.
 // storePointsOn: per-store points replace the global ones. The merchant's own settings (merchants/{id}.storePoints) are read inside the transaction.
 export async function deliverSubOrder(api, db, s, extra, {earnRate=0, loyaltyEnabled=true, bonusPoints=0, storePointsOn=false, nowMs=Date.now()}={}){
+  // Per-store points on: the inviter's platform-paid credit lives in its own field (inviteCredit). The old global loyaltyPoints stop counting.
+  const creditField = storePointsOn ? 'inviteCredit' : 'loyaltyPoints';
   const {doc, runTransaction, increment} = api;
   return runTransaction(db, async (tx)=>{
     const subRef = doc(db,'subOrders', s.id);
@@ -28,7 +30,7 @@ export async function deliverSubOrder(api, db, s, extra, {earnRate=0, loyaltyEna
     if(refSnap && refSnap.exists() && refSnap.data().status==='PENDING'){
       referrerId = refSnap.data().referrerId;
       if(reward){
-        tx.update(doc(db,'users', referrerId), { loyaltyPoints: increment(bonusPoints) });
+        tx.update(doc(db,'users', referrerId), { [creditField]: increment(bonusPoints) });
       }
       tx.update(refRef, { status:'REWARDED', rewardedAt: nowMs });
     }
