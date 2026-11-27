@@ -9,6 +9,7 @@ export const FLAGS = [
   {key:'broadcastTargetsEnabled', label:'بث الأدمن لفئة معينة (تجار، مناديب، مقدمي خدمة، مسوقين، أو شخص واحد) على تليجرام والإشعارات الفورية (يحتاج Worker المحدّث)'},
   {key:'marketerContestEnabled', label:'مسابقة المسوّقين الشهرية (ترتيب بأول اشتراك مدفوع، الجوائز يدويًا)'},
   {key:'storePointsEnabled', label:'نقط كل متجر بدل النقط العامة (التاجر يحدد المعدل والقيمة، والعميل يشوف رصيده في كل متجر). يحتاج قواعد Firebase v9'},
+  {key:'storePointsRedeemEnabled', label:'استخدام نقط المتجر عند الدفع (التاجر يتحمّل الخصم) ورصيد الدعوة من المنصة. يشتغل مع نقط كل متجر، ويحتاج قواعد Firebase v9 المحدّثة'},
   {key:'smartSupportEnabled', label:'مساعد على بابك: شات دعم ذكي بردود تلقائية جوه الموقع وعلى صفحة البداية (الزائر يسجّل اسمه ورقمه الأول)'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;
