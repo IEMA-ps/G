@@ -1,6 +1,6 @@
 // اختبارات موديول إشعارات تليجرام (واجهة العميل) — بدون شبكة، fetch وهمي.
 import assert from 'node:assert/strict';
-import {WORKER_URL, APP_SECRET, ADMIN_KEY, merchantKey, agentKey, send, linkStart, linkStatus, linkStop, linkModalHTML, BROADCAST_AUDIENCES, audienceLabel, broadcast, broadcastPreviewHTML, broadcastResultHTML} from './telegram-notify.js';
+import {WORKER_URL, setTokenProvider, ADMIN_KEY, merchantKey, agentKey, send, linkStart, linkStatus, linkStop, linkModalHTML, BROADCAST_AUDIENCES, audienceLabel, broadcast, broadcastPreviewHTML, broadcastResultHTML} from './telegram-notify.js';
 
 // مفاتيح الاستهداف
 assert.equal(ADMIN_KEY, 'role:ADMIN');
@@ -16,7 +16,14 @@ assert.equal(agentKey('xyz'), 'a:xyz');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, WORKER_URL + '/notify');
   assert.equal(calls[0].opts.method, 'POST');
-  assert.equal(calls[0].opts.headers['x-app-secret'], APP_SECRET);
+  assert.equal(calls[0].opts.headers['x-app-secret'], undefined);
+  assert.equal(calls[0].opts.headers.authorization, undefined);
+  setTokenProvider(async () => 'TOK');
+  await send(['m:m1'], 't', 'm', fetchImpl);
+  assert.equal(calls[1].opts.headers.authorization, 'Bearer TOK');
+  assert.equal(calls[1].opts.headers['x-app-secret'], undefined);
+  setTokenProvider(null);
+  calls.length = 1;
   const body = JSON.parse(calls[0].opts.body);
   assert.deepEqual(body.keys, ['m:m1', 'role:ADMIN']);
   assert.equal(body.title, 'طلب جديد 🔔');
