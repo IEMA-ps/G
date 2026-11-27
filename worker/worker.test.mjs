@@ -441,4 +441,46 @@ let linkUrl;
   assert.ok(sentMessages.at(-1).text.includes('إعلان'));
 }
 
+// تذكير السلة المتروكة
+{
+  const pushes = [];
+  const origFan = _internals.pushFanOut;
+  _internals.pushFanOut = async (e, keys, title, msg) => { pushes.push({keys, title, msg}); return {pushed: 1, gone: 0}; };
+  const sync = (tok, body) => call('/cart/sync', {method: 'POST', headers: auth(tok), body});
+  let r = await call('/cart/sync', {method: 'POST', headers: {'content-type': 'application/json'}, body: {count: 1}});
+  assert.equal(r.status, 401);
+  r = await sync('good-uid-1', {count: 4, total: 250.5, titles: ['كنافة', 'بسبوسة', 'قطايف', 'رابع']});
+  assert.equal(r.status, 200);
+  const saved = JSON.parse(await env.TG_LINKS.get('cart:uid-1'));
+  assert.equal(saved.titles.length, 3); assert.equal(saved.sentAt, 0);
+  const t0 = saved.updatedAt;
+  const noon = Date.parse('2026-11-27T12:00:00+02:00');
+  // قبل ساعتين: ولا حاجة. بعد ساعتين: تذكير واحد. تاني: مفيش.
+  saved.updatedAt = noon - 3600e3; await env.TG_LINKS.put('cart:uid-1', JSON.stringify(saved));
+  await _internals.runCartCron(env, noon); assert.equal(pushes.length, 0);
+  saved.updatedAt = noon - 2.5 * 3600e3; await env.TG_LINKS.put('cart:uid-1', JSON.stringify(saved));
+  await _internals.runCartCron(env, noon); assert.equal(pushes.length, 1);
+  assert.deepEqual(pushes[0].keys, ['uid:uid-1']);
+  assert.ok(pushes[0].msg.includes('4 منتجات') && pushes[0].msg.includes('250.5') && pushes[0].msg.includes('وغيرهم'));
+  await _internals.runCartCron(env, noon + 600e3); assert.equal(pushes.length, 1);
+  // تعديل السلة بعد التذكير ما يعيدش الإرسال
+  await sync('good-uid-1', {count: 5, total: 300, titles: ['س']});
+  const again = JSON.parse(await env.TG_LINKS.get('cart:uid-1')); again.updatedAt = noon - 3 * 3600e3; await env.TG_LINKS.put('cart:uid-1', JSON.stringify(again));
+  await _internals.runCartCron(env, noon + 1200e3); assert.equal(pushes.length, 1);
+  // سلة فاضية بتمسح، وبعدها سلة جديدة بتتذكّر تاني
+  await sync('good-uid-1', {count: 0}); assert.equal(await env.TG_LINKS.get('cart:uid-1'), null);
+  await sync('good-uid-1', {count: 1, total: 10, titles: ['ج']});
+  const fresh = JSON.parse(await env.TG_LINKS.get('cart:uid-1')); fresh.updatedAt = noon - 3 * 3600e3; await env.TG_LINKS.put('cart:uid-1', JSON.stringify(fresh));
+  await _internals.runCartCron(env, noon); assert.equal(pushes.length, 2);
+  // بالليل (3 الفجر) مفيش إرسال
+  await sync('good-uid-2', {count: 1, total: 10, titles: ['د']});
+  const n2 = JSON.parse(await env.TG_LINKS.get('cart:uid-2')); n2.updatedAt = noon - 5 * 3600e3; await env.TG_LINKS.put('cart:uid-2', JSON.stringify(n2));
+  await _internals.runCartCron(env, Date.parse('2026-11-28T03:00:00+02:00')); assert.equal(pushes.length, 2);
+  await _internals.runCartCron(env, Date.parse('2026-11-27T13:00:00+02:00')); assert.equal(pushes.length, 3);
+  // سلة قديمة جدًا (أكتر من 30 ساعة) بتتمسح من غير إرسال
+  const old = JSON.parse(await env.TG_LINKS.get('cart:uid-2')); old.sentAt = 0; old.updatedAt = noon - 40 * 3600e3; await env.TG_LINKS.put('cart:uid-2', JSON.stringify(old));
+  await _internals.runCartCron(env, noon); assert.equal(pushes.length, 3); assert.equal(await env.TG_LINKS.get('cart:uid-2'), null);
+  _internals.pushFanOut = origFan;
+  console.log('PASS cart reminder');
+}
 console.log('PASS worker: health, auth 401, full link flow, one-time code, merchant notify, admin list, notify guards, unlink, /start help. broadcast guards/roles, blocked cleanup. reminders sync/prefs/cron (1h reminder, 2h aggregated alert, tomorrow summary, prefs off, unlinked merchant). web push (vapid key, subscribe guards/dedupe/uid selector, notify fan-out payload, gone cleanup, unsubscribe, RFC 8291 decrypt roundtrip + VAPID JWT signature). uid-keys broadcast (admin-only, strict 400s, 101 cap, unlinked not counted, telegram+push, dedupe, gone cleanup, audience unchanged). messages sent:', sentMessages.length);
