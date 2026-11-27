@@ -618,7 +618,7 @@ installLocations();
 document.getElementById('regLocation').innerHTML=locationPicker('regLoc',{required:true});
 import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
-import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-4';installStoreTypes();
+import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-5';installStoreTypes();
 import * as Services from '/services.js?v=svc-6';
 import * as OrderMoney from '/order-money.js?v=money-1';
 import * as StoreHours from '/store-hours.js?v=hours-1';
@@ -5163,7 +5163,20 @@ const CATEGORY_SEED = [
   ['ورد وهدايا','باقات ورد وهدايا لكل المناسبات','💐'],
   ['أدوات مكتبية','أدوات مكتبية وقرطاسية ومستلزمات دراسية','📚'],
   ['مخابز وأفران','عيش وفطير ومخبوزات طازجة من الأفران','🥖'],
-  ['مغاسل ومكوجى','غسيل وكوي ملابس واستلام وتسليم لحد الباب','👔']
+  ['مغاسل ومكوجى','غسيل وكوي ملابس واستلام وتسليم لحد الباب','👔'],
+  ['ملابس وأزياء','ملابس رجالي وحريمي وأطفال وأحذية وإكسسوارات','👕'],
+  ['عطور','عطور ومعطرات وبخور وزيوت عطرية','🧴'],
+  ['دعاية وإعلان ومطبوعات','طباعة مجات وتيشرتات وأفلام وأعلام ولافتات وهدايا دعائية','📣'],
+  ['أحذية وحقائب','أحذية وشنط وحقائب سفر ومدرسية','👟'],
+  ['إلكترونيات وموبايلات','موبايلات وإكسسواراتها وسماعات وشواحن وأجهزة ذكية','📱'],
+  ['ساعات ونظارات وإكسسوارات','ساعات ونظارات وإكسسوارات شخصية وهدايا','⌚'],
+  ['أجهزة كهربائية','أجهزة منزلية صغيرة وكبيرة ومستلزمات كهربائية','🔌'],
+  ['أثاث وديكور','أثاث ومفروشات وإضاءة وديكورات للبيت','🛋️'],
+  ['منتجات بلدية وعسل وسمن','عسل وسمن وجبن ومنتجات بلدية طبيعية','🍯'],
+  ['عطارة ومكسرات وتمور','أعشاب وتوابل ومكسرات وتمور وياميش','🌰'],
+  ['مستلزمات حفلات وأفراح','زينة وبالونات وتوزيعات ومستلزمات المناسبات','🎉'],
+  ['قطع غيار وإكسسوارات سيارات','قطع غيار وزيوت وإكسسوارات وعناية بالسيارات','🚗'],
+  ['أدوات بناء وسباكة وكهرباء','مواد بناء وأدوات سباكة وكهرباء وعدد يدوية','🔧']
 ];
 window.seedCategories = async ()=>{
   const batch = writeBatch(db);
