@@ -66,11 +66,11 @@ export function providerStats(bookings,ms=Date.now()){
 }
 // ---- HTML ----
 const field=(id,label,v,esc)=>`<div class="field"><label>${label}</label>${v}</div>`;
-export function scheduleEditorHTML(schedule,esc){
+export function scheduleEditorHTML(schedule,esc,capOn=false){
   const s=normalizeSchedule(schedule);
   return `<div class="card" style="margin-bottom:14px"><b>مواعيد التشغيل</b>
     <div class="field" style="margin-top:10px"><label>مدة الحجز</label><select id="schSlot">${SLOT_OPTIONS.map(n=>`<option value="${n}" ${s.slotMinutes===n?'selected':''}>${n} دقيقة</option>`).join('')}</select></div>
-    <div class="field"><label>عدد الحجوزات المسموح في نفس الميعاد</label><select id="schCap">${CAPACITY_OPTIONS.map(n=>`<option value="${n}" ${(s.capacity||1)===n?'selected':''}>${n===1?'حجز واحد (الوضع العادي)':n+' حجوزات (مجموعة)'}</option>`).join('')}</select><p class="welcome-note" style="margin:6px 0 0">للمدرس اللي بياخد أكتر من طالب في الساعة. أكتر من 1 يحتاج قواعد Firebase الجديدة.</p></div>
+    ${capOn?`<div class="field"><label>عدد الحجوزات المسموح في نفس الميعاد</label><select id="schCap">${CAPACITY_OPTIONS.map(n=>`<option value="${n}" ${(s.capacity||1)===n?'selected':''}>${n===1?'حجز واحد (الوضع العادي)':n+' حجوزات (مجموعة)'}</option>`).join('')}</select><p class="welcome-note" style="margin:6px 0 0">للمدرس اللي بياخد أكتر من طالب في الساعة. أكتر من 1 يحتاج قواعد Firebase الجديدة.</p></div>`:''}
     ${DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:6px;margin:8px 0;align-items:center"><label style="min-width:70px;flex-shrink:0"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:0;min-width:0;flex:1"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:0;min-width:0;flex:1"></div>`;}).join('')}
     <div class="field"><label>أيام إجازة (اختياري)</label><div style="display:flex;gap:8px"><input type="date" id="schClosedAdd"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="addClosedDate()">إضافة</button></div>
     <div id="schClosedList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${s.closedDates.map(d=>`<span class="badge-chip" onclick="removeClosedDate('${d}')" style="cursor:pointer">${d} ✕</span>`).join('')}</div></div>
