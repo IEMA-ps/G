@@ -1133,6 +1133,7 @@ function showSignedOut(){
   getDoc(doc(db,'settings','app')).then(d=>{ if(!auth.currentUser && d.exists()){ S.settings={...S.settings,...d.data()}; } updateSupportBtn(); applyInviteUi(); }).catch(()=>updateSupportBtn());
   Auth.verificationNotice = ''; Auth.verificationSentAt = 0;
   document.getElementById('authScreen').classList.remove('hidden');
+  updateCartBar();
   Auth.switchTab(authRoute(location));
   applyMarketerLanding();
   const drawTeam=()=>{let team=document.getElementById('teamLanding');if(!team){team=document.createElement('div');team.id='teamLanding';document.getElementById('authScreen').prepend(team);}team.innerHTML=Program.joinLanding();};drawTeam();
@@ -1226,6 +1227,7 @@ function showAccountLoadFailure(e){
   document.getElementById('appShell').classList.add('hidden');
   document.getElementById('supportBtn').classList.add('hidden');
   document.getElementById('authScreen').classList.remove('hidden');
+  updateCartBar();
   document.getElementById('accountRecovery').classList.remove('hidden');
   Auth.showError(problem.message);
 }
@@ -2736,7 +2738,9 @@ function renderShell(){
 function updateCartBar(){
   let el = document.getElementById('cartBar');
   const n = (S.role==='customer' && Array.isArray(S.cart)) ? S.cart.reduce((a,c)=>a+(c.quantity||0),0) : 0;
-  const hide = !n || ['cart','checkout','orderDone'].includes(S.tab);
+  // بيظهر بس على شاشة المتجر (المنتجات) وللعميل الداخل، ومش على الدخول ولا باقي الشاشات
+  const authOpen = !document.getElementById('authScreen').classList.contains('hidden');
+  const hide = !n || authOpen || S.tab!=='merchantPage';
   if(hide){ if(el) el.remove(); document.body.classList.remove('has-cartbar'); return; }
   if(!el){ el = document.createElement('button'); el.id = 'cartBar'; el.type = 'button'; el.onclick = ()=>go('cart'); document.body.appendChild(el); }
   el.innerHTML = '<span class="cb-info">السلة ('+n+')<b>'+fmtMoney(cartTotal())+'</b></span><span class="cb-go">اطلب الآن <i class="fa-solid fa-arrow-left"></i></span>';
