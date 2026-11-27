@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {adSlotHTML,cleanHttps,normalizeSlot,readAdForm,AD_SLOT_IDS} from './ad-slots.js';
+import {isAdData,cleanImage,AD_MAX_CHARS,adSlotHTML,cleanHttps,normalizeSlot,readAdForm,AD_SLOT_IDS} from './ad-slots.js';
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 assert.equal(cleanHttps('https://x.com/a.png'),'https://x.com/a.png');
 for(const bad of ['http://x.com/a.png','javascript:alert(1)','data:image/png;base64,AAAA','//x.com/a.png','https://x.com/a b.png','',null,'https://']) assert.equal(cleanHttps(bad),'',String(bad));
@@ -20,4 +20,11 @@ assert.ok(readAdForm(mk({mkJoin:{imageUrl:'https://x.com/a.png',link:'javascript
 const ok=readAdForm(mk({mkJoin:{on:true,imageUrl:'https://x.com/a.png'},mkDash:{on:false,imageUrl:'https://x.com/b.png'}}));
 assert.equal(ok.error,undefined);assert.equal(Object.keys(ok.slots).length,AD_SLOT_IDS.length);
 assert.equal(normalizeSlot(null).on,false);
+const jpg='data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+assert.ok(isAdData(jpg));assert.equal(cleanImage(jpg),jpg);
+for(const bad of ['data:image/svg+xml;base64,AAAA','data:text/html;base64,AAAA','data:image/jpeg;base64,'+'A'.repeat(AD_MAX_CHARS),'http://x.com/a.png']) assert.equal(cleanImage(bad),'');
+assert.equal(cleanImage('https://x.com/a.png'),'https://x.com/a.png');
+assert.ok(adSlotHTML({adSlots:{mkDash:{on:true,imageUrl:jpg}}},'mkDash',esc).includes(jpg));
+assert.equal(readAdForm(mk({mkJoin:{on:true,imageUrl:jpg}})).slots.mkJoin.imageUrl,jpg);
+assert.ok(readAdForm(mk({mkJoin:{imageUrl:'data:image/svg+xml;base64,AAAA'}})).error);
 console.log('ad-slots tests passed');
