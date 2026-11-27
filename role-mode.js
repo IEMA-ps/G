@@ -5,3 +5,4 @@ export const canShop=role=>SHOPPING_ROLES.includes(role);
 export const ownStoreBlocked=(realRole,profile,merchantId)=>realRole==='merchant'&&!!merchantId&&profile?.merchantId===merchantId;
 export const cartHasOwnStore=(realRole,profile,merchantIds)=>(merchantIds||[]).some(id=>ownStoreBlocked(realRole,profile,id));
 export const backLabel=role=>role==='merchant'?'رجوع للوحة التاجر':role==='delivery'?'رجوع للوحة المندوب':'رجوع للوحة المسوّق';
+export const ordersBadge=(realRole,orders)=>realRole==='merchant'?(orders||[]).filter(o=>o.status==='SENT_TO_MERCHANT').length:0;
