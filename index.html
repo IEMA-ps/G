@@ -1389,7 +1389,7 @@ function subscribeMerchant(){
     S.myMerchant = null; S.merchantNoLink = true; render();
     return;
   }
-  S.unsubs.push(onSnapshot(doc(db,'merchants',mId), d=>{ S.myMerchant = d.data()||null; render(); }));
+  S.unsubs.push(onSnapshot(doc(db,'merchants',mId), d=>{ S.myMerchant = d.data()||null; S.myMerchantMissing = !d.exists(); render(); }));
   S.unsubs.push(onSnapshot(query(collection(db,'bookings'), where('merchantId','==',mId)), snap=>{ S.providerBookings = snap.docs.map(d=>({...d.data(),id:d.id})); render(); }, ()=>{}));
   S.unsubs.push(onSnapshot(doc(db,'serviceSchedules',mId), d=>{ S.mySchedule = d.exists()?d.data():null; S.closedDraft=null; render(); }, ()=>{}));
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.price-b.price); render(); }));
@@ -2680,7 +2680,7 @@ function renderShell(){
 
   let title = 'على بابك', sub = '';
   if(S.role==='customer'){ title='على بابك'; sub = 'مرحبًا، ' + (S.profile.firstName||''); }
-  if(S.role==='merchant'){ title = (S.myMerchant && S.myMerchant.businessName) || (Services.isServiceProvider(S.myMerchant)?'لوحة مقدم الخدمة':'لوحة التاجر'); sub=Services.isServiceProvider(S.myMerchant)?'إدارة نشاطك':'إدارة متجرك'; }
+  if(S.role==='merchant'){ const _rec=S.myMerchant,_prov=!!_rec&&Services.isServiceProvider(_rec); title = (_rec && _rec.businessName) || (_rec?(_prov?'لوحة مقدم الخدمة':'لوحة التاجر'):'لوحة نشاطك'); sub=(!_rec||_prov)?'إدارة نشاطك':'إدارة متجرك'; }
   if(S.role==='delivery'){ title = (S.myAgent && S.myAgent.name) || 'لوحة المندوب'; sub='مهام التوصيل'; }
   if(S.role==='marketer'){ title = 'لوحة المسوّق'; sub = 'مرحبًا، ' + (S.profile.firstName||''); }
   if(S.role==='admin'){ title='لوحة التحكم'; sub='إدارة منصة على بابك'; }
@@ -2823,6 +2823,7 @@ window.switchRoleMode = (toCustomer)=>{
   if(S.role==='merchant') subscribeMerchant();
   if(S.role==='marketer') subscribeMarketer();
   if(S.role==='delivery') subscribeDeliveryAgent();
+  if(S.role==='merchant'&&!S.myMerchant){ const rm=(S._rawMerchants||[]).find(m=>m.id===S.profile.merchantId); if(rm) S.myMerchant=rm; }
   S.tab = null; go(defaultTabForRole());
 };
 function defaultTabForRole(){
@@ -4253,8 +4254,8 @@ function storePointsCard(){
 function roleSwitchCard(){
   if(!S.shopping||!RoleMode.canShop(S.realRole)) return '';
   const rm=(S._rawMerchants||[]).find(m=>m.id===S.profile.merchantId),prov=!!rm&&Services.isServiceProvider(rm),n=RoleMode.ordersBadge(S.realRole,S.mySubOrders);
-  const label=S.realRole==='merchant'?(prov?'لوحة مقدم الخدمة':'لوحة التاجر'):S.realRole==='delivery'?'لوحة المندوب':'لوحة المسوّق';
-  const hint=S.realRole==='merchant'?(prov?'الحجوزات والمواعيد':'المنتجات والطلبات والتقارير'):S.realRole==='delivery'?'مهام التوصيل':'عملاؤك ورصيدك';
+  const label=S.realRole==='merchant'?(prov?'لوحة مقدم الخدمة':rm?'لوحة التاجر':'لوحة نشاطك'):S.realRole==='delivery'?'لوحة المندوب':'لوحة المسوّق';
+  const hint=S.realRole==='merchant'?(prov?'الحجوزات والمواعيد':rm?'المنتجات والطلبات والتقارير':'إدارة نشاطك'):S.realRole==='delivery'?'مهام التوصيل':'عملاؤك ورصيدك';
   return `<div class="card" style="margin-bottom:16px"><p style="margin:0 0 8px;font-weight:700;font-size:13px;color:var(--ink-soft)">حسابك التاني</p><button class="btn btn-primary" style="width:100%;display:flex;justify-content:space-between;align-items:center" onclick="switchRoleMode(false)"><span>${label}<small style="display:block;font-weight:500;opacity:.85">${hint}</small></span>${n?`<span class="badge-chip">${n} طلب جديد</span>`:'<i class="fa-solid fa-chevron-left"></i>'}</button></div>`;
 }
 function renderProfile(){
@@ -4371,7 +4372,8 @@ function renderMerchantDashboard(){
   { const _pw = merchantPaywall(); if(_pw) return _pw; }
   const m = S.myMerchant;
   if(S.merchantNoLink) return `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><h4>حسابك غير مربوط بأي متجر</h4><p>حسابك اتحدد كتاجر، بس لسه مش مربوط بمتجر. كلّم الإدارة عشان تربطه بمتجرك الصحيح.</p></div>`;
-  if(!m) return emptyState('fa-hourglass-half','جاري تحميل بيانات متجرك','');
+  if(!m&&S.myMerchantMissing) return `<div class="empty-state"><i class="fa-solid fa-triangle-exclamation"></i><h4>حسابك مربوط بنشاط مش موجود</h4><p>سجل نشاطك مش لاقيينه. كلّم الدعم علشان يتصلح، وفي الوقت ده تقدر تكمل كعميل.</p>${RoleMode.canShop(S.realRole)?'<button class="btn btn-primary" onclick="switchRoleMode(true)">واجهة العميل</button>':''}</div>`;
+  if(!m) return emptyState('fa-hourglass-half','جاري تحميل بيانات نشاطك','');
   if(m.status==='PENDING') return `<div class="empty-state"><i class="fa-solid fa-clock"></i><h4>طلبك قيد المراجعة</h4><p>الإدارة بتراجع بيانات متجرك. لما توافق وتفعّله هيوصلك إشعار.</p></div>`;
   if(m.status==='REJECTED') return `<div class="empty-state"><i class="fa-solid fa-circle-xmark"></i><h4>طلب انضمام المتجر مرفوض</h4><p>${esc(m.rejectionReason||'كلّم الإدارة عشان تعرف السبب وتطلب مراجعة تانية.')}</p></div>`;
   if(m.status==='SUSPENDED') return `<div class="empty-state"><i class="fa-solid fa-ban"></i><h4>متجرك معلّق حاليًا</h4><p>كلّم الإدارة عشان تعرف السبب.</p></div>`;
