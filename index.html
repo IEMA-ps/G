@@ -575,6 +575,7 @@ import {marketerBenefits} from '/marketer-benefits.js?v=marketer-join-1';
 import {installCatalog} from '/shared-catalog-ui.js?v=shared-3';
 import {productRow} from '/product-list.js?v=list-1';
 import {installSheet} from '/product-sheet-ui.js?v=sheet-1';
+import {installPaste} from '/product-paste-ui.js?v=paste-1';
 import {adminNavigation,adminMenu,adminPageHeading,acquisitionHTML,memberOverview} from '/admin-panel.js?v=admin-5';
 import {referralReport,referralReportHTML} from '/referral-report.js?v=report-1';
 import {installProgram} from '/marketer-program-ui.js?v=program-1';
@@ -4400,6 +4401,7 @@ function renderMerchantProducts(){
   return `
     <button class="btn btn-primary" style="margin-bottom:12px" onclick="SharedCatalog.open()">اختار من كتالوج المنتجات</button>
     <button class="btn btn-primary" style="margin-bottom:12px" onclick="ProductSheet.open()"><i class="fa-solid fa-file-excel"></i> رفع شيت Excel بالمنتجات</button>
+    ${FeatureFlags.isOn(S.settings,'pasteProductsEnabled')?`<button class="btn btn-primary" style="margin-bottom:12px" onclick="ProductPaste.open()"><i class="fa-solid fa-paste"></i> إضافة منتجات من رسالة</button>`:''}
     <button class="btn btn-primary" style="margin-bottom:16px" onclick="openProductForm()"><i class="fa-solid fa-plus"></i> إضافة منتج جديد</button>
     ${prods.length? `<div class="list-gap">${prods.map(p=>`
       <div class="card" style="display:flex;gap:10px;align-items:center${p.isActive===false?';opacity:.55':''}">
@@ -6231,6 +6233,7 @@ window.MarketerTools = createMarketerTools({state:()=>S, ui:UI, escape:esc,
     return (await httpsCallable(fns,name)(data||{})).data;
   }});
 installSheet({S,db,doc,writeBatch,UI,renderMain,canEdit:merchantCanEditProducts});
+installPaste({S,db,doc,writeBatch,UI,renderMain,canEdit:merchantCanEditProducts});
 const SharedCatalog=installCatalog({S,db,collection,query,where,orderBy,documentId,limit,startAfter,getDocs,doc,runTransaction,writeBatch,UI,renderMain,canEdit:merchantCanEditProducts,isSuper:isSuperAdmin,now:nowMs});
 let _appliedMarketerLanding = false;
 function applyMarketerLanding(){

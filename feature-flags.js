@@ -8,6 +8,7 @@ export const FLAGS = [
   {key:'providerRemindersEnabled', label:'تذكيرات مقدمي الخدمة على تليجرام (قبل الميعاد بساعة، حجز مستني ساعتين، ملخص بكرة) (تحتاج Worker #115)'},
   {key:'broadcastTargetsEnabled', label:'بث الأدمن لفئة معينة (تجار، مناديب، مقدمي خدمة، مسوقين، أو شخص واحد) على تليجرام والإشعارات الفورية (يحتاج Worker المحدّث)'},
   {key:'marketerContestEnabled', label:'مسابقة المسوّقين الشهرية (ترتيب بأول اشتراك مدفوع، الجوائز يدويًا)'},
+  {key:'pasteProductsEnabled', label:'إضافة منتجات بلصق رسالة أو قايمة أسعار (معاينة وتعديل قبل الحفظ)'},
   {key:'smartSupportEnabled', label:'مساعد على بابك: شات دعم ذكي بردود تلقائية جوه الموقع وعلى صفحة البداية (الزائر يسجّل اسمه ورقمه الأول)'}
 ];
 export const isOn = (settings, key) => !!settings && settings[key] === true;
