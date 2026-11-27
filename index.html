@@ -1975,7 +1975,7 @@ window.saveSubSettings = async ()=>{
   const nb = id => Math.max(0, parseFloat(document.getElementById(id).value)||0);
   const marketerTiers = [{name:'برونزي',min:0,bonus:nb('ssB1')},{name:'فضي',min:t2,bonus:nb('ssB2')},{name:'ذهبي',min:t3,bonus:nb('ssB3')}];
   if(subsEnforced && !confirm('تفعيل الإلزام هيخفي كل المتاجر اللي مالهاش اشتراك ساري عن العملاء فورًا. متأكد؟')) return;
-  await setDoc(doc(db,'settings','app'), {subsEnforced, useBackend:useBackendSel, marketerCommissionSource, marketerSubPercent, subPaymentInstructions, marketerTiers, marketerMinWithdraw, marketerOfferEnabled, marketerOffer2Enabled, offer2Fee, offer2Months, marketerFlatAmount, marketerBonusAmount, marketerBonusTarget}, {merge:true});
+  await saveSettingsDiff({subsEnforced, useBackend:useBackendSel, marketerCommissionSource, marketerSubPercent, subPaymentInstructions, marketerTiers, marketerMinWithdraw, marketerOfferEnabled, marketerOffer2Enabled, offer2Fee, offer2Months, marketerFlatAmount, marketerBonusAmount, marketerBonusTarget});
   await logAudit('تعديل إعدادات الاشتراكات', `إلزام: ${subsEnforced} — مصدر: ${marketerCommissionSource} — ${marketerSubPercent}%`);
   UI.toast('تم الحفظ ✅');
 };
@@ -2893,6 +2893,7 @@ function render(){
   try{ needProducts(); }catch(e){}
   renderShell();
 }
+['input','change'].forEach(t=>document.addEventListener(t,e=>{ if(S.tab==='a_settings' && e.target.closest && e.target.closest('#mainContent')) S._settingsDirty=true; },true));
 function renderMain(){
   if(!S.profile) return;
   const el = document.getElementById('mainContent');
@@ -2902,6 +2903,9 @@ function renderMain(){
   const prevCatScroll = el.querySelector('.cat-scroll');
   const savedScrollLeft = prevCatScroll ? prevCatScroll.scrollLeft : null;
   const renderKey = `${S.role}:${S.tab}`;
+  if(el.dataset.renderKey!==renderKey) S._settingsDirty=false;
+  // مش بنعيد رسم صفحة الإعدادات وهو بيعدّل فيها (كان أي تحديث لحظي بيرجّع القيم القديمة قبل الحفظ).
+  if(S.tab==='a_settings' && el.dataset.renderKey===renderKey && S._settingsDirty) return;
   const filterScroll = el.dataset.renderKey===renderKey
     ? [...el.querySelectorAll('.seg')].map(seg=>seg.scrollLeft) : [];
   const routes = {
@@ -6131,11 +6135,15 @@ window.unmarkSettlementPaid = async (id)=>{
 
 /* ================= إعدادات المنصة العامة ================= */
 function renderAdminSettings(){
+  if(!S._setFresh || Date.now()-S._setFresh>8000){
+    S._setFresh=Date.now();
+    getDoc(doc(db,'settings','app')).then(d=>{ if(d.exists()){ S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()}); if(!S._settingsDirty && S.tab==='a_settings') renderMain(); } }).catch(()=>{});
+  }
   if(!isSuperAdmin()) return `<div class="empty-state"><i class="fa-solid fa-lock"></i><h4>غير مصرّح لك</h4><p>الإعدادات دي لإدارة الموقع بس.</p></div>`;
   const s = S.settings;
   const sec=['money','notify','support','ops'].includes(S.aSetSec)?S.aSetSec:'money';
   return `
-    <div class="admin-subtabs" role="tablist" aria-label="أقسام الإعدادات">${[['money','fa-coins','العمولة والمكافآت'],['notify','fa-bell','الإشعارات والبث'],['support','fa-headset','الدعم والإعلانات'],['ops','fa-toggle-on','التشغيل']].map(t=>`<button role="tab" aria-selected="${sec===t[0]}" class="${sec===t[0]?'active':''}" onclick="S.aSetSec='${t[0]}';renderMain()"><i class="fa-solid ${t[1]}" aria-hidden="true"></i>${t[2]}</button>`).join('')}</div>
+    <div class="admin-subtabs" role="tablist" aria-label="أقسام الإعدادات">${[['money','fa-coins','العمولة والمكافآت'],['notify','fa-bell','الإشعارات والبث'],['support','fa-headset','الدعم والإعلانات'],['ops','fa-toggle-on','التشغيل']].map(t=>`<button role="tab" aria-selected="${sec===t[0]}" class="${sec===t[0]?'active':''}" onclick="S.aSetSec='${t[0]}';S._settingsDirty=false;renderMain()"><i class="fa-solid ${t[1]}" aria-hidden="true"></i>${t[2]}</button>`).join('')}</div>
     ${sec==='money'?`
     <div class="card" style="margin-bottom:16px">
       <h3 style="margin:0 0 14px;font-size:15px">إعدادات عامة للمنصة</h3>
@@ -6217,6 +6225,14 @@ function renderAdminSettings(){
     `:''}
   `;
 }
+// حفظ الإعدادات: بنقرأ المستند من السيرفر لحظتها ونكتب الحقول اللي اتغيرت فعلًا بس، فمفيش كتابة قيمة قديمة فوق قيمة جديدة.
+async function saveSettingsDiff(patch){
+  const d=await getDoc(doc(db,'settings','app')); const cur=d.exists()?d.data():{};
+  const out={}; for(const k in patch){ if(JSON.stringify(cur[k])!==JSON.stringify(patch[k])) out[k]=patch[k]; }
+  if(Object.keys(out).length) await setDoc(doc(db,'settings','app'), out, {merge:true});
+  S._settingsDirty=false;
+  return out;
+}
 window.saveAutoApproveSwitch = async ()=>{
   if(!isSuperAdmin()){ UI.toast('هذا الإجراء متاح لإدارة الموقع فقط'); return; }
   const autoApproveOrders=document.getElementById('setAutoApprove').checked;
@@ -6263,7 +6279,7 @@ window.activateWithCode = async ()=>{
 window.saveDeliverySubSettings = async ()=>{
   const n=(id,d)=>{ const v=parseFloat(document.getElementById(id).value); return Number.isFinite(v)&&v>=0?v:d; };
   const v={deliverySubOn:!!document.getElementById('setDsubOn').checked, deliverySubPrice:n('setDsubPrice',100), deliverySubDiscount:n('setDsubDiscount',40), deliverySubCourierPay:n('setDsubCourier',25), deliverySubMinOrder:n('setDsubMin',150), deliverySubDays:Math.max(1,Math.floor(n('setDsubDays',30)))};
-  await setDoc(doc(db,'settings','app'), v, {merge:true});
+  await saveSettingsDiff(v);
   await logAudit('تعديل إعدادات اشتراك التوصيل', JSON.stringify(v));
   UI.toast('تم حفظ إعدادات اشتراك التوصيل ✅');
 };
@@ -6282,7 +6298,7 @@ window.saveReferralSettings = async ()=>{
   const referralBonusPoints = Math.max(0, parseInt(document.getElementById('setReferralBonus').value)||0);
   const inviteOnly = !!document.getElementById('setInviteOnly')?.checked;
   const inviteLimit = Math.min(1000, Math.max(1, parseInt(document.getElementById('setInviteLimit')?.value)||10));
-  await setDoc(doc(db,'settings','app'), {referralBonusPoints, inviteOnly, inviteLimit}, {merge:true});
+  await saveSettingsDiff({referralBonusPoints, inviteOnly, inviteLimit});
   await logAudit('تعديل إعدادات دعوة الصديق', `نقاط المكافأة: ${referralBonusPoints}`);
   UI.toast('تم حفظ إعدادات دعوة الصديق ✅');
 };
@@ -6290,7 +6306,7 @@ window.saveLoyaltySettings = async ()=>{
   const loyaltyEnabled = true;
   const loyaltyEarnRate = Math.max(0, parseFloat(document.getElementById('setLoyaltyEarn').value)||0);
   const loyaltyRedeemValue = Math.max(0, parseFloat(document.getElementById('setLoyaltyRedeem').value)||0);
-  await setDoc(doc(db,'settings','app'), {loyaltyEnabled, loyaltyEarnRate, loyaltyRedeemValue}, {merge:true});
+  await saveSettingsDiff({loyaltyEnabled, loyaltyEarnRate, loyaltyRedeemValue});
   await logAudit('تعديل إعدادات نقاط الولاء', `مفعّل: ${loyaltyEnabled} — كسب: ${loyaltyEarnRate} — استبدال: ${loyaltyRedeemValue}`);
   UI.toast('تم حفظ إعدادات نقاط الولاء ✅');
 };
@@ -6309,7 +6325,7 @@ window.saveSupportPhone = async ()=>{
   const clean=raw?MerchantPlans.supportPhone(raw):'';
   if(raw && !clean){ UI.toast('رقم غير صحيح. اكتب رقم واتساب كامل، مثال 01012345678'); return; }
   const before=MerchantPlans.supportPhone(S.settings.supportWhatsapp)||'—';
-  await setDoc(doc(db,'settings','app'), {supportWhatsapp:clean}, {merge:true});
+  await saveSettingsDiff({supportWhatsapp:clean});
   await logAudit('تعديل رقم الدعم الفني', `من: ${before} — إلى: ${clean||'—'}`);
   UI.toast('تم حفظ رقم الدعم ✅');
 };
@@ -6353,7 +6369,7 @@ window.saveAppSettings = async ()=>{
   const marketerCommissionPercent = Math.max(0, Math.min(100, parseFloat(document.getElementById('setMkPct').value)||0));
   const marketerCommissionMonths = Math.max(0, Math.min(120, parseInt(document.getElementById('setMkMonths').value)||0));
   const multiStoreDeliveryDiscountPercent = DeliveryBatch.discountPercent(document.getElementById('setMultiStoreDiscount').value);
-  await setDoc(doc(db,'settings','app'), {platformCommissionPercent, defaultDeliveryFee, marketerCommissionPercent, marketerCommissionMonths, multiStoreDeliveryDiscountPercent}, {merge:true});
+  await saveSettingsDiff({platformCommissionPercent, defaultDeliveryFee, marketerCommissionPercent, marketerCommissionMonths, multiStoreDeliveryDiscountPercent});
   await logAudit('تعديل الإعدادات العامة', `عمولة: ${platformCommissionPercent}% — توصيل: ${defaultDeliveryFee}`);
   UI.toast('تم حفظ الإعدادات بنجاح ✅');
 };
