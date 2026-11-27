@@ -2809,6 +2809,7 @@ window.switchRoleMode = (toCustomer)=>{
   clearSubs();
   S.role = toCustomer ? 'customer' : real; S.shopping = !!toCustomer;
   S.searchQuery = '';
+  recomputeMerchants();
   subscribeShared();
   if(S.role==='customer') subscribeCustomer();
   if(S.role==='merchant') subscribeMerchant();
@@ -2921,7 +2922,7 @@ function displayCategories(){
 
 /* ================= HELPERS ================= */
 const merchantSubOk = m => MerchantPlans.visibleMerchant(m,S.settings.subsEnforced);
-function recomputeMerchants(){ const ok=(S._rawMerchants||[]).filter(merchantSubOk); S.merchants = ok.filter(m=>!Services.isServiceProvider(m)); S.providers = Services.servicesEnabled(S.settings)?ok.filter(m=>Services.isServiceProvider(m)):[]; }
+function recomputeMerchants(){ const ok=(S._rawMerchants||[]).filter(merchantSubOk).filter(m=>!(S.shopping&&RoleMode.ownStoreBlocked(S.realRole,S.profile,m.id))); S.merchants = ok.filter(m=>!Services.isServiceProvider(m)); S.providers = Services.servicesEnabled(S.settings)?ok.filter(m=>Services.isServiceProvider(m)):[]; }
 const getMerchant = id => S.merchants.find(m=>m.id===id) || (S.providers||[]).find(m=>m.id===id) || S.allMerchants.find(m=>m.id===id);
 const getProduct = id => S.products.find(p=>p.id===id);
 const getCategory = id => S.categories.find(c=>c.id===id);
@@ -3428,6 +3429,7 @@ window.pickBookWeeks=(mid,n)=>{ S.book[mid].weeks=n; renderMain(); };
 window.pickBookTime=(mid,date,time)=>{ const st=S.book[mid]; st.date=date; st.time=time; renderMain(); };
 window.submitBooking = async (mid,date,time)=>{
   const m=getMerchant(mid),st=S.book?.[mid]; if(!m||!st||!S.user) return;
+  if(RoleMode.ownStoreBlocked(S.realRole,S.profile,mid)){ UI.toast('مينفعش تحجز عند نفسك'); return; }
   try{
     const weekly=st.repeat==='weekly';
     const v=Services.validBookingInput({date,time,name:document.getElementById('bkName').value,phone:document.getElementById('bkPhone').value,note:document.getElementById('bkF0')?Services.typeNote(m.activityType,Services.TYPE_FIELDS[String(m.activityType||'').trim()].map((_,i)=>document.getElementById('bkF'+i).value)):document.getElementById('bkProblem')?Services.craftNote({problem:document.getElementById('bkProblem').value,address:document.getElementById('bkAddress').value}):document.getElementById('bkGoal')?Services.trainerNote({goal:document.getElementById('bkGoal').value,level:document.getElementById('bkLevel').value,place:document.getElementById('bkPlace').value,extra:document.getElementById('bkExtra').value}):document.getElementById('bkNote').value},st.schedule,bookedFor(mid,date));
