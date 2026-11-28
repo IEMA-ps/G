@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#C9401D"><meta name="referrer" content="strict-origin-when-cross-origin">
 <title>شوف صفحة متجرك قبل ما تسجّل | على بابك</title>
-<meta name="description" content="جرّب شكل صفحة متجرك على على بابك: الاسم والشعار واللون والمنتجات، وشوف الباقات قبل ما تسجّل.">
+<meta name="description" content="جرّب شكل صفحة متجرك في تطبيق على بابك: الاسم والشعار واللون والمنتجات، وشوف الباقات قبل ما تسجّل.">
 <link rel="icon" href="/favicon.png"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#30251F;--muted:#7B6A5B;--brand:#C9401D;--line:#EDDFCF;--paper:#FFF8EE;--surface:#FFFDFA}
@@ -224,7 +224,7 @@ function drawPlans(){
 }
 // WhatsApp share (opens WhatsApp so he picks who to send to)
 $('wa').onclick=()=>{
-  const lines=['معاينة صفحة متجري على على بابك:','الاسم: '+(st.name.trim()||'—'),'النوع: '+st.type,'اللون: '+hex(st.color)];
+  const lines=['معاينة صفحة متجري في تطبيق على بابك:','الاسم: '+(st.name.trim()||'—'),'النوع: '+st.type,'اللون: '+hex(st.color)];
   const ps=st.products.filter(p=>p.n.trim()).map(p=>'- '+p.n.trim()+(money(p.p)?' ('+money(p.p)+')':''));
   if(ps.length)lines.push('المنتجات:',...ps);
   lines.push('جرّب صفحتك: '+location.origin+'/try');
