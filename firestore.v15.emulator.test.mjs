@@ -1,0 +1,24 @@
+// Rules v15 test (ban protection). Needs the Firestore emulator on 127.0.0.1:8092.
+import {readFileSync} from 'node:fs';
+import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
+import {doc,setDoc,getDoc,updateDoc} from 'firebase/firestore';
+const rules=readFileSync(new URL('./firestore.v15.proposed.rules',import.meta.url),'utf8');
+const env=await initializeTestEnvironment({projectId:'demo-v15',firestore:{host:'127.0.0.1',port:8092,rules}});
+let n=0;const ok=async(p,m)=>{try{await assertSucceeds(p);n++;}catch(e){console.error('FAIL (should work):',m,e.message.slice(0,200));process.exitCode=1;}};
+const no=async(p,m)=>{try{await assertFails(p);n++;}catch(e){console.error('FAIL (should be denied):',m);process.exitCode=1;}};
+await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();const S=(p,id,d)=>setDoc(doc(db,p,id),d);
+  await S('users','b1',{role:'CUSTOMER',firstName:'a',banned:true,bannedAt:1,bannedBy:'adm',bannedReason:'x'});
+  await S('users','c1',{role:'CUSTOMER',firstName:'a'});
+  await S('users','adm',{role:'ADMIN',adminRole:'SUPER'});});
+const b1=env.authenticatedContext('b1').firestore(),c1=env.authenticatedContext('c1').firestore(),adm=env.authenticatedContext('adm').firestore();
+await no(updateDoc(doc(b1,'users','b1'),{banned:false}),'banned user clears banned');
+await no(updateDoc(doc(b1,'users','b1'),{banned:false,bannedAt:null,bannedBy:null,bannedReason:''}),'banned user clears all ban fields');
+await no(updateDoc(doc(b1,'users','b1'),{bannedReason:'edited'}),'banned user edits reason');
+await no(updateDoc(doc(c1,'users','c1'),{banned:true}),'user sets banned on self');
+await no(setDoc(doc(env.authenticatedContext('new1').firestore(),'users','new1'),{id:'new1',role:'CUSTOMER',banned:false}),'signup with ban fields');
+await ok(updateDoc(doc(b1,'users','b1'),{firstName:'z'}),'banned user normal edit still works (app blocks login)');
+await ok(updateDoc(doc(c1,'users','c1'),{firstName:'z'}),'normal profile edit works');
+await ok(updateDoc(doc(adm,'users','c1'),{banned:true,bannedAt:2,bannedBy:'adm',bannedReason:'r'}),'admin bans');
+await ok(updateDoc(doc(adm,'users','b1'),{banned:false,bannedAt:null,bannedBy:null,bannedReason:''}),'admin unbans');
+console.log('passed',n);
+await env.cleanup();
