@@ -658,7 +658,8 @@ import * as TermsConsent from '/terms-consent.js?v=terms-1';
 import * as BcAud from '/broadcast-audience.js';
 import * as PushClient from '/push-client.js';
 import * as CartReminder from '/cart-reminder.js?v=cr-1';
-import * as TelegramNotify from '/telegram-notify.js?v=tg-4';
+import * as TelegramNotify from '/telegram-notify.js?v=tg-5';
+import * as SubExpiry from '/sub-expiry.js?v=exp-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-2';
 import * as SupportChat from '/support-chat.js?v=support-4';
@@ -1448,7 +1449,7 @@ function subscribeMerchant(){
     S.myMerchant = null; S.merchantNoLink = true; render();
     return;
   }
-  S.unsubs.push(onSnapshot(doc(db,'merchants',mId), d=>{ S.myMerchant = d.data()||null; S.myMerchantMissing = !d.exists(); render(); }));
+  S.unsubs.push(onSnapshot(doc(db,'merchants',mId), d=>{ S.myMerchant = d.data()||null; S.myMerchantMissing = !d.exists(); expirySweepMerchant(mId, S.myMerchant); render(); }));
   S.unsubs.push(onSnapshot(query(collection(db,'bookings'), where('merchantId','==',mId)), snap=>{ S.providerBookings = snap.docs.map(d=>({...d.data(),id:d.id})); render(); }, ()=>{}));
   S.unsubs.push(onSnapshot(doc(db,'serviceSchedules',mId), d=>{ if(S.schedUnlocked && S.mySchedule) return; /* المزوّد بيعدّل دلوقتي: ما نعيدش رسم الفورم ونضيّع تعديلاته */ S.mySchedule = d.exists()?d.data():null; S.closedDraft=null; render(); }, ()=>{}));
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.price-b.price); render(); }));
@@ -1786,6 +1787,10 @@ window.submitSubscription = async (planId)=>{
 };
 /* اعتماد اشتراك: بيمدّ مدة المتجر من تاريخ انتهاء الحالي (لو لسه ساري) أو من الآن، ويسجّل نسبة المسوّق */
 async function activateSubscription(subId, sub){
+  await activateSubscriptionCore(subId, sub);
+  try{ TelegramNotify.expirySync([sub.merchantId]); }catch(e){} // مرآة الانتهاء للـ Worker (تنبيهات التاجر والمسوّق)
+}
+async function activateSubscriptionCore(subId, sub){
   if(sub.model===MerchantPlans.MODEL){ return activateNewSubscription(subId,sub); }
   if(useBackend()){ await callFn('approveSubscription', sub.status==='PENDING' && S.allSubs.some(x=>x._id===subId) ? {subId} : {merchantId:sub.merchantId, planId:sub.planId, note:sub.reference}); return; }
   const m = S.allMerchants.find(x=>x.id===sub.merchantId); if(!m) throw new Error('المتجر غير موجود');
@@ -1795,7 +1800,7 @@ async function activateSubscription(subId, sub){
   const basePct = plan && plan.marketerPercent!=null ? plan.marketerPercent : (S.settings.marketerSubPercent!=null?S.settings.marketerSubPercent:10);
   const marketerId = m.marketerId || null;
   const tierBonus = marketerId ? mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId && x.status==='ACTIVE').length).cur.bonus : 0;
-  const pct = Math.min(100, basePct + tierBonus);
+  const pct = SubExpiry.commissionPercent(basePct, tierBonus, SubExpiry.isRenewal(m)); // التجديد = نص النسبة
   const marketerAmount = marketerId ? roundMoney(sub.price*pct/100) : 0;
   await setDoc(doc(db,'subscriptions',subId), { ...sub, status:'APPROVED', approvedAt:nowMs(), approvedBy:S.user.uid, endsAt, marketerId, marketerPercent: marketerId?pct:0, marketerAmount,...(Program.enabled()?{marketerBasePercent:marketerId?basePct:0,marketerBaseAmount:marketerId?roundMoney(sub.price*basePct/100):0}:{}) }, {merge:true});
   await updateDoc(doc(db,'merchants',m.id), { subPlanId:sub.planId, subPlanName:sub.planName, subEndsAt:endsAt });
@@ -1929,7 +1934,7 @@ async function activateNewSubscription(subId,input){
     const basePct=p.marketerPercent!=null?p.marketerPercent:(settings.marketerSubPercent??10);
     const tierBonus=marketerId?mkTier(S.allMerchants.filter(x=>x.marketerId===marketerId&&x.status==='ACTIVE').length).cur.bonus:0;
     const flat=MarketerOffer.approvalAmounts({offerId:sub.offerId,marketerId,merchantId:m.id,subs:S.allSubs||[],settings});
-    const pct=flat?0:marketerId?Math.min(100,basePct+tierBonus):0;
+    const pct=flat?0:marketerId?SubExpiry.commissionPercent(basePct,tierBonus,SubExpiry.isRenewal(m)):0; // التجديد = نص النسبة
     const paid=offer?offer.price:p.price; // marketer share is computed on what the merchant actually paid
     tx.set(sr,{...sub,planName:p.name,model:p.model,kind:p.kind,price:paid,months:p.months,status:'APPROVED',approvedAt:nowMs(),approvedBy:S.user.uid,endsAt:terms.subEndsAt,marketerId,marketerPercent:pct,marketerAmount:flat?flat.marketerAmount:roundMoney(paid*pct/100),...(flat?{marketerBonus:flat.marketerBonus}:{}),...(Program.enabled()?{marketerBasePercent:marketerId&&!flat?basePct:0,marketerBaseAmount:marketerId&&!flat?roundMoney(paid*basePct/100):0}:{})},{merge:true});
     tx.update(mr,{...terms,...(offer?{marketerOfferUsed:true,marketerOfferUsedAt:nowMs()}:{})});
@@ -1965,6 +1970,7 @@ function renderAdminSubscriptions(){
       <div class="row-between"><b style="font-size:14px">${esc(p.name)}</b><b style="color:var(--teal)">${fmtMoney(p.price)}</b></div>
       <div style="font-size:12px;color:var(--ink-soft);margin:4px 0">${p.months} شهر · ${MerchantPlans.isNewPlan(p)?(p.kind==='PROFILE'?'تعريفية فقط':'طلبات + 2% على التاجر'):p.maxProducts>0?`حتى ${p.maxProducts} منتج`:'غير محدود'} · نسبة المسوّق: <b>${MerchantPlans.marketerPercentFor(p,st)}%</b>${p.active===false?' · <b style="color:var(--danger)">موقوفة</b>':''}</div>
       ${sa?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openPlanForm('${p._id}')"><i class="fa-solid fa-pen"></i> تعديل</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="togglePlan('${p._id}')">${p.active===false?'تفعيل':'إيقاف'}</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="deletePlan('${p._id}')"><i class="fa-solid fa-trash"></i></button></div>`:''}</div>`).join('')}</div>` : emptyState('fa-box-open','لا توجد باقات بعد','اضغط «إضافة باقة»')}
+    ${sa?`<div class="card" style="margin-bottom:16px"><h3 style="margin:0 0 8px;font-size:15px">تنبيهات انتهاء الاشتراك</h3><div style="font-size:12.5px;color:var(--ink-soft);line-height:1.8;margin-bottom:8px">التاجر: قبل الانتهاء بـ 7 و3 و1 يوم ويوم الانتهاء. المسوّق: بعد الانتهاء بـ 3 و10 أيام لو مفيش تجديد. التجديد بياخد نص نسبة المسوّق.</div><button class="btn btn-ghost btn-sm" style="width:auto" onclick="syncExpiryAll()">مزامنة كل المتاجر (مرة واحدة)</button></div>`:''}
     ${sa?`<div class="card" style="margin-bottom:16px"><h3 style="margin:0 0 12px;font-size:15px">إعدادات الاشتراكات</h3>
       <div class="field"><label>إلزام الاشتراك (إخفاء المتاجر غير المشتركة عن العملاء)</label><select id="ssEnforce"><option value="0" ${!st.subsEnforced?'selected':''}>اختياري (غير مُلزِم حاليًا)</option><option value="1" ${st.subsEnforced?'selected':''}>إلزامي</option></select></div>
       <div class="field"><label>مصدر نسبة المسوّق</label><select id="ssSource"><option value="SUBSCRIPTIONS" ${mkSource()==='SUBSCRIPTIONS'?'selected':''}>من الاشتراكات فقط</option><option value="ORDERS" ${mkSource()==='ORDERS'?'selected':''}>من عمولة الطلبات فقط</option><option value="BOTH" ${mkSource()==='BOTH'?'selected':''}>الاثنين</option></select></div>
@@ -2117,6 +2123,10 @@ function subscribeMarketer(){
     if(d.exists()) S.profile = {...S.profile, ...d.data()};
     render();
   }));
+  S.notifications = [];
+  S.unsubs.push(onSnapshot(query(collection(db,'notifications'), where('targetType','==','MARKETER'), where('targetId','==',uid_)), snap=>{
+    S.notifications = snap.docs.map(d=>({...d.data(), _id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render();
+  }, err=>console.error('marketer notifications denied (rules v14 not published?)', err)));
   S.mkMerchants = []; S.mkSubOrders = []; S.mkPayouts = []; S.mkSubs = []; S.mkWithdrawals = [];
   S.mkGrowthLoad={merchants:'loading',subscriptions:'loading'};
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((x,y)=>(x.sortOrder||0)-(y.sortOrder||0)||x.price-y.price); render(); }));
@@ -2127,6 +2137,7 @@ function subscribeMarketer(){
   S.unsubs.push(onSnapshot(query(collection(db,'merchants'), where('marketerId','==',uid_)), snap=>{
     S.mkMerchants = snap.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>(b.registeredAt||0)-(a.registeredAt||0));
     S.mkGrowthLoad.merchants='ready';
+    expirySweepMarketer(uid_, S.mkMerchants);
     const ids = new Set(S.mkMerchants.map(m=>m.id));
     // اشتراك لكل محل على حدة (استعلام تساوي) عشان قواعد الأمان تقدر تتحقق منه
     ids.forEach(id=>{
@@ -2631,6 +2642,30 @@ async function pushNotification(targetType, targetId, title, message, relatedOrd
     targetType, targetId, title, message, relatedOrderId, isRead:false, createdAt: nowMs()
   });
 }
+/* تنبيهات انتهاء الاشتراك داخل التطبيق: مستند واحد ثابت المعرّف لكل (متجر، تاريخ انتهاء، مرحلة). لو موجود القواعد بترفض الكتابة فمفيش تكرار. */
+S._expSeen = S._expSeen || new Set();
+async function expiryNote(id, targetType, targetId, a){
+  if(!a || S._expSeen.has(id)) return; S._expSeen.add(id);
+  try{ await setDoc(doc(db,'notifications',id), {targetType, targetId, title:a.title, message:a.message, relatedOrderId:null, isRead:false, createdAt:nowMs()}); }catch(e){}
+}
+function expirySweepMerchant(mId, m){
+  if(!m || !m.subEndsAt) return;
+  const st = SubExpiry.merchantStage(m.subEndsAt, nowMs()); if(!st) return;
+  expiryNote(SubExpiry.alertId(mId, m.subEndsAt, st), 'MERCHANT', mId, SubExpiry.merchantAlert(st, m.subEndsAt));
+}
+function expirySweepMarketer(uid, merchants){
+  (merchants||[]).forEach(m=>{
+    if(!m || !m.subEndsAt) return;
+    const st = SubExpiry.marketerStage(m.subEndsAt, nowMs()); if(!st) return;
+    expiryNote(SubExpiry.alertId(m.id, m.subEndsAt, st), 'MARKETER', uid, SubExpiry.marketerAlert(st, m.businessName, m.subEndsAt));
+  });
+}
+window.syncExpiryAll = async ()=>{
+  if(!isSuperAdmin()) return;
+  const ids = (S.allMerchants||[]).filter(m=>m.subEndsAt>0).map(m=>m.id);
+  let ok=0; for(let i=0;i<ids.length;i+=20){ if(await TelegramNotify.expirySync(ids.slice(i,i+20))) ok+=Math.min(20,ids.length-i); }
+  UI.toast(`تمت مزامنة ${ok} من ${ids.length} متجر لتنبيهات الانتهاء`);
+};
 window.markNotifRead = async (id)=>{ await updateDoc(doc(db,'notifications',id), {isRead:true}); };
 
 /* ================= WHATSAPP ================= */
