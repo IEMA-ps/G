@@ -145,3 +145,14 @@ export function broadcastResultHTML(r) {
 export function broadcastKeys(keys, text, token, fetchImpl) {
   return post('/broadcast', {keys, text: String(text || '').slice(0, MAX_MESSAGE)}, {token, fetchImpl});
 }
+
+// ---------- تنبيهات انتهاء الاشتراك ----------
+// الأدمن بيبعت معرّفات المتاجر بعد اعتماد اشتراك (أو مزامنة جماعية). الـ Worker بيقرا المتجر بتوكن الأدمن
+// ويخزن مرآة صغيرة (انتهاء + مسوّق)، والكرون بيبعت تنبيه التاجر قبل الانتهاء وتنبيه المسوّق بعده. fire-and-forget.
+export function expirySync(merchantIds, fetchImpl) {
+  const ids = (Array.isArray(merchantIds) ? merchantIds : [merchantIds]).filter(x => typeof x === 'string' && x).slice(0, 20);
+  if (!ids.length) return Promise.resolve(false);
+  return post('/expiry/sync', {merchantIds: ids}, {fetchImpl})
+    .then(r => !!(r && r.ok))
+    .catch(e => { console.warn('expiry sync failed', e); return false; });
+}
