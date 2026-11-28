@@ -2096,6 +2096,7 @@ window.openPlanForm = (id)=>{
     <div class="field" style="flex:1"><label>المدة (أشهر)</label><input id="plMonths" type="number" min="1" max="36" value="${p?p.months:1}"></div></div>
     <div style="display:flex;gap:10px"><div class="field" style="flex:1"><label>حد المنتجات (0 = غير محدود)</label><input id="plMax" type="number" min="0" value="${p?(p.maxProducts||0):0}"></div>
     <div class="field" style="flex:1"><label>نسبة المسوّق (%)</label><input id="plPct" type="number" min="0" max="100" step="0.1" value="${p&&p.marketerPercent!=null?p.marketerPercent:''}" placeholder="افتراضي ${S.settings.marketerSubPercent!=null?S.settings.marketerSubPercent:10}"></div></div>
+    <div class="field"><label>نوع الباقة</label><select id="plKind" onchange="document.getElementById('plKindHint').textContent=this.value==='ORDERING'?'طلبات: المتجر يستقبل طلبات وبياخد منه 2% من قيمة المنتجات المسلّمة. حد المنتجات مش بيتطبق.':this.value==='PROFILE'?'تعريفية: صفحة المتجر ولوكيشن وأرقام تواصل، بدون منتجات أو طلبات. حد المنتجات مش بيتطبق.':'اختار النوع، ده بيحدد لو المتجر هيقدر يستقبل طلبات.'">${p?'<option value="">قديم (بدون نوع، المتجر مش هيستقبل طلبات)</option>':'<option value="" selected disabled>اختر النوع...</option>'}<option value="PROFILE">تعريفية فقط (بدون طلبات)</option><option value="ORDERING">طلبات (عمولة 2% على التاجر)</option></select><div id="plKindHint" style="font-size:11.5px;color:var(--ink-soft);margin-top:4px;line-height:1.7">اختار النوع، ده بيحدد لو المتجر هيقدر يستقبل طلبات.${p?' بعد ما تحفظ النوع، السعر والمدة بيتقفلوا ومش بيتغيروا بعد كده.':''}</div></div>
     <div class="field"><label>وصف / مزايا الباقة</label><textarea id="plDesc">${esc(p?p.description||'':'')}</textarea></div>
     <button class="btn btn-primary" onclick="savePlan('${id||''}')">حفظ</button>`);
 };
@@ -2115,11 +2116,14 @@ window.savePlan = async (id)=>{
   const months = parseInt(document.getElementById('plMonths').value);
   if(!name || !(price>=0) || !(months>=1)){ UI.toast('أدخل الاسم والسعر والمدة'); return; }
   const pctRaw = document.getElementById('plPct').value;
+  const kind = document.getElementById('plKind').value;
+  if(!id && !kind){ UI.toast('اختار نوع الباقة: تعريفية أو طلبات'); return; }
   const data = { name, price, months, maxProducts: parseInt(document.getElementById('plMax').value)||0,
     marketerPercent: pctRaw===''?null:Math.max(0,Math.min(100,parseFloat(pctRaw)||0)), description: document.getElementById('plDesc').value.trim() };
+  if(kind){ Object.assign(data,{model:MerchantPlans.MODEL,kind,termsVersion:1,orderCommissionPercent:kind==='ORDERING'?2:0,maxProducts:0}); }
   if(id){ await updateDoc(doc(db,'plans',id), data); }
   else { const nid='plan_'+uid(); await setDoc(doc(db,'plans',nid), { id:nid, ...data, active:true, sortOrder:(S.plans||[]).length, createdAt:nowMs() }); }
-  await logAudit(id?'تعديل باقة':'إضافة باقة', name);
+  await logAudit(id?'تعديل باقة':'إضافة باقة', name+(kind?' — نوع: '+(kind==='PROFILE'?'تعريفية':'طلبات'):''));
   UI.closeModal(); UI.toast('تم الحفظ ✅');
 };
 window.seedDefaultPlans = async ()=>{
