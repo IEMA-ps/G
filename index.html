@@ -2321,7 +2321,7 @@ function renderMarketerInsights(){
   if(!FeatureFlags.isOn(S.settings,'marketerInsightsEnabled')) return '';
   const ms=S.mkMerchants||[], sm=MarketerInsights.monthSummary(ms,S.mkSubOrders||[]), att=MarketerInsights.needsAttention(ms);
   const chg=(c,p)=>{ const v=MarketerInsights.change(c,p); return v===null?'':`<span style="font-size:11px;color:${v>=0?'var(--success)':'var(--danger)'}">${v>=0?'▲':'▼'} ${Math.abs(v)}% عن الشهر اللي فات</span>`; };
-  const msg=a=>a.kind==='PENDING'?'':`أهلاً ${a.m.managerName||''}، بخصوص اشتراك "${a.m.businessName}" على على بابك، تحب نجدده؟`;
+  const msg=a=>a.kind==='PENDING'?'':`أهلاً ${a.m.managerName||''}، بخصوص اشتراك "${a.m.businessName}" في تطبيق على بابك، تحب نجدده؟`;
   return `<div class="card" style="margin-bottom:14px"><b style="font-size:14px">ملخص الشهر ده</b>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:12.5px">
       <div style="flex:1;min-width:120px"><div style="font-size:18px;font-weight:700">${sm.cur.orders}</div>طلبات مسلّمة<br>${chg(sm.cur.orders,sm.prev.orders)}</div>
@@ -2678,7 +2678,7 @@ function unreadCount(){ return S.notifications.filter(n=>!n.isRead).length; }
 
 // رسالة الدعم لصاحب حساب محظور (مسجَّل خروج): اسمه وإيميله بس، على واتساب الدعم الفني.
 function bannedSupportHref(num, who){
-  const msg = 'مرحبًا، حسابي على على بابك اتحظر وعايز أعرف السبب وأرجّعه.' + (who&&who.name?'\nالاسم: '+who.name:'') + (who&&who.email?'\nالإيميل: '+who.email:'');
+  const msg = 'مرحبًا، حسابي في تطبيق على بابك اتحظر وعايز أعرف السبب وأرجّعه.' + (who&&who.name?'\nالاسم: '+who.name:'') + (who&&who.email?'\nالإيميل: '+who.email:'');
   return MerchantPlans.supportHref(num, msg) || '';
 }
 window.openBannedSupport = ()=>{ if(window.__bannedHref) window.open(window.__bannedHref,'_blank','noopener'); };
@@ -6345,7 +6345,7 @@ window.activateWaitlisted = async uid=>{
   try{
     await updateDoc(doc(db,'users',uid),{waitlisted:false}); u.waitlisted=false;
     try{ await logAudit('تفعيل حساب من قائمة الانتظار',uid); }catch(e){}
-    const msg='أهلاً '+(u.firstName||'')+'، حسابك على على بابك اتفعّل ✅ تقدر تدخل دلوقتي: https://3alababk.com/';
+    const msg='أهلاً '+(u.firstName||'')+'، حسابك في تطبيق على بابك اتفعّل ✅ تقدر تدخل دلوقتي: https://3alababk.com/';
     let tg=false; try{ const r=await TelegramNotify.broadcastKeys(['uid:'+uid], msg, await S.user.getIdToken()); tg=!!(r&&(r.sent>0||r.pushed>0)); }catch(e){}
     UI.openModal(`<div class="modal-head"><h3>تم التفعيل ✅</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="line-height:1.9">${tg?'اتبعتتله رسالة على تليجرام.':'مش مربوط تليجرام، ابعتله من واتساب:'}</p><a class="btn btn-primary" target="_blank" rel="noopener" href="${waLink(u.phone||'',msg)}"><i class="fa-brands fa-whatsapp"></i> رسالة واتساب</a><button class="btn btn-ghost" style="margin-top:8px" onclick="showWaitlist()">رجوع للقائمة</button>`);
   }catch(e){ UI.toast('تعذّر التفعيل'); }
