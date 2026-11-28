@@ -120,3 +120,50 @@ assert.equal(S.addMonths('2026-12',1),'2027-01');assert.equal(S.addMonths('2026-
  assert.ok(!S.bookingPanelHTML({m:{id:'m1'},schedule:sch,booked:new Set(),date:'2026-11-24',time:'',profile:{}},x=>x,ms).includes("pickBookMonth('m1','2026-10')"));} // مفيش رجوع قبل شهر النهاردة
 const mvHtml=S.bookingPanelHTML({m:{id:'m1',activityType:'نقل أثاث وونش'},schedule:S.normalizeSchedule(S.defaultSchedule()),booked:new Set(),date:'2026-11-28',time:'11:00',profile:{},repeat:'once'},x=>x,Date.parse('2026-11-26T10:00:00+02:00'));
 assert.ok(mvHtml.includes('bkF2')&&!mvHtml.includes('bkNote')&&!mvHtml.includes('bkProblem'));
+
+// ---- المدرس: السنين والساعات لكل سنة ----
+{
+  const ms2=Date.parse('2026-11-24T09:00:00Z'); // الثلاثاء 11:00 القاهرة
+  const days=Object.fromEntries([0,1,2,3,4,5,6].map(d=>[String(d),{on:true,from:'16:00',to:'18:00'}]));
+  const sc=S.normalizeSchedule({slotMinutes:60,days,grades:['ثانوي - الصف الثالث','إعدادي - الصف الأول','مش سنة'],
+    gradeDays:{'ثانوي - الصف الثالث':{...days,'3':{on:true,from:'20:00',to:'22:00'}},'جامعي':days}});
+  assert.deepEqual(sc.grades,['إعدادي - الصف الأول','ثانوي - الصف الثالث']); // بالترتيب، من غير سنين غلط
+  assert.deepEqual(Object.keys(sc.gradeDays),['ثانوي - الصف الثالث']); // ساعات لسنة مش بيدرّسها بتتشال
+  assert.deepEqual(S.slotsFor(sc,'2026-11-25',new Set(),ms2,'ثانوي - الصف الثالث'),['20:00','21:00']);
+  assert.deepEqual(S.slotsFor(sc,'2026-11-25',new Set(),ms2,'إعدادي - الصف الأول'),['16:00','17:00']); // من غير ساعات خاصة: الأساسية
+  assert.deepEqual(S.slotsFor(sc,'2026-11-25',new Set(),ms2),['16:00','17:00']);
+  assert.equal(S.normalizeSchedule({days}).grades,undefined); // مدرس قديم: من غير سنين
+  const ok0={date:'2026-11-25',time:'20:00',name:'احمد',phone:'01012345678',note:''};
+  assert.ok(S.validBookingInput({...ok0,grade:'ثانوي - الصف الثالث'},sc,new Set(),ms2));
+  assert.throws(()=>S.validBookingInput({...ok0,grade:'إعدادي - الصف الأول'},sc,new Set(),ms2)); // 20:00 مش متاح للإعدادي
+  assert.throws(()=>S.validBookingInput({...ok0,grade:'جامعي'},sc,new Set(),ms2)); // سنة مش بيدرّسها
+  assert.throws(()=>S.validBookingInput({...ok0,grade:''},sc,new Set(),ms2));
+  const T={m:{id:'m1',activityType:'مدرسين'},schedule:sc,booked:new Set(),profile:{},date:'2026-11-25'};
+  const none=S.bookingPanelHTML({...T,time:''},x=>x,ms2);
+  assert.ok(none.includes('pickBookGrade')&&!none.includes('bk-cal')&&none.includes('اختار سنتك')); // لازم يختار السنة الأول
+  assert.ok(!none.includes('جامعي'));
+  const picked=S.bookingPanelHTML({...T,grade:'ثانوي - الصف الثالث',time:'20:00'},x=>x,ms2);
+  assert.ok(picked.includes('bk-cal')&&picked.includes('id="bkF0" value="ثانوي - الصف الثالث"')&&picked.includes('8:00 م'));
+  const one=S.bookingPanelHTML({...T,schedule:S.normalizeSchedule({days,grades:['جامعي']}),time:'16:00'},x=>x,ms2);
+  assert.ok(one.includes('bk-cal')&&one.includes('value="جامعي"')); // سنة واحدة: بتتختار لوحدها
+  // المحرر + القراءة من الفورم
+  const form={};const get=(id,f)=>form[id+'|'+f];
+  S.GRADES.forEach((g,gi)=>{form['schG'+gi+'|checked']=['ثانوي - الصف الأول','ثانوي - الصف الثاني'].includes(g);});
+  for(let i=0;i<7;i++){form['schOn'+i+'|checked']=i!==5;form['schFrom'+i+'|value']='10:00';form['schTo'+i+'|value']='14:00';}
+  form['schSlot|value']='60';form['schPer|checked']=true;
+  S.GRADES.forEach((g,gi)=>{for(let i=0;i<7;i++){form[`schgOn${gi}_${i}|checked`]=true;form[`schgFrom${gi}_${i}|value`]=gi===10?'18:00':'09:00';form[`schgTo${gi}_${i}|value`]=gi===10?'21:00':'12:00';}});
+  const rd=S.readScheduleForm(get,[]);
+  assert.deepEqual(rd.grades,['ثانوي - الصف الأول','ثانوي - الصف الثاني']);
+  assert.equal(rd.gradeDays['ثانوي - الصف الأول']['0'].from,'09:00');assert.equal(rd.gradeDays['ثانوي - الصف الثاني']['0'].from,'18:00');
+  form['schPer|checked']=false;assert.equal(S.readScheduleForm(get,[]).gradeDays,undefined);
+  form['schPer|checked']=true;form['schgTo10_0|value']='08:00';assert.throws(()=>S.readScheduleForm(get,[])); // ساعات غلط لسنة
+  const ed=S.scheduleEditorHTML(rd,x=>x,true,true);
+  assert.ok(ed.includes('أدرّس إيه')&&ed.includes('schgPanel13')&&ed.includes('schGradeQuick(0)'));
+  assert.ok(!S.scheduleEditorHTML(rd,x=>x,true,false).includes('أدرّس إيه')); // مش مدرس: مفيش القسم ده
+  // فلتر السنين في جدول المدرس
+  const bk=[{status:'PENDING',date:'2026-11-25',time:'20:00',customerName:'a',note:'السنة الدراسية: ثانوي - الصف الثالث'},{status:'ACCEPTED',date:'2026-11-25',time:'21:00',customerName:'b',note:'السنة الدراسية: جامعي\nالمادة: فيزياء'}];
+  assert.equal(S.gradeOfBooking(bk[1]),'جامعي');
+  const all=S.bookedTableHTML(bk,x=>x,ms2,'2026-11-25','');assert.ok(all.includes('>a<')||all.includes('a</b>'));
+  const f=S.bookedTableHTML(bk,x=>x,ms2,'2026-11-25','جامعي');assert.ok(f.includes('b</b>')&&!f.includes('a</b>')&&f.includes("setBookedGrade('')"));
+}
+console.log('teacher grades tests passed');

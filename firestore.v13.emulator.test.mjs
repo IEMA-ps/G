@@ -1,0 +1,25 @@
+// Rules v13 test (teacher grades in serviceSchedules). Needs the Firestore emulator on 127.0.0.1:8092.
+import {readFileSync} from 'node:fs';
+import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
+import {doc,setDoc} from 'firebase/firestore';
+const rules=readFileSync(new URL('./firestore.v13.proposed.rules',import.meta.url),'utf8');
+const env=await initializeTestEnvironment({projectId:'demo-v13',firestore:{host:'127.0.0.1',port:8092,rules}});
+let n=0;const ok=async(p,m)=>{try{await assertSucceeds(p);n++;}catch(e){console.error('FAIL (should work):',m,e.message.slice(0,200));process.exitCode=1;}};
+const no=async(p,m)=>{try{await assertFails(p);n++;}catch(e){console.error('FAIL (should be denied):',m);process.exitCode=1;}};
+await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();const S=(p,id,d)=>setDoc(doc(db,p,id),d);
+  await S('settings','app',{servicesEnabled:true});
+  await S('users','t1',{role:'MERCHANT',merchantId:'m1'});await S('users','t2',{role:'MERCHANT',merchantId:'m2'});
+  await S('merchants','m1',{ownerId:'t1',status:'ACTIVE',activityType:'مدرسين'});await S('merchants','m2',{ownerId:'t2',status:'ACTIVE',activityType:'مدرسين'});});
+const days=Object.fromEntries([0,1,2,3,4,5,6].map(d=>[String(d),{on:d!==5,from:'16:00',to:'20:00'}]));
+const base={merchantId:'m1',slotMinutes:60,closedDates:[],days,updatedAt:1};
+const db=env.authenticatedContext('t1').firestore(),other=env.authenticatedContext('t2').firestore();
+await ok(setDoc(doc(db,'serviceSchedules','m1'),base),'old-style schedule still works');
+await ok(setDoc(doc(db,'serviceSchedules','m1'),{...base,grades:['ثانوي - الصف الثالث','إعدادي - الصف الأول']}),'grades');
+await ok(setDoc(doc(db,'serviceSchedules','m1'),{...base,capacity:5,grades:['ثانوي - الصف الثالث'],gradeDays:{'ثانوي - الصف الثالث':days}}),'grades + per-grade hours');
+await no(setDoc(doc(db,'serviceSchedules','m1'),{...base,grades:'x'}),'grades not a list');
+await no(setDoc(doc(db,'serviceSchedules','m1'),{...base,grades:Array.from({length:15},(_,i)=>'g'+i)}),'too many grades');
+await no(setDoc(doc(db,'serviceSchedules','m1'),{...base,gradeDays:[1]}),'gradeDays not a map');
+await no(setDoc(doc(db,'serviceSchedules','m1'),{...base,price:50}),'unknown field');
+await no(setDoc(doc(other,'serviceSchedules','m1'),{...base,grades:['جامعي']}),'another teacher');
+console.log('passed',n);
+await env.cleanup();

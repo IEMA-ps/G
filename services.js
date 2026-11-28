@@ -16,8 +16,15 @@ export function normalizeSchedule(raw){
   for(const k of Object.keys(d.days)){const r=raw.days?.[k];const ok=r&&HM.test(r.from||'')&&HM.test(r.to||'')&&toMin(r.to)>toMin(r.from);days[k]=ok?{on:r.on===true,from:r.from,to:r.to}:d.days[k];}
   const closed=Array.isArray(raw.closedDates)?[...new Set(raw.closedDates.filter(x=>typeof x==='string'&&DATE.test(x)))].sort().slice(0,60):[];
   const cap=Number.isInteger(raw.capacity)&&raw.capacity>=1&&raw.capacity<=20?raw.capacity:1;
-  return {slotMinutes:slot,closedDates:closed,days,...(cap>1?{capacity:cap}:{})};
+  const normDays=r=>{const o={};for(const k of Object.keys(d.days)){const x=r&&r[k];const ok=x&&HM.test(x.from||'')&&HM.test(x.to||'')&&toMin(x.to)>toMin(x.from);o[k]=ok?{on:x.on===true,from:x.from,to:x.to}:days[k];}return o;};
+  // المدرس: السنين اللي بيدرّسها (GRADES بالترتيب)، وساعات مختلفة لكل سنة (اختياري). من غير سنين = زي الأول: كل الطلبة، نفس الساعات.
+  const grades=Array.isArray(raw.grades)?GRADES.filter(g=>raw.grades.includes(g)):[];
+  const gd={};if(grades.length&&raw.gradeDays&&typeof raw.gradeDays==='object')for(const g of grades)if(raw.gradeDays[g]&&typeof raw.gradeDays[g]==='object')gd[g]=normDays(raw.gradeDays[g]);
+  return {slotMinutes:slot,closedDates:closed,days,...(cap>1?{capacity:cap}:{}),...(grades.length?{grades}:{}),...(Object.keys(gd).length?{gradeDays:gd}:{})};
 }
+// ساعات يوم معيّن لسنة معيّنة: ساعات السنة لو متحددة، وإلا الساعات الأساسية.
+export const daysFor=(s,grade)=>(grade&&s.gradeDays&&s.gradeDays[grade])||s.days;
+export const gradesOf=schedule=>normalizeSchedule(schedule).grades||[];
 export function cairoNow(ms=Date.now()){
   const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms)).map(x=>[x.type,x.value]));
   return {date:`${p.year}-${p.month}-${p.day}`,time:`${p.hour}:${p.minute}`};
@@ -50,8 +57,8 @@ export function calendarHTML({mid,ym,sel,today,lastDay,count},esc){
     <div class="bk-cal-key"><span><i class="bk-cal-dot"></i> فيه مواعيد</span><span class="off">رمادي: مقفول أو اتملا</span></div></div>`;
 }
 // times that can still be booked on `date`. booked: Set of 'HH:MM' that are active.
-export function slotsFor(schedule,date,booked=new Set(),ms=Date.now()){
-  const s=normalizeSchedule(schedule),day=s.days[String(weekday(date))],now=cairoNow(ms);
+export function slotsFor(schedule,date,booked=new Set(),ms=Date.now(),grade=''){
+  const s=normalizeSchedule(schedule),day=daysFor(s,grade)[String(weekday(date))],now=cairoNow(ms);
   if(!DATE.test(date)||!day.on||s.closedDates.includes(date)||date<now.date)return [];
   const out=[];for(let t=toMin(day.from);t+s.slotMinutes<=toMin(day.to);t+=s.slotMinutes){const hm=fromMin(t);if(date===now.date&&hm<=now.time)continue;if(!booked.has(hm))out.push(hm);}
   return out;
@@ -105,15 +112,16 @@ export function typeNote(type,values){
   });
   return out.join('\n');
 }
-export const typeFieldsHTML=(type,esc)=>(TYPE_FIELDS[String(type||'').trim()]||[]).map(([label,kind,opt,req],i)=>kind==='select'
+export const typeFieldsHTML=(type,esc,lockGrade)=>(TYPE_FIELDS[String(type||'').trim()]||[]).map(([label,kind,opt,req],i)=>(lockGrade!==undefined&&i===0&&label==='السنة الدراسية')?`<input type="hidden" id="bkF0" value="${esc(lockGrade)}">`:kind==='select'
   ?`<div class="field"><label>${esc(label)}${req?' *':''}</label><select id="bkF${i}"><option value="">اختار</option>${opt.map(o=>`<option>${esc(o)}</option>`).join('')}</select></div>`
   :`<div class="field"><label>${esc(label)}${req?' *':''}</label><input id="bkF${i}" maxlength="${opt}"></div>`).join('');
-export function validBookingInput({date,time,name,phone,note},schedule,booked,ms=Date.now()){
+export function validBookingInput({date,time,name,phone,note,grade},schedule,booked,ms=Date.now()){
   const n=String(name||'').trim(),p=String(phone||'').replace(/[\s\-]/g,''),nt=String(note||'').trim();
   if(!n||n.length>80)throw Error('اكتب اسمك');
   if(!/^(\+?20|0)?1[0125]\d{8}$/.test(p))throw Error('رقم الموبايل مش صحيح');
   if(nt.length>300)throw Error('الملاحظة أطول من 300 حرف');
-  if(!slotsFor(schedule,date,booked,ms).includes(time))throw Error('الميعاد ده مش متاح، اختار ميعاد تاني');
+  const gl=gradesOf(schedule);if(gl.length&&!gl.includes(grade))throw Error('اختار السنة الدراسية من اللي بيدرّسها المدرس');
+  if(!slotsFor(schedule,date,booked,ms,grade).includes(time))throw Error('الميعاد ده مش متاح، اختار ميعاد تاني');
   return {name:n,phone:p,note:nt};
 }
 export const fmtDay=date=>`${DAY_NAMES[weekday(date)]} ${date.slice(8)}/${date.slice(5,7)}`;
@@ -124,12 +132,27 @@ export function providerStats(bookings,ms=Date.now()){
 }
 // ---- HTML ----
 const field=(id,label,v,esc)=>`<div class="field"><label>${label}</label>${v}</div>`;
-export function scheduleEditorHTML(schedule,esc,capOn=false){
+export const GRADE_GROUPS=[['كل الابتدائي',GRADES.slice(0,6)],['كل الإعدادي',GRADES.slice(6,9)],['كل الثانوي',GRADES.slice(9,12)]];
+// قسم "أدرّس إيه" للمدرس: اختيار السنين + (اختياري) ساعات مختلفة لكل سنة. الفورم كله بيتقرا من الـDOM وقت الحفظ.
+export function gradesEditorHTML(s,esc){
+  const gl=s.grades||[],per=!!s.gradeDays,gd=s.gradeDays||{};
+  const panel=(g,gi)=>`<div class="sch-gpanel" id="schgPanel${gi}" style="display:${g===gl[0]?'block':'none'}"><b>ساعات ${esc(g)}</b>
+    ${DAY_NAMES.map((n,i)=>{const d=(gd[g]||s.days)[String(i)];return `<div class="row-between" style="gap:6px;margin:8px 0;align-items:center"><label style="min-width:70px;flex-shrink:0"><input type="checkbox" id="schgOn${gi}_${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schgFrom${gi}_${i}" value="${d.from}" style="width:0;min-width:0;flex:1"><span>إلى</span><input type="time" id="schgTo${gi}_${i}" value="${d.to}" style="width:0;min-width:0;flex:1"></div>`;}).join('')}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="schGradeCopyMain(${gi})">انسخ الساعات الأساسية</button><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="schGradeCopyAll(${gi})">انسخ الساعات دي لكل السنين</button></div></div>`;
+  return `<div class="card sch-grades" style="margin:10px 0 14px;background:var(--teal-tint)"><b>أدرّس إيه؟</b>
+    <p class="welcome-note" style="margin:4px 0 10px">اختار السنين اللي بتدرّسها. الطالب مش هيشوف غيرها، ولازم يختار سنته قبل ما يحجز.</p>
+    <div class="sch-gquick">${GRADE_GROUPS.map(([n,list],qi)=>`<button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="schGradeQuick(${qi})">${n}</button>`).join('')}<button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="schGradeQuick(-1)">مسح الكل</button></div>
+    <div class="bk-grades" style="margin-top:10px">${GRADES.map((g,gi)=>`<label class="bk-grade sch-gchip ${gl.includes(g)?'active':''}"><input type="checkbox" id="schG${gi}" ${gl.includes(g)?'checked':''} onchange="schGradeChanged()" style="display:none">${esc(g)}</label>`).join('')}</div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="schPer" ${per?'checked':''} onchange="schGradeChanged()"> ساعات مختلفة لكل سنة</label>
+    <div id="schPerBox" style="display:${per?'block':'none'};margin-top:10px"><div class="field"><label>اضبط ساعات سنة</label><select id="schGradeSel" onchange="schGradeShow()">${GRADES.map((g,gi)=>gl.includes(g)?`<option value="${gi}">${esc(g)}</option>`:'').join('')}</select></div>${GRADES.map(panel).join('')}<p class="welcome-note">أيام الإجازة، مدة الحجز وعدد الحجوزات في الميعاد واحدة لكل السنين.</p></div></div>`;
+}
+export function scheduleEditorHTML(schedule,esc,capOn=false,teacher=false){
   const s=normalizeSchedule(schedule);
-  return `<div class="card" style="margin-bottom:14px"><b>مواعيد التشغيل</b>
+  return `<div class="card" style="margin-bottom:14px"><b>مواعيد التشغيل</b>${teacher?gradesEditorHTML(s,esc):''}
     <div class="field" style="margin-top:10px"><label>مدة الحجز</label><select id="schSlot">${SLOT_OPTIONS.map(n=>`<option value="${n}" ${s.slotMinutes===n?'selected':''}>${n} دقيقة</option>`).join('')}</select></div>
     ${capOn?`<div class="field"><label>عدد الحجوزات المسموح في نفس الميعاد</label><select id="schCap">${CAPACITY_OPTIONS.map(n=>`<option value="${n}" ${(s.capacity||1)===n?'selected':''}>${n===1?'حجز واحد (الوضع العادي)':n+' حجوزات (مجموعة)'}</option>`).join('')}</select><p class="welcome-note" style="margin:6px 0 0">للمدرس اللي بياخد أكتر من طالب في الساعة.</p></div>`:''}
     ${DAY_NAMES.map((n,i)=>{const d=s.days[String(i)];return `<div class="row-between" style="gap:6px;margin:8px 0;align-items:center"><label style="min-width:70px;flex-shrink:0"><input type="checkbox" id="schOn${i}" ${d.on?'checked':''}> ${n}</label><input type="time" id="schFrom${i}" value="${d.from}" style="width:0;min-width:0;flex:1"><span>إلى</span><input type="time" id="schTo${i}" value="${d.to}" style="width:0;min-width:0;flex:1"></div>`;}).join('')}
+    <div style="margin:6px 0 12px"><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="schDaysCopy()">انسخ ساعات أول يوم شغل لباقي الأيام</button></div>
     <div class="field"><label>أيام إجازة (اختياري)</label><div style="display:flex;gap:8px"><input type="date" id="schClosedAdd"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="addClosedDate()">إضافة</button></div>
     <div id="schClosedList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${s.closedDates.map(d=>`<span class="badge-chip" onclick="removeClosedDate('${d}')" style="cursor:pointer">${d} ✕</span>`).join('')}</div></div>
     <button class="btn btn-primary" onclick="saveProviderSchedule()">حفظ المواعيد</button></div>`;
@@ -137,24 +160,38 @@ export function scheduleEditorHTML(schedule,esc,capOn=false){
 export function readScheduleForm(get,closed){
   const days={};for(let i=0;i<7;i++)days[String(i)]={on:!!get('schOn'+i,'checked'),from:get('schFrom'+i,'value'),to:get('schTo'+i,'value')};
   for(const [k,d] of Object.entries(days))if(d.on&&!(HM.test(d.from)&&HM.test(d.to)&&toMin(d.to)>toMin(d.from)))throw Error(`ساعات ${DAY_NAMES[+k]} مش مظبوطة`);
-  return normalizeSchedule({slotMinutes:Number(get('schSlot','value')),capacity:Number(get('schCap','value'))||1,days,closedDates:closed});
+  const grades=GRADES.filter((g,gi)=>get('schG'+gi,'checked')===true);
+  let gradeDays;
+  if(grades.length&&get('schPer','checked')===true){
+    gradeDays={};
+    GRADES.forEach((g,gi)=>{if(!grades.includes(g))return;const dd={};for(let i=0;i<7;i++)dd[String(i)]={on:!!get(`schgOn${gi}_${i}`,'checked'),from:get(`schgFrom${gi}_${i}`,'value'),to:get(`schgTo${gi}_${i}`,'value')};
+      for(const [k,d] of Object.entries(dd))if(d.on&&!(HM.test(d.from)&&HM.test(d.to)&&toMin(d.to)>toMin(d.from)))throw Error(`ساعات ${DAY_NAMES[+k]} لـ${g} مش مظبوطة`);
+      gradeDays[g]=dd;});
+  }
+  return normalizeSchedule({slotMinutes:Number(get('schSlot','value')),capacity:Number(get('schCap','value'))||1,days,closedDates:closed,grades,gradeDays});
 }
 // الأوقات اللي اتملت (عدد الحجوزات وصل للسعة) في اليوم ده.
 export function bookedSetFor(booked,date,cap=1){const n={};for(const x of booked||[])if(x.startsWith(date+'|')){const t=x.split('|')[1];n[t]=(n[t]||0)+1;}return new Set(Object.keys(n).filter(t=>n[t]>=cap));}
 export const WEEK_CHOICES=[4,8,12];
 // dates of a weekly series starting at `date`; ok=false when that week's time is already taken or closed.
-export function seriesInfo({schedule,booked,date,time,weeks},ms=Date.now()){
+export function seriesInfo({schedule,booked,date,time,weeks,grade},ms=Date.now()){
   const n=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0];
-  return Array.from({length:n},(_,i)=>{const d=addDays(date,7*i);return {date:d,ok:slotsFor(schedule,d,bookedSetFor(booked,d,capacityOf(schedule)),ms).includes(time)};});
+  return Array.from({length:n},(_,i)=>{const d=addDays(date,7*i);return {date:d,ok:slotsFor(schedule,d,bookedSetFor(booked,d,capacityOf(schedule)),ms,grade).includes(time)};});
 }
-export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,weeks,month},esc,ms=Date.now()){
+export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,weeks,month,grade:gradeIn},esc,ms=Date.now()){
   const bf=d=>bookedSetFor(booked,d,capacityOf(schedule));
-  const days=dateOptions(ms,BOOK_WINDOW),sel=days.includes(date)?date:days.find(d=>slotsFor(schedule,d,bf(d),ms).length)||days[0],slots=slotsFor(schedule,sel,bf(sel),ms);
-  const person=((profile?.firstName||'')+' '+(profile?.lastName||'')).trim(),ph=String(profile?.phone||'').trim(),known=!!person&&/^\+?[\d\s()-]{7,25}$/.test(ph),ready=!!(time&&slots.includes(time)),wk=repeat==='weekly',wn=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0],ser=wk&&ready?seriesInfo({schedule,booked,date:sel,time,weeks:wn},ms):[],okN=ser.filter(x=>x.ok).length;
+  // مدرس حدد السنين اللي بيدرّسها: الطالب يختار سنته الأول، وبعدها يشوف مواعيد السنة دي بس.
+  const tg=String(m&&m.activityType||'').trim()==='مدرسين'?gradesOf(schedule):[];
+  const grade=tg.length?(tg.includes(gradeIn)?gradeIn:(tg.length===1?tg[0]:'')):'';
+  const gradeChips=tg.length?`<div class="bk-label">السنة الدراسية *</div><div class="bk-grades">${tg.map(g=>`<button type="button" class="bk-grade ${g===grade?'active':''}" onclick="pickBookGrade('${esc(m.id)}','${esc(g)}')">${esc(g)}</button>`).join('')}</div>`:'';
+  if(tg.length&&!grade)return `<div class="card bk-panel" id="bookPanel" style="margin-bottom:16px"><h3 style="margin:0 0 14px">احجز ميعاد</h3>${gradeChips}<p class="hint-box" style="margin-top:12px">اختار سنتك الدراسية الأول عشان تشوف المواعيد المتاحة ليها.</p></div>`;
+  const days=dateOptions(ms,BOOK_WINDOW),sel=days.includes(date)?date:days.find(d=>slotsFor(schedule,d,bf(d),ms,grade).length)||days[0],slots=slotsFor(schedule,sel,bf(sel),ms,grade);
+  const person=((profile?.firstName||'')+' '+(profile?.lastName||'')).trim(),ph=String(profile?.phone||'').trim(),known=!!person&&/^\+?[\d\s()-]{7,25}$/.test(ph),ready=!!(time&&slots.includes(time)),wk=repeat==='weekly',wn=WEEK_CHOICES.includes(weeks)?weeks:WEEK_CHOICES[0],ser=wk&&ready?seriesInfo({schedule,booked,date:sel,time,weeks:wn,grade},ms):[],okN=ser.filter(x=>x.ok).length;
   const dayChip=d=>{const n=slotsFor(schedule,d,bf(d),ms).length,f=fmtDay(d).split(' ');return `<button type="button" class="bk-day ${d===sel?'active':''} ${n?'':'off'}" ${n?`onclick="pickBookDate('${esc(m.id)}','${d}')"`:'disabled'}><strong>${f[0]}</strong><span>${f[1]}</span><small>${n?n+' ميعاد':'مقفول'}</small></button>`;};
   return `<div class="card bk-panel" id="bookPanel" style="margin-bottom:16px"><h3 style="margin:0 0 14px">احجز ميعاد</h3>
+    ${gradeChips}
     <div class="bk-label">1. اختار اليوم</div>
-    ${calendarHTML({mid:m.id,ym:/^\d{4}-\d{2}$/.test(String(month||''))&&month>=monthOf(days[0])&&month<=monthOf(days[days.length-1])?month:monthOf(sel),sel,today:days[0],lastDay:days[days.length-1],count:d=>slotsFor(schedule,d,bf(d),ms).length},esc)}
+    ${calendarHTML({mid:m.id,ym:/^\d{4}-\d{2}$/.test(String(month||''))&&month>=monthOf(days[0])&&month<=monthOf(days[days.length-1])?month:monthOf(sel),sel,today:days[0],lastDay:days[days.length-1],count:d=>slotsFor(schedule,d,bf(d),ms,grade).length},esc)}
     <div class="bk-label">2. اختار الميعاد ${fmtDay(sel)}</div>
     ${slots.length?`<div class="bk-slots">${slots.map(t=>`<button type="button" class="bk-slot ${t===time?'active':''}" onclick="pickBookTime('${esc(m.id)}','${sel}','${t}')">${fmtTime(t)}</button>`).join('')}</div>`:'<p class="hint-box">مفيش مواعيد فاضية فى اليوم ده.</p>'}
     ${ready?`<div class="bk-label">3. نوع الحجز</div>
@@ -165,7 +202,7 @@ export function bookingPanelHTML({m,schedule,booked,date,time,profile,repeat,wee
     ${known?`<div class="bk-known" id="bkKnown"><div><strong>${esc(person)}</strong><span>${esc(ph)}</span></div><button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="document.getElementById('bkKnown').classList.add('hidden');document.getElementById('bkEdit').classList.remove('hidden')">تعديل</button></div>`:''}
     <div id="bkEdit" class="${known?'hidden':''}"><div class="field"><label>اسمك</label><input id="bkName" maxlength="80" value="${esc(person)}"></div>
     <div class="field"><label>موبايلك</label><input id="bkPhone" inputmode="tel" value="${esc(ph)}"></div></div>
-    ${TYPE_FIELDS[String(m.activityType||'').trim()]?typeFieldsHTML(m.activityType,esc):isTrainer(m)?`<div class="field"><label>هدفك من التمرين *</label><select id="bkGoal"><option value="">اختار</option>${TRAINER_GOALS.map(g=>`<option>${g}</option>`).join('')}</select></div>
+    ${TYPE_FIELDS[String(m.activityType||'').trim()]?typeFieldsHTML(m.activityType,esc,tg.length?grade:undefined):isTrainer(m)?`<div class="field"><label>هدفك من التمرين *</label><select id="bkGoal"><option value="">اختار</option>${TRAINER_GOALS.map(g=>`<option>${g}</option>`).join('')}</select></div>
     <div class="field"><label>مستوى لياقتك *</label><select id="bkLevel"><option value="">اختار</option>${TRAINER_LEVELS.map(g=>`<option>${g}</option>`).join('')}</select></div>
     <div class="field"><label>مكان الجلسة *</label><select id="bkPlace"><option value="">اختار</option>${TRAINER_PLACES.map(g=>`<option>${g}</option>`).join('')}</select></div>
     <div class="field"><label>إصابات أو ملاحظات صحية (اختياري)</label><textarea id="bkExtra" maxlength="120" placeholder="مثال: ألم في الركبة، أو ضغط"></textarea></div>`:isCraft(m)?`<div class="field"><label>إيه العطل أو المشكلة؟ *</label><textarea id="bkProblem" maxlength="140" placeholder="مثال: سخان الغاز بيطفي لوحده، أو تسريب مياه تحت الحوض"></textarea></div>
@@ -186,10 +223,15 @@ export function providerScheduleViewHTML(bookings,esc,ms=Date.now()){
   const by={};live.forEach(b=>(by[b.date]=by[b.date]||[]).push(b));
   return Object.keys(by).length?Object.entries(by).map(([d,list])=>`<div class="section-head"><h3>${fmtDay(d)}${d===t?' (النهاردة)':''}</h3></div><div class="list-gap">${list.map(b=>bookingCardHTML(b,esc,'provider')).join('')}</div>`).join(''):'<p class="hint-box">مفيش حجوزات جاية لسه.</p>';
 }
-export function bookedTableHTML(bookings,esc,ms=Date.now(),day){
+// السنة الدراسية من أول سطر في note الحجز (للمدرسين).
+export const gradeOfBooking=b=>{const m=/(?:^|\n)السنة الدراسية: ([^\n]+)/.exec(String(b&&b.note||''));return m?m[1].trim():'';};
+export function bookedTableHTML(bookings,esc,ms=Date.now(),day,gradeF=''){
   const t=cairoNow(ms).date,sel=DATE.test(String(day||''))?day:t;
-  const live=(bookings||[]).filter(b=>['PENDING','ACCEPTED'].includes(b.status)&&b.date===sel).sort((a,b)=>a.time.localeCompare(b.time));
-  const head=`<div class="section-head"><h3>المواعيد المحجوزة${sel===t?' (النهاردة)':' · '+fmtDay(sel)}</h3></div><div class="booked-day"><label for="bookedDay">يوم تاني؟</label><input type="date" id="bookedDay" value="${sel}" onchange="setBookedDay(this.value)">${sel===t?'':'<button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="setBookedDay(\'\')">النهاردة</button>'}</div>`;
+  const dayAll=(bookings||[]).filter(b=>['PENDING','ACCEPTED'].includes(b.status)&&b.date===sel).sort((a,b)=>a.time.localeCompare(b.time));
+  const gset=GRADES.filter(g=>dayAll.some(b=>gradeOfBooking(b)===g));
+  const live=gradeF&&gset.includes(gradeF)?dayAll.filter(b=>gradeOfBooking(b)===gradeF):dayAll;
+  const gfilter=gset.length?`<div class="bk-grades" style="margin:0 0 10px"><button type="button" class="bk-grade ${!gradeF?'active':''}" onclick="setBookedGrade('')">كل السنين</button>${gset.map(g=>`<button type="button" class="bk-grade ${g===gradeF?'active':''}" onclick="setBookedGrade('${esc(g)}')">${esc(g)}</button>`).join('')}</div>`:'';
+  const head=gfilter+`<div class="section-head"><h3>المواعيد المحجوزة${sel===t?' (النهاردة)':' · '+fmtDay(sel)}</h3></div><div class="booked-day"><label for="bookedDay">يوم تاني؟</label><input type="date" id="bookedDay" value="${sel}" onchange="setBookedDay(this.value)">${sel===t?'':'<button type="button" class="btn btn-ghost btn-sm" style="width:auto" onclick="setBookedDay(\'\')">النهاردة</button>'}</div>`;
   if(!live.length) return head+`<p class="hint-box">${sel===t?'مفيش مواعيد محجوزة النهاردة.':'مفيش مواعيد محجوزة في اليوم ده.'}</p>`;
   const rows=live.map(b=>{const phone=String(b.customerPhone||'').replace(/\D/g,'').replace(/^0/,'20');
     const wa=phone?`<a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" rel="noopener" href="https://wa.me/${esc(phone)}"><i class="fa-brands fa-whatsapp"></i> واتساب</a>`:'<span style="color:var(--ink-soft)">لا يوجد رقم</span>';

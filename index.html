@@ -182,6 +182,11 @@ body.has-cartbar #mainContent{padding-bottom:300px;}
 .bk-cal-day.off{color:var(--ink-soft);opacity:.4;cursor:default;font-weight:600}.bk-cal-empty{aspect-ratio:1}
 .bk-cal-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--teal)}.bk-cal-day.active .bk-cal-dot{background:#fff}
 .bk-cal-key{display:flex;gap:14px;justify-content:center;font-size:11px;color:var(--ink-soft);margin-top:8px}
+.bk-grades{display:flex;flex-wrap:wrap;gap:8px}
+.bk-grade{padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.bk-grade.active{background:var(--teal);border-color:var(--teal);color:#fff}
+.sch-gpanel{margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--surface)}
+.sch-gquick{display:flex;gap:8px;flex-wrap:wrap}
 .bk-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px}
 .bk-slot{padding:11px 4px;border:1px solid var(--line);border-radius:var(--radius-s);background:var(--surface);color:var(--ink);font:inherit;font-weight:700;cursor:pointer}
 .bk-slot.active{background:var(--teal);border-color:var(--teal);color:#fff}
@@ -3514,6 +3519,7 @@ window.loadBookingData = async (mid)=>{
 // booked set is date|time; panel needs per-day set
 const bookedFor=(mid,date)=>Services.bookedSetFor(S.book?.[mid]?.booked,date,Services.capacityOf(S.book?.[mid]?.schedule));
 window.pickBookDate=(mid,date)=>{ const st=S.book[mid]; st.date=date; st.month=date.slice(0,7); st.time=''; renderMain(); };
+window.pickBookGrade=(mid,g)=>{ const st=S.book[mid]; st.grade=g; st.date=''; st.month=''; st.time=''; renderMain(); };
 window.pickBookMonth=(mid,ym)=>{ S.book[mid].month=ym; renderMain(); };
 window.pickBookRepeat=(mid,r)=>{ S.book[mid].repeat=r; renderMain(); };
 window.pickBookWeeks=(mid,n)=>{ S.book[mid].weeks=n; renderMain(); };
@@ -3523,8 +3529,8 @@ window.submitBooking = async (mid,date,time)=>{
   if(RoleMode.ownStoreBlocked(S.realRole,S.profile,mid)){ UI.toast('مينفعش تحجز عند نفسك'); return; }
   try{
     const weekly=st.repeat==='weekly';
-    const v=Services.validBookingInput({date,time,name:document.getElementById('bkName').value,phone:document.getElementById('bkPhone').value,note:document.getElementById('bkF0')?Services.typeNote(m.activityType,Services.TYPE_FIELDS[String(m.activityType||'').trim()].map((_,i)=>document.getElementById('bkF'+i).value)):document.getElementById('bkProblem')?Services.craftNote({problem:document.getElementById('bkProblem').value,address:document.getElementById('bkAddress').value}):document.getElementById('bkGoal')?Services.trainerNote({goal:document.getElementById('bkGoal').value,level:document.getElementById('bkLevel').value,place:document.getElementById('bkPlace').value,extra:document.getElementById('bkExtra').value}):document.getElementById('bkNote').value},st.schedule,bookedFor(mid,date));
-    const dates=weekly?Services.seriesInfo({schedule:st.schedule,booked:st.booked,date,time,weeks:st.weeks}).filter(x=>x.ok).map(x=>x.date):[date];
+    const v=Services.validBookingInput({grade:Services.gradesOf(st.schedule).length?(st.grade||(Services.gradesOf(st.schedule).length===1?Services.gradesOf(st.schedule)[0]:'')):'',date,time,name:document.getElementById('bkName').value,phone:document.getElementById('bkPhone').value,note:document.getElementById('bkF0')?Services.typeNote(m.activityType,Services.TYPE_FIELDS[String(m.activityType||'').trim()].map((_,i)=>document.getElementById('bkF'+i).value)):document.getElementById('bkProblem')?Services.craftNote({problem:document.getElementById('bkProblem').value,address:document.getElementById('bkAddress').value}):document.getElementById('bkGoal')?Services.trainerNote({goal:document.getElementById('bkGoal').value,level:document.getElementById('bkLevel').value,place:document.getElementById('bkPlace').value,extra:document.getElementById('bkExtra').value}):document.getElementById('bkNote').value},st.schedule,bookedFor(mid,date));
+    const dates=weekly?Services.seriesInfo({schedule:st.schedule,booked:st.booked,date,time,weeks:st.weeks,grade:(Services.gradesOf(st.schedule).length?(st.grade||Services.gradesOf(st.schedule)[0]):'')}).filter(x=>x.ok).map(x=>x.date):[date];
     if(weekly&&v.note.length>270) throw Error('الملاحظة طويلة، اختصرها لأقل من 270 حرف');
     const sch=Services.normalizeSchedule(st.schedule),t=nowMs(); let done=0;
     for(let i=0;i<dates.length;i+=5){
@@ -3569,12 +3575,13 @@ window.removeClosedDate=d=>{ _closedDraft=closedNow().filter(x=>x!==d); const ke
 function readDraftForm(){ try{ return Services.readScheduleForm((id,f)=>{const e=document.getElementById(id);return e?e[f==='checked'?'checked':'value']:undefined},closedNow()); }catch(e){ return S.mySchedule; } }
 function scheduleLockHTML(){
   if(S.schedUnlocked){
-    return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:13px">✏️ بتعدّل المواعيد</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()">إلغاء بدون حفظ</button></div>${Services.scheduleEditorHTML(S.mySchedule,esc,FeatureFlags.isOn(S.settings,'slotCapacityEnabled'))}`;
+    return `<div class="card" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="font-size:13px">✏️ بتعدّل المواعيد</span><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()">إلغاء بدون حفظ</button></div>${Services.scheduleEditorHTML(S.mySchedule,esc,FeatureFlags.isOn(S.settings,'slotCapacityEnabled'),String(S.myMerchant&&S.myMerchant.activityType||'').trim()==='مدرسين')}`;
   }
   // الوضع العادي: ملخص مقفول بزر تعديل. الفورم بيظهر لما المزوّد يدوس تعديل.
   const sc=Services.normalizeSchedule(S.mySchedule);
   const rows=Services.DAY_NAMES.map((n,i)=>{const d=sc.days[String(i)];return d&&d.on?`<div class="row-between" style="font-size:13px;margin:4px 0"><span>${n}</span><span dir="ltr">${esc(d.from)} - ${esc(d.to)}</span></div>`:'';}).join('')||'<p class="hint-box">مفيش أيام شغل متحددة.</p>';
-  const extra=`<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px">مدة الحجز: ${sc.slotMinutes} دقيقة${(sc.capacity||1)>1?' · '+sc.capacity+' حجوزات في نفس الميعاد':''}${sc.closedDates.length?' · '+sc.closedDates.length+' يوم إجازة':''}</div>`;
+  const gsum=(sc.grades&&sc.grades.length)?`<div style="font-size:12.5px;margin:6px 0"><b>بدرّس:</b> ${esc(sc.grades.join('، '))}${sc.gradeDays?' · ساعات مختلفة لكل سنة':''}</div>`:'';
+  const extra=gsum+`<div style="font-size:12.5px;color:var(--ink-soft);margin-top:8px">مدة الحجز: ${sc.slotMinutes} دقيقة${(sc.capacity||1)>1?' · '+sc.capacity+' حجوزات في نفس الميعاد':''}${sc.closedDates.length?' · '+sc.closedDates.length+' يوم إجازة':''}</div>`;
   return `<div class="card" style="margin-bottom:12px"><div class="row-between" style="margin-bottom:8px"><b>مواعيد التشغيل</b><button class="btn btn-ghost btn-sm" style="width:auto" onclick="toggleScheduleLock()"><i class="fa-solid fa-pen"></i> تعديل</button></div>${rows}${extra}</div>`;
 }
 window.toggleScheduleLock = async ()=>{
@@ -3623,10 +3630,27 @@ function providerBookingsView(){
   const st=Services.providerStats(S.providerBookings||[]);
   return `${StorePhoto.isOn(S.settings)&&S.myMerchant?StorePhoto.promptHTML(S.myMerchant,true,esc):''}<div class="card" style="margin-bottom:14px"><div class="row-between"><div><b>${st.pending}</b><div style="font-size:12px;color:var(--ink-soft)">مستنية ردك</div></div><div><b>${st.today}</b><div style="font-size:12px;color:var(--ink-soft)">النهاردة</div></div><div><b>${st.upcoming}</b><div style="font-size:12px;color:var(--ink-soft)">الجاية</div></div></div></div>${Services.providerScheduleViewHTML(S.providerBookings||[],esc)}`;
 }
+window.setBookedGrade=g=>{ S.bookedGrade=g||''; renderMain(); };
+// ---- محرر السنين للمدرس (كله على الـDOM، الحفظ بيقراه) ----
+const _gi=id=>document.getElementById(id);
+const _gAll=()=>Services.GRADES.map((g,gi)=>gi);
+window.schGradeChanged=()=>{
+  const sel=_gi('schGradeSel'),prev=sel?sel.value:'';
+  document.querySelectorAll('.sch-gchip').forEach(l=>{ const c=l.querySelector('input'); l.classList.toggle('active',!!(c&&c.checked)); });
+  if(sel){ sel.innerHTML=_gAll().filter(gi=>_gi('schG'+gi).checked).map(gi=>`<option value="${gi}">${esc(Services.GRADES[gi])}</option>`).join(''); if([...sel.options].some(o=>o.value===prev)) sel.value=prev; }
+  const per=_gi('schPer'); _gi('schPerBox').style.display=per&&per.checked&&sel&&sel.options.length?'block':'none';
+  schGradeShow();
+};
+window.schGradeShow=()=>{ const sel=_gi('schGradeSel'); _gAll().forEach(gi=>{ const p=_gi('schgPanel'+gi); if(p) p.style.display=sel&&sel.value===String(gi)?'block':'none'; }); };
+window.schGradeQuick=qi=>{ if(qi<0) _gAll().forEach(gi=>{ _gi('schG'+gi).checked=false; }); else Services.GRADE_GROUPS[qi][1].forEach(g=>{ _gi('schG'+Services.GRADES.indexOf(g)).checked=true; }); schGradeChanged(); };
+const _copyDay=(from,to)=>{ const [a,b,c]=from,[x,y,z]=to; const A=_gi(a),B=_gi(b),C=_gi(c),X=_gi(x),Y=_gi(y),Z=_gi(z); if(A&&X){ X.checked=A.checked; Y.value=B.value; Z.value=C.value; } };
+window.schGradeCopyMain=gi=>{ for(let i=0;i<7;i++) _copyDay(['schOn'+i,'schFrom'+i,'schTo'+i],[`schgOn${gi}_${i}`,`schgFrom${gi}_${i}`,`schgTo${gi}_${i}`]); UI.toast('اتنسخت الساعات الأساسية'); };
+window.schGradeCopyAll=gi=>{ _gAll().forEach(o=>{ if(o===gi||!_gi('schG'+o).checked) return; for(let i=0;i<7;i++) _copyDay([`schgOn${gi}_${i}`,`schgFrom${gi}_${i}`,`schgTo${gi}_${i}`],[`schgOn${o}_${i}`,`schgFrom${o}_${i}`,`schgTo${o}_${i}`]); }); UI.toast('اتنسخت لكل السنين المختارة'); };
+window.schDaysCopy=()=>{ let src=-1; for(let i=0;i<7;i++){ if(_gi('schOn'+i).checked){ src=i; break; } } if(src<0){ UI.toast('شغّل يوم واحد الأول'); return; } for(let i=0;i<7;i++){ if(i===src) continue; _gi('schFrom'+i).value=_gi('schFrom'+src).value; _gi('schTo'+i).value=_gi('schTo'+src).value; } UI.toast('اتنسخت الساعات لباقي الأيام'); };
 window.setBookedDay=d=>{ S.bookedDay=/^\d{4}-\d{2}-\d{2}$/.test(d||'')?d:''; renderMain(); };
 function renderProviderSchedule(){
   if(S.role!=='merchant'||!Services.isServiceProvider(S.myMerchant)) return '';
-  return `${Services.bookedTableHTML(S.providerBookings||[],esc,Date.now(),S.bookedDay)}<div class="section-head"><h3>مواعيد التشغيل</h3></div>${scheduleLockHTML()}${remindersOn()?reminderPrefsHTML():''}`;
+  return `${Services.bookedTableHTML(S.providerBookings||[],esc,Date.now(),S.bookedDay,S.bookedGrade)}<div class="section-head"><h3>مواعيد التشغيل</h3></div>${scheduleLockHTML()}${remindersOn()?reminderPrefsHTML():''}`;
 }
 const REM_PREFS=[['reminder1h','تذكير قبل الميعاد بساعة'],['unanswered2h','تنبيه لو حجز مستني ردك أكتر من ساعتين'],['tomorrowSummary','ملخص حجوزات بكرة الساعة 8 مساءً']];
 const remPref=k=>{ try{ return localStorage.getItem('rem_'+k+'_'+S.profile.merchantId)!=='0'; }catch(e){ return true; } };
@@ -3715,7 +3739,7 @@ function renderMerchantPage(){
     </div>
     ${merchantContactCard(m)}
     ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم مقدم الخدمة مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
-    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,repeat:S.book[m.id].repeat,weeks:S.book[m.id].weeks,month:S.book[m.id].month,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
+    ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,repeat:S.book[m.id].repeat,weeks:S.book[m.id].weeks,month:S.book[m.id].month,grade:S.book[m.id].grade,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
     ${canOrder&&!isSvc?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
     ${canOrder&&!isSvc?(prods.length? `<div class="product-grid pl-list">${prods.map(productCard).join('')}</div>` : emptyState('fa-box-open','لا توجد منتجات بعد','')):''}
     ${canOrder && S.storePages?.[m.id]?.more?`<button class="btn btn-ghost" style="margin-top:14px" onclick="loadMoreStoreProducts('${m.id}')" ${S.storePages[m.id].busy?'disabled':''}>${S.storePages[m.id].busy?'جاري التحميل...':'عرض باقي منتجات المتجر'}</button>`:''}
