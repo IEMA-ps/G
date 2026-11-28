@@ -660,6 +660,7 @@ import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-5';installStoreTypes();
 import * as Services from '/services.js?v=svc-6';
 import * as Doorman from '/doorman.js?v=bw-1';
+import * as Shop from '/shop.js?v=shop-1';
 import * as OrderMoney from '/order-money.js?v=money-1';
 import * as StoreHours from '/store-hours.js?v=hours-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
@@ -1492,6 +1493,85 @@ function doormenAdminHTML(){
   const on=doormanOn();
   return `<div class="card" style="margin-bottom:14px"><div class="row-between"><div><b>ميزة البواب</b><div style="font-size:12px;color:var(--ink-soft)">${on?'شغالة: زرار التعيين وكارت البواب ظاهرين.':'مقفولة: مفيش حاجة ظاهرة للمستخدمين.'}</div></div><button class="btn ${on?'btn-ghost':'btn-primary'} btn-sm" style="width:auto" onclick="toggleDoormen(${!on})">${on?'قفل':'تفعيل'}</button></div></div>`;
 }
+
+/* ===== المحل والكراسي (حلاق/صالون): كود فريق + موافقة صاحب المحل + خدمات بالاسم والمدة (من غير أسعار) ===== */
+const shopsOn=()=>Shop.enabled(S.settings);
+function loadShopData(mId){
+  S.myShop=null;S.myChair=null;S.myServiceItems=null;S.shopChairsMine=[];
+  const q=(ref,fn)=>S.unsubs.push(onSnapshot(ref,fn,()=>{}));
+  q(doc(db,'shops',mId),d=>{S.myShop=d.exists()?d.data():null;render();});
+  q(doc(db,'shopChairs',mId),d=>{S.myChair=d.exists()?d.data():null;render();});
+  q(doc(db,'serviceItems',mId),d=>{S.myServiceItems=d.exists()?d.data():null;render();});
+  q(query(collection(db,'shopChairs'),where('shopId','==',mId)),snap=>{S.shopChairsMine=snap.docs.map(d=>d.data());render();});
+}
+function shopProviderCard(){
+  if(!shopsOn()||S.role!=='merchant'||!S.myMerchant||!Services.isServiceProvider(S.myMerchant)) return '';
+  const mid=S.profile.merchantId,sh=S.myShop,ch=S.myChair,mine=S.shopChairsMine||[];
+  const items=S.svcDraft||(S.myServiceItems&&S.myServiceItems.items)||[];
+  const svcRows=items.map((x,i)=>`<div style="display:flex;gap:6px;margin:6px 0"><input value="${esc(x.name)}" placeholder="اسم الخدمة" style="flex:2;min-width:0;width:auto" oninput="svcEdit(${i},'name',this.value)"><input value="${esc(x.minutes)}" type="number" inputmode="numeric" placeholder="دقيقة" style="flex:1;min-width:0;width:auto" oninput="svcEdit(${i},'minutes',this.value)"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="svcDel(${i})" aria-label="حذف"><i class="fa-solid fa-xmark"></i></button></div>`).join('');
+  const svcCard=`<div class="card" style="margin-bottom:14px"><h3><i class="fa-solid fa-scissors"></i> خدماتي والمدة</h3><p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0">اكتب اسم كل خدمة ومدتها بالدقيقة. من غير أسعار.</p>${svcRows||'<p style="font-size:12.5px;color:var(--ink-soft)">لسه مفيش خدمات.</p>'}<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="svcAdd()"><i class="fa-solid fa-plus"></i> خدمة</button><button class="btn btn-primary btn-sm" style="width:auto" onclick="svcSave()">حفظ</button></div></div>`;
+  const pend=Shop.pendingChairs(mine,mid),act=Shop.activeChairs(mine,mid);
+  const row=(c,btns)=>`<div class="row-between" style="padding:8px 0;border-top:1px solid var(--line,#eee)"><b style="font-size:13px">${esc(c.name||'حلاق')}</b><span style="display:flex;gap:6px">${btns}</span></div>`;
+  const teamCard=sh&&sh.status==='ACTIVE'?`<div class="card" style="margin-bottom:14px"><h3><i class="fa-solid fa-chair"></i> فريق المحل (الكراسي)</h3><p style="font-size:12.5px;line-height:1.8;margin:6px 0">ابعت الكود أو الرابط للحلاقين اللي شغالين معاك. هيبعتوا طلب وانت اللي بتوافق. ده غير لينك الزبائن.</p><div class="admin-code" dir="ltr" style="margin-bottom:8px">${esc(sh.code)}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(Shop.linkFor(sh.code))}')"><i class="fa-regular fa-copy"></i> نسخ الرابط</button><a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('اشتغل معانا على على بابك. كود الفريق '+sh.code+' أو الرابط: '+Shop.linkFor(sh.code))}"><i class="fa-brands fa-whatsapp"></i> مشاركة واتساب</a><button class="btn btn-ghost btn-sm" style="width:auto" onclick="shopToggle(false)">إيقاف الكود</button></div>${pend.length?`<h4 style="margin:14px 0 2px">طلبات انضمام (${pend.length})</h4>`+pend.map(c=>row(c,`<button class="btn btn-primary btn-sm" style="width:auto" onclick="chairApprove('${esc(c.barberId)}')">قبول</button><button class="btn btn-ghost btn-sm" style="width:auto" onclick="chairRemove('${esc(c.barberId)}')">رفض</button>`)).join(''):''}<h4 style="margin:14px 0 2px">الكراسي (${act.length})</h4>${act.map(c=>row(c,`<button class="btn btn-ghost btn-sm" style="width:auto" onclick="chairRemove('${esc(c.barberId)}')">إزالة</button>`)).join('')||'<p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0">لسه مفيش حلاقين انضموا.</p>'}</div>`
+    :`<div class="card" style="margin-bottom:14px"><h3><i class="fa-solid fa-chair"></i> فريق المحل (الكراسي)</h3><p style="font-size:12.5px;line-height:1.8;margin:6px 0">لو عندك حلاقين شغالين معاك، فعّل كود الفريق وابعته لهم.</p><button class="btn btn-primary btn-sm" style="width:auto" onclick="shopToggle(true)">${sh?'تفعيل الكود تاني':'تفعيل كود الفريق'}</button></div>`;
+  const pre=Shop.codeFromSearch(location.search);
+  const joinCard=ch?`<div class="card" style="margin-bottom:14px"><h3><i class="fa-solid fa-link"></i> انضمامي لمحل</h3><p style="margin:6px 0;font-size:13px">${ch.status==='ACTIVE'?'انت شغال في: <b>'+esc((getMerchant(ch.shopId)||{}).businessName||'المحل')+'</b>':'طلبك مستني موافقة صاحب المحل.'}</p><button class="btn btn-ghost btn-sm" style="width:auto" onclick="chairRemove('${esc(mid)}')">${ch.status==='ACTIVE'?'سيب المحل':'إلغاء الطلب'}</button></div>`
+    :`<div class="card" style="margin-bottom:14px"><h3><i class="fa-solid fa-link"></i> انضمام لمحل</h3><p style="font-size:12.5px;margin:6px 0">لو شغال مع محل، اكتب كود الفريق اللي صاحب المحل بعتهولك.</p><div style="display:flex;gap:6px"><input id="shopJoinCode" dir="ltr" value="${esc(pre)}" placeholder="ST-XXXXXX" style="flex:1;min-width:0;text-transform:uppercase"><button class="btn btn-primary btn-sm" style="width:auto" onclick="chairRequest()">إرسال</button></div></div>`;
+  return svcCard+teamCard+joinCard;
+}
+window.svcAdd=()=>{S.svcDraft=[...(S.svcDraft||(S.myServiceItems&&S.myServiceItems.items)||[]),{name:'',minutes:30}];renderMain();};
+window.svcDel=i=>{const l=[...(S.svcDraft||(S.myServiceItems&&S.myServiceItems.items)||[])];l.splice(i,1);S.svcDraft=l;renderMain();};
+window.svcEdit=(i,k,v)=>{const l=(S.svcDraft=[...(S.svcDraft||(S.myServiceItems&&S.myServiceItems.items)||[])].map(x=>({...x})));if(l[i])l[i][k]=v;};
+window.svcSave=async()=>{
+  const mid=S.profile.merchantId,items=Shop.cleanServices(S.svcDraft||(S.myServiceItems&&S.myServiceItems.items)||[]);
+  try{ await setDoc(doc(db,'serviceItems',mid),{merchantId:mid,items,updatedAt:nowMs()}); S.svcDraft=null; UI.toast('تم حفظ الخدمات ✅'); renderMain(); }catch(e){ UI.toast('تعذّر الحفظ، حاول تاني.'); }
+};
+window.shopToggle=async on=>{
+  const mid=S.profile.merchantId;
+  try{ await setDoc(doc(db,'shops',mid),{merchantId:mid,code:(S.myShop&&S.myShop.code)||Shop.newCode(),status:on?'ACTIVE':'DISABLED',updatedAt:nowMs()}); UI.toast(on?'كود الفريق اشتغل ✅':'كود الفريق اتوقف'); }catch(e){ UI.toast('تعذّر الحفظ، حاول تاني.'); }
+};
+window.chairRequest=async()=>{
+  const code=Shop.normCode(document.getElementById('shopJoinCode')?.value);
+  if(!Shop.isCode(code)){UI.toast('الكود مش صحيح');return;}
+  try{
+    const r=await getDocs(query(collection(db,'shops'),where('code','==',code)));
+    const sh=r.docs.map(d=>d.data()).find(x=>x.status==='ACTIVE');
+    if(!sh||sh.merchantId===S.profile.merchantId){UI.toast('الكود مش شغال');return;}
+    await setDoc(doc(db,'shopChairs',S.profile.merchantId),Shop.chairRequest(S.profile.merchantId,sh.merchantId,code,S.myMerchant.businessName,nowMs()));
+    UI.toast('اتبعت الطلب لصاحب المحل ✅');
+  }catch(e){ UI.toast('تعذّر إرسال الطلب، حاول تاني.'); }
+};
+window.chairApprove=async bid=>{ try{ await updateDoc(doc(db,'shopChairs',bid),{status:'ACTIVE',decidedAt:nowMs()}); UI.toast('تم القبول ✅'); }catch(e){ UI.toast('تعذّر القبول'); } };
+window.chairRemove=async bid=>{ if(!confirm('متأكد؟')) return; try{ await deleteDoc(doc(db,'shopChairs',bid)); UI.toast('تم'); }catch(e){ UI.toast('تعذّر التنفيذ'); } };
+async function loadShopPublic(mid){
+  S.shopPub=S.shopPub||{};
+  if(S.shopPub[mid]&&S.shopPub[mid].at>Date.now()-60000) return;
+  S.shopPub[mid]={at:Date.now(),chairs:[],items:[],chair:null};
+  try{
+    const [cs,it,me]=await Promise.all([getDocs(query(collection(db,'shopChairs'),where('shopId','==',mid))),getDoc(doc(db,'serviceItems',mid)),getDoc(doc(db,'shopChairs',mid))]);
+    S.shopPub[mid]={at:Date.now(),chairs:Shop.activeChairs(cs.docs.map(d=>d.data()),mid),items:it.exists()?Shop.cleanServices(it.data().items):[],chair:me.exists()&&me.data().status==='ACTIVE'?me.data():null};
+    render();
+  }catch(e){}
+}
+function shopPublicCard(m){
+  if(!shopsOn()||!Services.isServiceProvider(m)) return '';
+  loadShopPublic(m.id);
+  const p=(S.shopPub||{})[m.id]; if(!p) return '';
+  let h='';
+  if(p.items.length) h+=`<div class="card" style="margin-bottom:16px"><h3><i class="fa-solid fa-scissors"></i> الخدمات</h3>${p.items.map(x=>`<div class="row-between" style="padding:8px 0;border-top:1px solid var(--line,#eee)"><b style="font-size:13.5px">${esc(x.name)}</b><span style="font-size:12.5px;color:var(--ink-soft)">${esc(Shop.durationLabel(x.minutes))}</span></div>`).join('')}</div>`;
+  if(p.chairs.length) h+=`<div class="card" style="margin-bottom:16px"><h3><i class="fa-solid fa-chair"></i> الكراسي</h3>${p.chairs.map(c=>`<div class="row-between" style="padding:8px 0;border-top:1px solid var(--line,#eee)"><b style="font-size:13.5px">${esc(c.name||'حلاق')}</b><button class="btn btn-ghost btn-sm" style="width:auto" onclick="openMerchant('${esc(c.barberId)}')">افتح صفحته</button></div>`).join('')}</div>`;
+  if(p.chair){ const sm=getMerchant(p.chair.shopId); if(sm) h+=`<div class="card" style="margin-bottom:16px"><p style="margin:0;font-size:13px"><i class="fa-solid fa-chair"></i> بيشتغل في <b>${esc(sm.businessName)}</b> <button class="btn btn-ghost btn-sm" style="width:auto;margin-inline-start:8px" onclick="openMerchant('${esc(sm.id)}')">افتح المحل</button></p></div>`; }
+  return h;
+}
+window.toggleShops=async on=>{
+  if(!isSuperAdmin()) return;
+  try{ await setDoc(doc(db,'settings','app'),{shopsEnabled:!!on},{merge:true}); S.settings={...S.settings,shopsEnabled:!!on}; await logAudit('تبديل ميزة المحلات والكراسي',String(!!on)); render(); UI.toast(on?'ميزة الكراسي اتفعلت':'ميزة الكراسي اتقفلت'); }catch(e){ UI.toast('تعذّر الحفظ'); }
+};
+function shopsAdminHTML(){
+  if(!isSuperAdmin()) return '';
+  const on=shopsOn();
+  return `<div class="card" style="margin-bottom:14px"><div class="row-between"><div><b>ميزة الكراسي والخدمات (المحلات)</b><div style="font-size:12px;color:var(--ink-soft)">${on?'شغالة: كارت الفريق والخدمات ظاهر لمقدمي الخدمة.':'مقفولة: مفيش حاجة ظاهرة.'}</div></div><button class="btn ${on?'btn-ghost':'btn-primary'} btn-sm" style="width:auto" onclick="toggleShops(${!on})">${on?'قفل':'تفعيل'}</button></div></div>`;
+}
 function subscribeCustomer(){
   S.myMemberRequest=null;
   S.unsubs.push(onSnapshot(doc(db,'memberRequests',S.user.uid), d=>{ S.myMemberRequest=d.exists()?d.data():null; render(); }, ()=>{}));
@@ -1546,6 +1626,7 @@ function subscribeMerchant(){
   }
   S.unsubs.push(onSnapshot(doc(db,'merchants',mId), d=>{ S.myMerchant = d.data()||null; S.myMerchantMissing = !d.exists(); expirySweepMerchant(mId, S.myMerchant); render(); }));
   S.unsubs.push(onSnapshot(query(collection(db,'bookings'), where('merchantId','==',mId)), snap=>{ S.providerBookings = snap.docs.map(d=>({...d.data(),id:d.id})); render(); }, ()=>{}));
+  loadShopData(mId);
   S.unsubs.push(onSnapshot(doc(db,'serviceSchedules',mId), d=>{ if(S.schedUnlocked && S.mySchedule) return; /* المزوّد بيعدّل دلوقتي: ما نعيدش رسم الفورم ونضيّع تعديلاته */ S.mySchedule = d.exists()?d.data():null; S.closedDraft=null; render(); }, ()=>{}));
   S.unsubs.push(onSnapshot(collection(db,'plans'), snap=>{ S.plans = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.price-b.price); render(); }));
   S.unsubs.push(onSnapshot(query(collection(db,'subscriptions'), where('merchantId','==',mId)), snap=>{ S.mySubs = snap.docs.map(d=>({...d.data(),_id:d.id})).sort((a,b)=>b.createdAt-a.createdAt); render(); }));
@@ -3835,7 +3916,7 @@ window.schDaysCopy=()=>{ let src=-1; for(let i=0;i<7;i++){ if(_gi('schOn'+i).che
 window.setBookedDay=d=>{ S.bookedDay=/^\d{4}-\d{2}-\d{2}$/.test(d||'')?d:''; renderMain(); };
 function renderProviderSchedule(){
   if(S.role!=='merchant'||!Services.isServiceProvider(S.myMerchant)) return '';
-  return `${Services.bookedTableHTML(S.providerBookings||[],esc,Date.now(),S.bookedDay,S.bookedGrade)}<div class="section-head"><h3>مواعيد التشغيل</h3></div>${scheduleLockHTML()}${remindersOn()?reminderPrefsHTML():''}`;
+  return `${Services.bookedTableHTML(S.providerBookings||[],esc,Date.now(),S.bookedDay,S.bookedGrade)}<div class="section-head"><h3>مواعيد التشغيل</h3></div>${scheduleLockHTML()}${remindersOn()?reminderPrefsHTML():''}${shopProviderCard()}`;
 }
 const REM_PREFS=[['reminder1h','تذكير قبل الميعاد بساعة'],['unanswered2h','تنبيه لو حجز مستني ردك أكتر من ساعتين'],['tomorrowSummary','ملخص حجوزات بكرة الساعة 8 مساءً']];
 const remPref=k=>{ try{ return localStorage.getItem('rem_'+k+'_'+S.profile.merchantId)!=='0'; }catch(e){ return true; } };
@@ -3923,6 +4004,7 @@ function renderMerchantPage(){
       <a class="btn btn-ghost btn-sm" style="width:auto;display:inline-flex;margin-top:12px" href="${waLink(m.whatsappNumber, (isSvc?'مرحبًا، أريد الاستفسار عن خدماتكم في ':'مرحبًا، أريد الاستفسار عن منتجاتكم في ')+m.businessName)}" target="_blank"><i class="fa-brands fa-whatsapp"></i> تواصل واتساب</a>
     </div>
     ${merchantContactCard(m)}
+    ${shopPublicCard(m)}
     ${!canOrder?`<div class="hint-box">${isSvc?'دي صفحة تعريفية بس. للحجز كلّم مقدم الخدمة مباشرة.':'دي صفحة تعريفية بس. لو عندك سؤال، كلّم المتجر مباشرة. الباقة دي مش بتستقبل طلبات من التطبيق.'}</div>`:''}
     ${canOrder&&isSvc?(S.book?.[m.id]?.ready?Services.bookingPanelHTML({m,schedule:S.book[m.id].schedule,booked:S.book[m.id].booked,date:S.book[m.id].date,time:S.book[m.id].time,repeat:S.book[m.id].repeat,weeks:S.book[m.id].weeks,month:S.book[m.id].month,grade:S.book[m.id].grade,profile:{...S.profile,phone:S.profile?.phone||localStorage.getItem('bk_phone_'+S.user?.uid)||''}},esc):'<p class="hint-box">جاري تحميل المواعيد...</p>'):''}
     ${canOrder&&!isSvc?`<div class="section-head" style="margin-top:0"><h3>المنتجات (${prods.length})</h3></div>`:''}
@@ -6632,7 +6714,7 @@ window.searchAdminMembers=value=>{
 };
 function renderAdminUsers(){
   const search=S.aUserSearch||'',q=search.trim().toLocaleLowerCase();
-  const head=memberRequestsHTML()+doormenAdminHTML()+memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
+  const head=memberRequestsHTML()+doormenAdminHTML()+shopsAdminHTML()+memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
   if(S.allUsersError)return head+`<section class="card" role="alert">${esc(S.allUsersError)}</section>`;
   if(S.aUserView==='codes')return head+acquisitionHTML({users:S.allUsers,usersReady:S.allUsersReady===true,attributions:isSuperAdmin()?S.adminAttributions||[]:[],status:S.adminAttributionStatus||'loading',search},esc);
   if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
