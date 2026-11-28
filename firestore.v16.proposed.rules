@@ -1,0 +1,943 @@
+// v16 = v15 + عدم السماح للمستخدم بإزالة علامة الانتظار (waitlisted) وقت inviteOnly. رجوع (rollback): firestore.v15.proposed.rules
+// v15 = v14 + حماية الحظر: المستخدم ميقدرش يعدّل banned/bannedAt/bannedBy/bannedReason في حسابه. التعديل الوحيد عن v14.
+// رجوع للخلف (rollback): انشر firestore.v14.proposed.rules
+// v14 (تنبيهات انتهاء الاشتراك): فوق v13 (اللي فوق v12). notifications بتقبل targetType=MARKETER وصاحبها بس (uid) يقراها ويعلمها مقروءة. مفيش أي تغيير تاني. رجوع: الصق v13 (أو v12 لو v13 لسه متنشرتش).
+// v13 (المدرسين): فوق v12. serviceSchedules بتقبل كمان grades (السنين اللي بيدرّسها، حد أقصى 14) وgradeDays (ساعات كل سنة، حد أقصى 14). مفيش أي تغيير تاني. رجوع: الصق v12 (أو v11 لو v12 لسه متنشرتش).
+// v12 (أمان: بنود 1-3 من مراجعة الأمان). فوق v11 المنشورة. (1) الطلبات: مجموع الأجزاء = subtotal الطلب، خصم الكوبون يتحسب مرة واحدة مع الطلب نفسه، والنقاط المخصومة لازم تتخصم فعلاً من رصيد العميل. (2) الكوبون: usedCount يزيد 1 بس مع طلب جديد حقيقي ويقل 1 بس مع إلغاء حقيقي. (3) الإشعارات لصاحبها بس، التقييمات للعميل بعد التسليم مرة واحدة لكل طلب، والمخزون وتقييمات التاجر/المندوب بحدود. رجوع: انسخ v11 فوقها.
+// لم يتم نشرها. اتجرّبت على emulator (firestore.v12.emulator.test.mjs).
+// v10 (النسخة الكاملة الصح): v9 (نقط المتجر) + سعة الميعاد (seat/capacity، PR #154) + كل أنواع الخدمات الـ15 في svcTypes. مفيش أي حاجة تانية اتغيرت. لم يُجرَّب على emulator.
+// v9 + الجزء 2 (استخدام نقط المتجر عند الدفع: خصمها من رصيد العميل وإرجاعها عند الإلغاء). لم يُجرَّب على emulator.
+// v9 (PR نقط كل متجر، فوق v8 المنشورة): merchants.storePoints (التاجر يحدد معدله) + users/{uid}/storePoints/{storeId} (رصيد العميل في كل متجر). لم يُجرَّب على emulator.
+// v8 (PRs #139 auto-approve + #141 invite-only + #142 delivery-sub، فوق v7 المنشورة): (1) subOrders: السماح بإنشاء SENT_TO_MERCHANT بـsentByAdminId=AUTO لما settings.autoApproveOrders شغال. (2) users: قفل حقول اشتراك التوصيل على العميل + السماح له بتسجيل deliverySubUsedPeriod بس. (3) مجموعات جديدة inviteCodes وinviteUses وwaitlist. #140 مفيش له تغيير قواعد. لم يُجرَّب على emulator.
+// v7 (PR #133): تقييد حركة loyaltyPoints (العميل يخصم من نقاطه بس، والتاجر/المندوب يزوّدوا بحد أقصى) وتقييم referrals (إنشاء ذاتي PENDING، وتسليم التاجر/المندوب يحوّلها REWARDED فقط). فوق v6 بدون أي تغيير آخر.
+// v6 (مساعد على بابك): يضيف supportFaq وsupportUnanswered وsupportGuestLeads. فوق v5 المنشورة (1:25 ص 26 نوفمبر) بدون أي تغيير آخر.
+// v5 (ALL-IN-ONE: member requests PR93 + multi-store PR94 + order flags for PR63/PR65). Previous: v4 (member requests PR): adds memberRequests before serviceSchedules. Everything else = v3 (published services rules).
+// v3 (services PR): adds serviceSchedules, bookedSlots, bookings at the end of the merchants area. Everything else = rules as published after PR72.
+// v2: يضيف عرض كود المسوّق (300) وطلب الترقية فوق قواعد 4:18 م. لم يُجرَّب على emulator. للمراجعة فقط.
+// Based on the user-provided rules of 22 November 2026 16:03 Cairo time.
+// Test in the emulator, back up the current rules, and review remaining risks.
+// v11 (privacy + ID cards): فوق v10 المنشورة. (1) users: القراءة للمستخدم نفسه والإدارة بس + referralCodes للبحث عن كود الدعوة.
+// (2) subOrders: القراءة والتعديل لأطراف الطلب بس (العميل / التاجر / المندوب / مسوّق التاجر / الإدارة). (3) recurringOrders لصاحبها بس.
+// (4) groupBuys: التجميعات المفتوحة تتشاف، وبيانات المشاركين الخاصة في groupBuys/{id}/members لمنشئ التجميعة بس. (5) memberRequestIds: صور بطاقة الهوية لصاحب الطلب وإدارة الموقع (SUPER) بس.
+// رجوع: انسخ v10 فوقها.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn(){ return request.auth != null; }
+    function me(){ return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isAdmin(){ return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().role == 'ADMIN'; }
+    function isSuper(){ return isAdmin() && me().get('adminRole','SUPER') != 'STAFF'; }
+    function isMarketer(){ return signedIn() && me().role == 'MARKETER'; }
+    function touches(keys){ return request.resource.data.diff(resource.data).affectedKeys().hasAny(keys); }
+    function only(keys){ return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+
+    // Compatibility patch, not a complete security audit.
+    // Legacy permissions below deliberately remain where documented.
+    function ownsMerchant(mid){
+      return signedIn() && mid is string && mid != ''
+        && get(/databases/$(database)/documents/merchants/$(mid)).data.get('ownerId','') == request.auth.uid;
+    }
+    function merchantTerms(){
+      return ['subscriptionModel','subPlanType','subPlanId','subPlanName','subEndsAt',
+        'subOrderCommissionPercent','subTermsVersion','commissionPercent',
+        'ownerId','ownerUsername','marketerId','marketerName','marketerSince','marketerOfferUsed','marketerOfferUsedAt'];
+    }
+    function validSelfUser(uid){
+      let d=request.resource.data;
+      return signedIn() && request.auth.uid == uid
+        && d.keys().hasOnly(['id','firstName','lastName','phone','email','role',
+          'merchantId','deliveryAgentId','referralCode','loyaltyPoints','createdAt'])
+        && d.id == uid && d.get('loyaltyPoints',0) == 0
+        && d.get('referralCode','MK-'+uid.upper()) == 'MK-'+uid.upper()
+        && ((d.role == 'CUSTOMER' && d.get('merchantId',null) == null && d.get('deliveryAgentId',null) == null)
+          || (d.role == 'MERCHANT' && d.get('deliveryAgentId',null) == null && ownsMerchant(d.merchantId))
+          || (d.role == 'DELIVERY' && d.get('merchantId',null) == null
+            && get(/databases/$(database)/documents/deliveryAgents/$(d.deliveryAgentId)).data.get('ownerId','') == uid));
+    }
+    // v16: المستخدم يقدر يحط waitlisted=true لكن مينفعش يشيلها بنفسه (الإدارة بس)، إلا لو الدعوة بالكود مقفولة (inviteOnly مش شغال).
+    function waitlistKept(){
+      return !(resource.data.get('waitlisted',false) == true && request.resource.data.get('waitlisted',false) != true)
+        || !get(/databases/$(database)/documents/settings/app).data.get('inviteOnly',false);
+    }
+    function safeReferralCodeUpdate(){
+      return !touches(['referralCode']) || (resource.data.get('referralCode',null) in [null,'']
+        && request.resource.data.referralCode == 'MK-'+request.auth.uid.upper());
+    }
+    // حركة النقاط بشكل مقيّد: العميل يقدر يخصم من نقاطه بس (الاستبدال أثناء الطلب)،
+    // والتاجر أو المندوب بس هما اللي يقدروا يزوّدوا نقاط (مكافآت الولاء والإحالة عند التسليم)، وبحد أقصى للعملية الواحدة.
+    function loyaltyPointsWrite(uid){
+      let oldPts = resource.data.get('loyaltyPoints', 0);
+      let newPts = request.resource.data.get('loyaltyPoints', 0);
+      return newPts is number && newPts >= 0
+        && ((request.auth.uid == uid && newPts <= oldPts)
+          || ((me().get('merchantId','') != '' || me().get('deliveryAgentId','') != '')
+            && newPts > oldPts && newPts - oldPts <= 100000));
+    }
+    // v9: نقط كل متجر. التاجر يحدد معدله (merchants.storePoints) وأرصدة العملاء في users/{uid}/storePoints/{storeId}.
+    function validStoreCfg(){
+      let d=request.resource.data;
+      return !d.keys().hasAny(['storePoints']) || (d.storePoints is map
+        && d.storePoints.keys().hasOnly(['on','egpPerPoint','pointValue'])
+        && d.storePoints.get('on',false) is bool
+        && d.storePoints.get('egpPerPoint',0) is number && d.storePoints.get('egpPerPoint',0) >= 0 && d.storePoints.get('egpPerPoint',0) <= 10000
+        && d.storePoints.get('pointValue',0) is number && d.storePoints.get('pointValue',0) >= 0 && d.storePoints.get('pointValue',0) <= 1000);
+    }
+    function storePointsWrite(uid, mid){
+      let d=request.resource.data;
+      let oldPts = resource == null ? 0 : resource.data.get('points', 0);
+      let newPts = d.get('points', 0);
+      return d.keys().hasOnly(['points','storeName','updatedAt','restoredFor'])
+        && newPts is int && newPts >= 0
+        && ((request.auth.uid == uid && newPts <= oldPts)
+          || (request.auth.uid == uid && d.get('restoredFor','') is string && d.get('restoredFor','') != ''
+              && storePointsRestoreOk(uid, mid, d.restoredFor, newPts - oldPts))
+          || ((ownsMerchant(mid) || me().get('deliveryAgentId','') != '' || isAdmin())
+            && newPts > oldPts && newPts - oldPts <= 100000));
+    }
+    // v9 (الجزء 2): العميل يرجّع نقط متجر اتخصمت من طلب اتلغى، مرة واحدة وبنفس العدد بالظبط، ومربوطة بالطلب نفسه.
+    function storePointsRestoreOk(uid, mid, sid, delta){
+      let before = get(/databases/$(database)/documents/subOrders/$(sid)).data;
+      let after = getAfter(/databases/$(database)/documents/subOrders/$(sid)).data;
+      return after.get('customerId','') == uid && after.get('merchantId','') == mid
+        && after.get('status','') in ['CANCELLED','REJECTED']
+        && before.get('storePointsRestored', false) == false && after.get('storePointsRestored', false) == true
+        && delta == after.get('storePointsRedeemed', 0);
+    }
+    // v9: رصيد الدعوة من المنصة في حقل منفصل inviteCredit (الرصيد العام القديم loyaltyPoints بيتوقف عن الاحتساب لما نقط المتجر تتفتح). نفس قيود loyaltyPoints.
+    function inviteCreditWrite(uid){
+      let oldPts = resource.data.get('inviteCredit', 0);
+      let newPts = request.resource.data.get('inviteCredit', 0);
+      return newPts is number && newPts >= 0
+        && ((request.auth.uid == uid && newPts <= oldPts)
+          || ((me().get('merchantId','') != '' || me().get('deliveryAgentId','') != '')
+            && newPts > oldPts && newPts - oldPts <= 100000));
+    }
+    function validGoogleMapsLink(d){
+      let link=d.get('googleMapsUrl','');
+      return link is string && link.size() <= 4096 && (link == '' || link.matches('https://(maps[.]app[.]goo[.]gl/|goo[.]gl/maps/|(www[.])?google[.]com/maps([/?]|$)|maps[.]google[.]com/).*'));
+    }
+    function validMerchantRegistration(mid){
+      let d=request.resource.data;
+      return signedIn() && d.id == mid && d.status == 'PENDING' && validGoogleMapsLink(d)
+        && d.keys().hasOnly(['id','businessName','managerName','phone','whatsappNumber','email',
+          'activityType','categoryIds','address','description','logoUrl','coverUrl','status',
+          'rating','totalOrdersCount','ownerId','registeredAt','marketerId','marketerName',
+          'marketerSince','subscriptionModel','subPlanType','googleMapsUrl','latitude','longitude'])
+        && d.get('subscriptionModel','') in ['', 'MERCHANT_V2']
+        && d.get('subPlanType',null) == null
+        && (!get(/databases/$(database)/documents/settings/app).data.get('merchantPlansV2',false)
+          || d.get('subscriptionModel','') == 'MERCHANT_V2')
+        && ((d.ownerId == request.auth.uid)
+          || (isMarketer() && d.ownerId == null && d.get('marketerId','') == request.auth.uid))
+        && (d.get('marketerId',null) == null
+          || get(/databases/$(database)/documents/users/$(d.marketerId)).data.get('role','') == 'MARKETER');
+    }
+    function orderingAllowed(m){
+      let enforced=get(/databases/$(database)/documents/settings/app).data.get('subsEnforced',false);
+      return m.get('status','') == 'ACTIVE'
+        && (m.get('subscriptionModel','') == 'MERCHANT_V2'
+          ? (m.get('subPlanType','') == 'ORDERING' && m.get('subEndsAt',0) > request.time.toMillis()
+            && m.get('subOrderCommissionPercent',0) == 2 && m.get('subTermsVersion',0) == 1)
+          : (!enforced || m.get('subEndsAt',0) > request.time.toMillis()));
+    }
+    // v12: تحديث متوسط التقييم: تقييم واحد جديد بس (العدد +1، والمجموع يزيد 1 إلى 5، والمتوسط بين 0 و5).
+    function validRatingBump(){
+      let n = request.resource.data;
+      let o = resource.data;
+      let base = o.get('ratingSum', o.get('rating',0) * o.get('ratingCount',0));
+      return only(['rating','ratingCount','ratingSum'])
+        && n.ratingCount is int && n.ratingCount == o.get('ratingCount',0) + 1
+        && n.ratingSum is number && n.ratingSum >= base + 1 - 0.001 && n.ratingSum <= base + 5 + 0.001
+        && n.rating is number && n.rating >= 0 && n.rating <= 5;
+    }
+    function productOwner(mid){
+      return ownsMerchant(mid)
+        && orderingAllowed(get(/databases/$(database)/documents/merchants/$(mid)).data);
+    }
+    function feeFields(){
+      return ['commissionModel','commissionTermsVersion','commissionPayer','commissionPercent',
+        'commissionBase','commissionAmount','commissionBasis'];
+    }
+    function validFeeSnapshot(){
+      let d=request.resource.data;
+      let m=get(/databases/$(database)/documents/merchants/$(d.merchantId)).data;
+      return orderingAllowed(m)
+        && (m.get('subscriptionModel','') == 'MERCHANT_V2'
+          ? (d.get('commissionModel','') == 'MERCHANT_V2'
+            && d.get('commissionTermsVersion',0) == 1 && d.get('commissionPayer','') == 'MERCHANT'
+            && d.get('commissionPercent',0) == 2 && d.subtotal is number && d.subtotal >= 0
+            && d.get('commissionBase',-1) == math.round(d.subtotal * 100) / 100.0
+            && d.get('commissionAmount',-1) == math.round(d.commissionBase * 2) / 100.0
+            && d.get('commissionBasis','') == 'GOODS_AFTER_MERCHANT_DISCOUNTS_EXCLUDES_DELIVERY'
+            && (d.get('status','') == 'PENDING_ADMIN'
+              || (d.get('status','') == 'SENT_TO_MERCHANT' && d.get('sentByAdminId','') == 'AUTO'
+                && get(/databases/$(database)/documents/settings/app).data.get('autoApproveOrders',false) == true))
+            && !d.keys().hasAny(['deliveredAt']))
+          : !d.keys().hasAny(feeFields()));
+    }
+    function validAssignment(d){
+      let a=get(/databases/$(database)/documents/deliveryAgents/$(d.deliveryAgentId)).data;
+      return a.get('status','') == 'ACTIVE' && d.deliveryAgentName == a.name && d.deliveryAgentPhone == a.phone;
+    }
+    function newOrderUpdate(){
+      let old=resource.data;
+      let d=request.resource.data;
+      let merchantStep=ownsMerchant(old.merchantId)
+        && ((old.status == 'SENT_TO_MERCHANT' && d.status in ['ACCEPTED','REJECTED'])
+          || (old.status == 'ACCEPTED' && d.status in ['PREPARING','CANCELLED'])
+          || (old.status == 'PREPARING' && d.status in ['OUT_FOR_DELIVERY','CANCELLED']))
+        && (d.status == 'OUT_FOR_DELIVERY'
+          ? (only(['status','deliveryAgentId','deliveryAgentName','deliveryAgentPhone','statusTimes']) && validAssignment(d))
+          : only(['status','cancelReason','cancelledAt','restocked','discountRestored','storePointsRestored','statusTimes']));
+      let customerStep=signedIn() && old.get('customerId','') == request.auth.uid
+        && old.status in ['PENDING_ADMIN','SENT_TO_MERCHANT'] && d.status == 'CANCELLED'
+        && only(['status','cancelReason','cancelledAt','restocked','discountRestored','storePointsRestored']);
+      let courierStep=signedIn() && old.get('deliveryAgentId','') != ''
+        && get(/databases/$(database)/documents/deliveryAgents/$(old.deliveryAgentId)).data.get('ownerId','') == request.auth.uid
+        && get(/databases/$(database)/documents/deliveryAgents/$(old.deliveryAgentId)).data.get('status','') == 'ACTIVE'
+        && old.status == 'OUT_FOR_DELIVERY' && d.status in ['DELIVERED','CANCELLED']
+        && (d.status != 'DELIVERED' || !old.get('batchFlow',false) || old.get('pickedUpAt',null) != null)
+        && only(['status','deliveredAt','cancelReason','cancelledAt','pointsAwarded','restocked','discountRestored','storePointsRestored']);
+      let courierPickup=signedIn() && old.get('batchFlow',false)
+        && old.get('deliveryAgentId','') != ''
+        && get(/databases/$(database)/documents/deliveryAgents/$(old.deliveryAgentId)).data.get('ownerId','') == request.auth.uid
+        && get(/databases/$(database)/documents/deliveryAgents/$(old.deliveryAgentId)).data.get('status','') == 'ACTIVE'
+        && old.status == 'OUT_FOR_DELIVERY' && d.status == 'OUT_FOR_DELIVERY'
+        && old.get('pickedUpAt',null) == null
+        && only(['pickedUpAt']) && d.pickedUpAt == request.time;
+      return (isAdmin() || merchantStep || customerStep || courierStep || courierPickup) && old.status != 'DELIVERED'
+        && (courierPickup || !touches(['pickedUpAt']))
+        && d.status in ['PENDING_ADMIN','SENT_TO_MERCHANT','ACCEPTED','PREPARING',
+          'OUT_FOR_DELIVERY','DELIVERED','REJECTED','CANCELLED']
+        && only(['status','merchantContactStatus','merchantContactedAt','sentByAdminId',
+          'cancelReason','cancelledAt','deliveryAgentId','deliveryAgentName','deliveryAgentPhone','deliveredAt','pickedUpAt','pointsAwarded','restocked','discountRestored','storePointsRestored','statusTimes'])
+        && (d.status == 'DELIVERED' ? d.get('deliveredAt',null) == request.time : !touches(['deliveredAt']))
+        && (d.status != 'OUT_FOR_DELIVERY' || validAssignment(d));
+    }
+    function pendingSubscription(sid){
+      let d=request.resource.data;
+      let p=get(/databases/$(database)/documents/plans/$(d.planId)).data;
+      let m=get(/databases/$(database)/documents/merchants/$(d.merchantId)).data;
+      let st=get(/databases/$(database)/documents/settings/app).data;
+      let isOffer=d.keys().hasAny(['offerId','listPrice']);
+      let isUpg=d.keys().hasAny(['upgrade','upgradeFrom']);
+      return d.keys().hasOnly(['id','merchantId','merchantName','planId','planName','price','months',
+          'model','kind','termsVersion','orderCommissionPercent','reference','status','createdAt','marketerId','marketerAmount',
+          'offerId','listPrice','upgrade','upgradeFrom'])
+        && d.id == sid && ownsMerchant(d.merchantId) && d.status == 'PENDING'
+        && d.get('marketerId',null) == null && d.get('marketerAmount',0) == 0
+        && d.reference is string && d.reference.size() <= 2000 && d.createdAt is number
+        && p.get('active',true) == true && d.planName == p.name && d.months == p.months
+        // السعر: سعر الباقة، أو 300 فقط لعرض كود المسوّق بشروطه
+        && (isOffer
+          ? (!isUpg && d.keys().hasAll(['offerId','listPrice'])
+            && m.get('marketerId',null) != null && m.get('marketerOfferUsed',false) != true
+            && d.listPrice == p.price
+            && (st.get('marketerOffer2Enabled',false) == true
+              // العرض الجديد: رسوم تعاقد + باقة الطلبات للمدة المحددة (يوقف العرض القديم)
+              ? (d.offerId == 'MARKETER_ORDERING_TRIAL'
+                && d.planId in ['ordering_3m_v2','ordering_6m_v2','ordering_12m_v2'] && p.get('months',0) == st.get('offer2Months',3)
+                && p.get('kind','') == 'ORDERING' && d.months == st.get('offer2Months',3)
+                && d.price == st.get('offer2Fee',250))
+              // العرض القديم (موقوف افتراضيًا)
+              : (d.offerId == 'MARKETER_PROFILE_6M' && st.get('marketerOfferEnabled',false) == true
+                && d.planId == 'profile_6m_v2' && p.get('kind','') == 'PROFILE' && d.months == 6
+                && d.price == 300)))
+          : d.price == p.price)
+        // الترقية: من تعريفية سارية إلى باقة طلبات بكامل سعرها
+        && (isUpg
+          ? (!isOffer && d.get('upgrade',false) == true && d.get('upgradeFrom','') == 'PROFILE'
+            && d.keys().hasAll(['upgrade','upgradeFrom']) && p.get('kind','') == 'ORDERING'
+            && m.get('status','') == 'APPROVED' && m.get('subscriptionModel','') == 'MERCHANT_V2'
+            && m.get('subPlanType','') == 'PROFILE' && m.get('subEndsAt',0) > request.time.toMillis())
+          : true)
+        && (p.get('model','') == 'MERCHANT_V2'
+          ? (d.get('model','') == 'MERCHANT_V2' && d.get('kind','') == p.kind
+            && d.get('termsVersion',0) == p.termsVersion && d.get('orderCommissionPercent',-1) == p.orderCommissionPercent)
+          : (!d.keys().hasAny(['model','kind','termsVersion','orderCommissionPercent']) && !isOffer && !isUpg));
+    }
+    function publicKeys(d){
+      return d.keys().hasOnly(['id','businessName','description','address','phone','whatsappNumber',
+        'latitude','longitude','googleMapsUrl','logoUrl','activityType','openTime','closeTime','status','subEndsAt','subPlanType'])
+        || (d.keys().hasOnly(['id','businessName','description','address','phone','whatsappNumber',
+        'latitude','longitude','googleMapsUrl','logoUrl','activityType','openTime','closeTime','status','subEndsAt','subPlanType','publishedAt'])
+          && d.publishedAt is number);
+    }
+    function publicLive(m){
+      return m.get('subscriptionModel','') == 'MERCHANT_V2' && m.get('status','') == 'ACTIVE'
+        && m.get('subPlanType','') in ['PROFILE','ORDERING'] && m.get('subEndsAt',0) > request.time.toMillis();
+    }
+    function publicMatches(d,m,mid){
+      return publicKeys(d) && validGoogleMapsLink(d) && d.id == mid && d.businessName == m.businessName
+        && d.get('description',null) == m.get('description',null)
+        && d.get('address',null) == m.get('address',null)
+        && d.get('phone',null) == m.get('phone',null)
+        && d.get('whatsappNumber',null) == m.get('whatsappNumber',null)
+        && d.get('googleMapsUrl','') == m.get('googleMapsUrl','')
+        && d.get('latitude',null) == m.get('latitude',null)
+        && d.get('longitude',null) == m.get('longitude',null)
+        && d.get('logoUrl',null) == m.get('logoUrl',null)
+        && d.get('activityType',null) == m.get('activityType',null)
+        && d.get('openTime',null) == m.get('openTime',null)
+        && d.get('closeTime',null) == m.get('closeTime',null)
+        && d.status == m.status && d.subEndsAt == m.subEndsAt && d.subPlanType == m.subPlanType;
+    }
+
+    // Staged program gate. Missing document/field or any value other than true is OFF.
+    function programEnabled(){
+      return exists(/databases/$(database)/documents/settings/app)
+        && get(/databases/$(database)/documents/settings/app).data.get('marketerProgramEnabled',false) == true;
+    }
+    // MARKETER PROGRAM v1, merge into the current rules before enabling.
+    // These records are separate from user-editable profiles.
+    function joinProof(id, candidate){
+      return id != candidate && get(/databases/$(database)/documents/marketerJoinRequests/$(id)).data.inviterId == candidate
+        && get(/databases/$(database)/documents/marketerJoinRequests/$(id)).data.emailVerified == true;
+    }
+    function validAppointment(uid){
+      let a=request.resource.data;
+      let ids=a.proofIds;
+      return isSuper() && a.keys().hasOnly(['id','windowId','mode','proofIds','reason','createdAt','createdBy'])
+        && getAfter(/databases/$(database)/documents/marketerWindows/$(a.windowId)).data.kind == 'APPOINTMENT'
+        && getAfter(/databases/$(database)/documents/marketerWindows/$(a.windowId)).data.marketerId == uid
+        && getAfter(/databases/$(database)/documents/marketerWindows/$(a.windowId)).data.startedAt == request.time
+        && a.id == uid && a.createdBy == request.auth.uid && a.createdAt == request.time
+        && get(/databases/$(database)/documents/users/$(uid)).data.role == 'CUSTOMER'
+        && getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'MARKETER'
+        && ((a.mode == 'EXCEPTION' && ids.size()==0 && a.reason is string && a.reason.size()>=10 && a.reason.size()<=1000)
+          || (a.mode == 'TARGET' && ids is list && ids.size()==5 && ids.toSet().size()==5 && a.reason == ''
+            && joinProof(ids[0],uid) && joinProof(ids[1],uid) && joinProof(ids[2],uid)
+            && joinProof(ids[3],uid) && joinProof(ids[4],uid)));
+    }
+    function promotionHasProof(uid){
+      return request.resource.data.get('role','') != 'MARKETER' || resource.data.get('role','') == 'MARKETER'
+        || (existsAfter(/databases/$(database)/documents/marketerAppointments/$(uid))
+          && getAfter(/databases/$(database)/documents/marketerAppointments/$(uid)).data.createdAt == request.time);
+    }
+    // Immutable optional code attribution. It records the account's chosen code,
+    // not a verified real-world identity, a visit, or an incentive entitlement.
+    match /signupAttributions/{uid} {
+      allow read: if isSuper();
+      allow create: if programEnabled() && signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['id','referrerId','code','createdAt'])
+        && request.resource.data.id == uid && request.resource.data.createdAt == request.time
+        && request.resource.data.referrerId is string && request.resource.data.referrerId != uid
+        && request.resource.data.code is string
+        && exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(request.resource.data.referrerId)).data.referralCode == request.resource.data.code;
+      allow update, delete: if false;
+    }
+    match /marketerJoinRequests/{uid} {
+      allow read: if programEnabled() && (signedIn() && (isSuper() || uid == request.auth.uid || resource.data.inviterId == request.auth.uid));
+      allow create: if programEnabled() && (signedIn() && request.auth.uid == uid && request.auth.token.email_verified == true
+        && me().role == 'CUSTOMER' && request.resource.data.keys().hasOnly(['id','inviterId','emailVerified','createdAt'])
+        && request.resource.data.id == uid && request.resource.data.emailVerified == true
+        && request.resource.data.inviterId is string && request.resource.data.inviterId != uid
+        && get(/databases/$(database)/documents/users/$(request.resource.data.inviterId)).data.role in ['CUSTOMER','MARKETER']
+        && request.resource.data.createdAt == request.time);
+      allow update, delete: if false;
+    }
+    match /marketerAppointments/{uid} {
+      allow read: if programEnabled() && (signedIn() && (isSuper() || uid == request.auth.uid));
+      allow create: if programEnabled() && (validAppointment(uid));
+      allow update, delete: if false;
+    }
+    function previousWindowEnded(uid){
+      return !exists(/databases/$(database)/documents/marketerWindowState/$(uid))
+        || get(/databases/$(database)/documents/marketerWindows/$(get(/databases/$(database)/documents/marketerWindowState/$(uid)).data.windowId)).data.startedAt + duration.value(7,'d') <= request.time;
+    }
+    match /marketerWindows/{wid} {
+      allow read: if programEnabled() && signedIn() && (isSuper() || resource.data.marketerId == request.auth.uid);
+      allow create: if programEnabled() && isSuper()
+        && request.resource.data.keys().hasOnly(['id','marketerId','startedAt','target','kind','reason','createdBy'])
+        && request.resource.data.id == wid && request.resource.data.startedAt == request.time
+        && request.resource.data.target == 5 && request.resource.data.createdBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.marketerId)).data.role == 'MARKETER'
+        && getAfter(/databases/$(database)/documents/marketerWindowState/$(request.resource.data.marketerId)).data.windowId == wid
+        && previousWindowEnded(request.resource.data.marketerId)
+        && ((request.resource.data.kind == 'APPOINTMENT' && request.resource.data.reason == ''
+          && !exists(/databases/$(database)/documents/marketerWindowState/$(request.resource.data.marketerId))
+          && getAfter(/databases/$(database)/documents/marketerAppointments/$(request.resource.data.marketerId)).data.windowId == wid
+          && getAfter(/databases/$(database)/documents/marketerAppointments/$(request.resource.data.marketerId)).data.createdAt == request.time)
+          || (request.resource.data.kind == 'RENEWAL' && request.resource.data.reason is string
+            && request.resource.data.reason.size()>=10 && request.resource.data.reason.size()<=1000));
+      allow update, delete: if false;
+    }
+    match /marketerWindowState/{uid} {
+      allow read: if programEnabled() && isSuper();
+      allow create, update: if programEnabled() && isSuper()
+        && request.resource.data.keys().hasOnly(['windowId'])
+        && getAfter(/databases/$(database)/documents/marketerWindows/$(request.resource.data.windowId)).data.marketerId == uid
+        && getAfter(/databases/$(database)/documents/marketerWindows/$(request.resource.data.windowId)).data.startedAt == request.time;
+      allow delete: if false;
+    }
+    match /marketerIncentives/{iid} {
+      allow read: if programEnabled() && (signedIn() && (isSuper() || resource.data.marketerId == request.auth.uid));
+      // Main admin is the trusted verifier of payment evidence and arithmetic. No client claim path.
+      allow create: if programEnabled() && (isSuper()
+        && request.resource.data.keys().hasOnly(['id','periodId','marketerId','amount','baseAmount','qualifyingCount','subscriptionIds','verifiedBy','verifiedAt'])
+        && iid == request.resource.data.periodId+'_'+request.resource.data.marketerId && request.resource.data.id == iid
+        && get(/databases/$(database)/documents/users/$(request.resource.data.marketerId)).data.role == 'MARKETER'
+        && get(/databases/$(database)/documents/marketerWindows/$(request.resource.data.periodId)).data.startedAt + duration.value(7,'d') <= request.time
+        && get(/databases/$(database)/documents/marketerWindows/$(request.resource.data.periodId)).data.marketerId == request.resource.data.marketerId
+        && request.resource.data.qualifyingCount >= get(/databases/$(database)/documents/marketerWindows/$(request.resource.data.periodId)).data.target
+        && request.resource.data.amount is number && request.resource.data.amount>=0
+        && request.resource.data.baseAmount is number && request.resource.data.baseAmount>=0
+        && request.resource.data.amount <= request.resource.data.baseAmount * 0.5 + 0.01
+        && request.resource.data.subscriptionIds is list && request.resource.data.subscriptionIds.size()<=1000
+        && request.resource.data.verifiedBy == request.auth.uid && request.resource.data.verifiedAt == request.time);
+      allow update, delete: if false;
+    }
+
+    // v11: كود الدعوة -> صاحبه (من غير قراءة مستندات المستخدمين). المستخدم يعمل كوده هو بس، والإدارة تعمل أي كود.
+    match /referralCodes/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid is string
+        && ((request.resource.data.uid == request.auth.uid && code == 'MK-' + request.auth.uid.upper()) || isSuper());
+      allow update, delete: if isSuper();
+    }
+
+    // ===== المستخدمون =====
+    match /users/{uid} {
+      // v11: المستخدم يقرأ حسابه بس، والإدارة تقرأ الكل. البحث بكود الدعوة بقى عن طريق referralCodes.
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if (isSuper() && (!programEnabled() || request.resource.data.get('role','') != 'MARKETER')) || validSelfUser(uid);
+      allow update: if (isSuper() && (!programEnabled() || promotionHasProof(uid)))
+        || (isAdmin() && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','referralCode']))
+        || (signedIn() && request.auth.uid == uid
+          && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','loyaltyPoints','inviteCredit',
+                       'deliverySubStartedAt','deliverySubUntil','deliverySubUsedPeriod',
+                       'banned','bannedAt','bannedBy','bannedReason']) && safeReferralCodeUpdate() && waitlistKept())
+        // اشتراك التوصيل (PR #142): العميل يسجّل بس استخدام الفترة الحالية (رقم أكبر من السابق ومش أكبر من الفترة الحالية) والاشتراك ساري.
+        || (signedIn() && request.auth.uid == uid && only(['deliverySubUsedPeriod'])
+          && resource.data.get('deliverySubUntil',0) > request.time.toMillis()
+          && request.resource.data.deliverySubUsedPeriod > resource.data.get('deliverySubUsedPeriod',-1)
+          && request.resource.data.deliverySubUsedPeriod <= (request.time.toMillis() - resource.data.get('deliverySubStartedAt',0)) / 604800000)
+        || (signedIn() && only(['loyaltyPoints']) && loyaltyPointsWrite(uid))
+        || (signedIn() && only(['inviteCredit']) && inviteCreditWrite(uid));
+      allow delete: if isSuper();
+    }
+
+    match /users/{uid}/storePoints/{mid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin() || ownsMerchant(mid));
+      allow create, update: if signedIn() && storePointsWrite(uid, mid);
+      allow delete: if isSuper();
+    }
+
+    // ===== المتاجر =====
+    match /merchants/{mid} {
+      allow read: if signedIn();
+      allow create: if isSuper()
+        || (isAdmin() && !request.resource.data.keys().hasAny(['subscriptionModel','subPlanType','subPlanId',
+          'subPlanName','subEndsAt','subOrderCommissionPercent','subTermsVersion'])
+          && request.resource.data.get('commissionPercent',null) == null)
+        || validMerchantRegistration(mid);
+      allow update: if isSuper() || (isAdmin() && !touches(merchantTerms()))
+        || (ownsMerchant(mid) && validGoogleMapsLink(request.resource.data) && only(['businessName','description','phone','whatsappNumber','address','activityType',
+          'latitude','longitude','googleMapsUrl','logoUrl','openTime','closeTime','minOrderAmount','closedDays','temporarilyClosed','storePoints']) && validStoreCfg())
+        || (signedIn() && validRatingBump());
+      allow delete: if isSuper();
+    }
+
+    // Shared-catalog proposal only. Publish manually after review of current live rules.
+    function validCatalog(sku){
+      let d=request.resource.data;
+      return d.keys().hasOnly(['sku','title','description','categoryId','unit','barcode','source','rightsConfirmed','isActive','version','updatedAt','updatedBy'])
+        && sku.matches('[A-Za-z0-9_-]{1,64}') && d.sku == sku
+        && d.title is string && d.title.size()>0 && d.title.size()<=160
+        && d.description is string && d.description.size()<=1200
+        && d.unit is string && d.unit.size()>0 && d.unit.size()<=80
+        && d.barcode is string && d.barcode.size()<=64
+        && d.source is string && d.source.size()>0 && d.source.size()<=300
+        && d.rightsConfirmed == true && d.isActive is bool
+        && d.version is int && d.version>0 && d.updatedAt is number
+        && d.updatedBy == request.auth.uid
+        && get(/databases/$(database)/documents/categories/$(d.categoryId)).data.isActive == true;
+    }
+    match /catalogProducts/{sku} {
+      allow read: if isSuper() || (signedIn() && me().role == 'MERCHANT' && resource.data.isActive == true);
+      allow create: if isSuper() && validCatalog(sku) && request.resource.data.version == 1;
+      allow update: if isSuper() && validCatalog(sku) && request.resource.data.version == resource.data.version+1;
+      allow delete: if false;
+    }
+    function validCatalogOffer(pid){
+      let d=request.resource.data;
+      let c=get(/databases/$(database)/documents/catalogProducts/$(d.catalogId)).data;
+      return d.keys().hasOnly(['id','catalogId','catalogVersion','merchantId','title','description','categoryId','unit','barcode','price','stock','imageUrl','isActive','isPopular','isNew','rating','oldPrice','discountPercent','flashPrice','flashEndsAt','groupDiscountPercent','groupMinParticipants'])
+        && pid == 'catalog_'+d.merchantId+'_'+d.catalogId && d.id == pid
+        && c.isActive == true && d.catalogId == c.sku && d.catalogVersion == c.version
+        && d.title == c.title && d.description == c.description && d.categoryId == c.categoryId && d.unit == c.unit && d.barcode == c.barcode
+        && d.imageUrl == '' && d.isPopular == false && d.isNew == true && d.rating == 0
+        && d.oldPrice == null && d.discountPercent == 0 && d.flashPrice == null && d.flashEndsAt == null
+        && d.groupDiscountPercent == 0 && d.groupMinParticipants == 3
+        && validOfferValues();
+    }
+    function validOfferValues(){
+      let d=request.resource.data;
+      return d.price is number && d.price>0 && d.price<=1000000
+        && math.abs(d.price*100-math.round(d.price*100))<0.00001
+        && d.stock is int && d.stock>=0 && d.stock<=1000000 && d.isActive is bool;
+    }
+    // Existing legacy stock/order permissions are unchanged, not a full security audit.
+    match /products/{pid} {
+      allow read: if signedIn();
+      allow create: if (isAdmin() || productOwner(request.resource.data.merchantId))
+        && (!request.resource.data.keys().hasAny(['catalogId','catalogVersion']) || validCatalogOffer(pid));
+      allow update: if ((isAdmin() || (productOwner(resource.data.merchantId) && !touches(['merchantId','id'])))
+          && !touches(['catalogId','catalogVersion'])
+          && (!resource.data.keys().hasAny(['catalogId']) || validOfferValues()))
+        || (signedIn() && only(['stock','soldCount'])
+          && request.resource.data.stock is int && request.resource.data.stock >= 0 && request.resource.data.stock <= 1000000
+          && request.resource.data.stock >= resource.data.get('stock',0) - 100
+          && request.resource.data.stock <= resource.data.get('stock',0) + 100
+          && request.resource.data.get('soldCount', resource.data.get('soldCount',0)) >= resource.data.get('soldCount',0));
+      allow delete: if isAdmin() || productOwner(resource.data.merchantId);
+    }
+
+    // ===== الأقسام والإعدادات والباقات =====
+    match /categories/{id} { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /settings/{id}   { allow read: if true; allow write: if isSuper(); }
+    match /plans/{id}      { allow read: if signedIn(); allow write: if isSuper(); }
+
+    // ===== الطلبات =====
+    // v12: فحص اتساق الطلب وقت الإنشاء (الأجزاء بتتكتب في نفس العملية، فبنقراها بـgetAfter).
+    // مهم: Rules مفيهاش loops، فمش ممكن نراجع سعر كل منتج. ده بيمنع أرقام متناقضة، مش بديل لتسعير من السيرفر.
+    function subSum(sid, oid){
+      let x = getAfter(/databases/$(database)/documents/subOrders/$(sid)).data;
+      return (x.parentOrderId == oid && x.customerId == request.auth.uid)
+        ? (x.get('subtotalGross', x.subtotal)) : -1000000000;
+    }
+    function validNewOrder(oid){
+      let d = request.resource.data;
+      let ids = d.get('subOrderIds', []);
+      let n = ids.size();
+      let total = n == 1 ? subSum(ids[0], oid)
+        : (n == 2 ? subSum(ids[0], oid) + subSum(ids[1], oid)
+        : (n == 3 ? subSum(ids[0], oid) + subSum(ids[1], oid) + subSum(ids[2], oid) : -1));
+      let fee = d.get('deliveryFee', 0);
+      let disc = d.get('discount', 0);
+      let pts = d.get('pointsRedeemed', 0);
+      let field = d.get('pointsField', 'loyaltyPoints');
+      let uref = /databases/$(database)/documents/users/$(request.auth.uid);
+      return n >= 1 && n <= 3 && d.subtotal is number && d.subtotal >= 0
+        && total >= 0 && math.abs(total - d.subtotal) < 0.011
+        && fee is number && fee >= 0 && disc is number && disc >= 0 && disc <= d.subtotal + fee + 0.011
+        && pts is number && pts >= 0
+        && (pts == 0 || (field in ['loyaltyPoints','inviteCredit']
+          && getAfter(uref).data.get(field, 0) == get(uref).data.get(field, 0) - pts))
+        && (d.get('couponCode', null) == null
+          || (d.couponCode is string
+            && getAfter(/databases/$(database)/documents/coupons/$(d.couponCode)).data.usedCount
+               == get(/databases/$(database)/documents/coupons/$(d.couponCode)).data.get('usedCount', 0) + 1
+            && getAfter(/databases/$(database)/documents/coupons/$(d.couponCode)).data.get('lastOrderId', '') == oid));
+    }
+    match /orders/{id} {
+      allow read: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.customerId == request.auth.uid && validNewOrder(id);
+      // Order status sync: a merchant or courier who handles one of the order's sub orders (max 3 stores) may change
+      // ONLY the status field, to a known status, so the parent order follows its sub orders.
+      function partnerOfSub(sid){
+        let s = get(/databases/$(database)/documents/subOrders/$(sid)).data;
+        return (me().get('merchantId','') != '' && s.get('merchantId','') == me().get('merchantId',''))
+          || (me().get('deliveryAgentId','') != '' && s.get('deliveryAgentId','') == me().get('deliveryAgentId',''));
+      }
+      function partnerOfOrder(){
+        let ids = resource.data.get('subOrderIds', []);
+        return ids.size() > 0 && (partnerOfSub(ids[0]) || (ids.size() > 1 && partnerOfSub(ids[1])) || (ids.size() > 2 && partnerOfSub(ids[2])));
+      }
+      function partnerStatusSync(){
+        return signedIn() && only(['status'])
+          && request.resource.data.status in ['PENDING_ADMIN','SENT_TO_MERCHANT','ACCEPTED','PREPARING','OUT_FOR_DELIVERY','DELIVERED','CANCELLED']
+          && partnerOfOrder();
+      }
+      allow update: if isAdmin() || (signedIn() && resource.data.customerId == request.auth.uid) || partnerStatusSync();
+      allow delete: if isAdmin() || (signedIn() && resource.data.customerId == request.auth.uid);
+    }
+    // v11: أطراف الطلب بس. شريك أي جزء من نفس الطلب بيقرا الأجزاء التانية (لحساب حالة الطلب الرئيسي).
+    function partnerOfSubId(sid){
+      let s = get(/databases/$(database)/documents/subOrders/$(sid)).data;
+      return (me().get('merchantId','') != '' && s.get('merchantId','') == me().get('merchantId',''))
+        || (me().get('deliveryAgentId','') != '' && s.get('deliveryAgentId','') == me().get('deliveryAgentId',''));
+    }
+    function partnerOfParent(pid){
+      let ids = get(/databases/$(database)/documents/orders/$(pid)).data.get('subOrderIds', []);
+      return ids.size() > 0 && (partnerOfSubId(ids[0]) || (ids.size() > 1 && partnerOfSubId(ids[1])) || (ids.size() > 2 && partnerOfSubId(ids[2])));
+    }
+    function canReadSub(){
+      let d = resource.data;
+      return signedIn() && (isAdmin() || d.get('customerId','') == request.auth.uid
+        || (me().get('merchantId','') != '' && d.get('merchantId','') == me().get('merchantId',''))
+        || (me().get('deliveryAgentId','') != '' && d.get('deliveryAgentId','') == me().get('deliveryAgentId',''))
+        || get(/databases/$(database)/documents/merchants/$(d.get('merchantId','-'))).data.get('marketerId','') == request.auth.uid
+        || partnerOfParent(d.get('parentOrderId','-')));
+    }
+    function isSubParty(){
+      let d = resource.data;
+      return signedIn() && (isAdmin() || d.get('customerId','') == request.auth.uid
+        || (me().get('merchantId','') != '' && d.get('merchantId','') == me().get('merchantId',''))
+        || (me().get('deliveryAgentId','') != '' && d.get('deliveryAgentId','') == me().get('deliveryAgentId','')));
+    }
+    match /subOrders/{id} {
+      allow read: if canReadSub();
+      allow create: if ((signedIn() && request.resource.data.customerId == request.auth.uid) || isAdmin())
+        && validFeeSnapshot();
+      allow update: if signedIn() && (resource.data.get('commissionModel','') == 'MERCHANT_V2'
+        ? newOrderUpdate() : (isSubParty() && !touches(feeFields())));
+      allow delete: if isSuper();
+    }
+
+    // ===== الاشتراكات والمسوّقون =====
+    match /subscriptions/{sid} {
+      allow read: if signedIn() && (isAdmin() || resource.data.get('marketerId','') == request.auth.uid
+        || resource.data.merchantId == me().get('merchantId',''));
+      allow create: if isSuper() || (signedIn() && pendingSubscription(sid));
+      allow update, delete: if isSuper();
+    }
+    match /withdrawals/{wid} {
+      allow read: if signedIn() && (isAdmin() || resource.data.marketerId == request.auth.uid);
+      allow create: if isMarketer() && request.resource.data.marketerId == request.auth.uid && request.resource.data.status == 'PENDING';
+      allow update, delete: if (programEnabled() ? isSuper() : isAdmin());
+    }
+    match /marketerPayouts/{pid} {
+      allow read: if signedIn() && (isAdmin() || resource.data.marketerId == request.auth.uid);
+      allow write: if (programEnabled() ? isSuper() : isAdmin());
+    }
+
+
+    // Anonymous reads are single-document public projections only.
+    // ===== Services (booking) - new in services PR. Additive: touches no existing rule. =====
+    function svcTypes(){ return ['عيادات','مدرسين','صيانة منزلية','تدريب بدني شخصي','حلاقة رجالي','صالون تجميل وميك أب','تنظيف منازل','غسيل سجاد وكنب','نقل أثاث وونش','صيانة سيارات','غسيل سيارات متنقل','تصوير','تنظيم حفلات','رعاية أطفال وكبار','بيطري وخدمات حيوانات']; }
+    function svcProvider(mid){
+      let m=get(/databases/$(database)/documents/merchants/$(mid)).data;
+      return m.get('status','') == 'ACTIVE' && m.get('activityType','') in svcTypes()
+        && (m.get('subscriptionModel','') != 'MERCHANT_V2' || (m.get('subPlanType','') == 'ORDERING' && m.get('subEndsAt',0) > request.time.toMillis()));
+    }
+    function svcOn(){ return get(/databases/$(database)/documents/settings/app).data.get('servicesEnabled',false) == true; }
+    function seatOf(d){ return d.get('seat', 1); }
+    function slotKey(d){ return d.merchantId + '_' + d.date + '_' + d.time.replace(':','') + (seatOf(d) > 1 ? '_s' + string(seatOf(d)) : ''); }
+    function capacityOf(mid){
+      let p = /databases/$(database)/documents/serviceSchedules/$(mid);
+      return exists(p) ? get(p).data.get('capacity', 1) : 1;
+    }
+    function validSlotFields(d){
+      return d.merchantId is string && d.date is string && d.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && d.time is string && d.time.matches('([01][0-9]|2[0-3]):[0-5][0-9]')
+        && seatOf(d) is int && seatOf(d) >= 1 && seatOf(d) <= capacityOf(d.merchantId);
+    }
+    // v11: صور بطاقة الهوية مع طلب الانضمام. لصاحب الطلب وإدارة الموقع (SUPER) بس، ومتتكتبش في أي مستند تاني. بتفضل محفوظة بعد الموافقة.
+    match /memberRequestIds/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isSuper());
+      allow create: if signedIn() && request.auth.uid == uid
+        && get(/databases/$(database)/documents/settings/app).data.get('memberRequestsEnabled', false) == true
+        && existsAfter(/databases/$(database)/documents/memberRequests/$(uid))
+        && getAfter(/databases/$(database)/documents/memberRequests/$(uid)).data.status == 'PENDING'
+        && getAfter(/databases/$(database)/documents/memberRequests/$(uid)).data.kind == request.resource.data.kind
+        && request.resource.data.keys().hasOnly(['userId','kind','front','back','consent','createdAt'])
+        && request.resource.data.keys().hasAll(['userId','kind','front','back','consent','createdAt'])
+        && request.resource.data.userId == uid && request.resource.data.kind in ['store','service','courier']
+        && request.resource.data.consent == true && request.resource.data.createdAt is number
+        && request.resource.data.front is string && request.resource.data.front.size() <= 300000 && request.resource.data.front.matches('data:image/jpeg;base64,.*')
+        && request.resource.data.back is string && request.resource.data.back.size() <= 300000 && request.resource.data.back.matches('data:image/jpeg;base64,.*');
+      allow update: if false;
+      allow delete: if signedIn() && (isSuper() || (uid == request.auth.uid
+        && get(/databases/$(database)/documents/memberRequests/$(uid)).data.status == 'REJECTED'));
+    }
+    // طلبات الانضمام داخل التطبيق (تاجر / مقدم خدمة / مندوب). تعمل فقط لما settings/app.memberRequestsEnabled == true.
+    match /memberRequests/{uid} {
+      allow read: if signedIn() && (uid == request.auth.uid || isSuper());
+      allow create: if signedIn() && request.auth.uid == uid
+        && get(/databases/$(database)/documents/settings/app).data.get('memberRequestsEnabled', false) == true
+        && me().role == 'CUSTOMER' && me().get('merchantId', null) == null && me().get('deliveryAgentId', null) == null
+        && (get(/databases/$(database)/documents/settings/app).data.get('memberIdRequired', true) == false
+          || existsAfter(/databases/$(database)/documents/memberRequestIds/$(uid)))
+        && request.resource.data.keys().hasOnly(['id','userId','kind','name','phone','address','status','createdAt','business','activity','marketerCode','vehicle','notes'])
+        && request.resource.data.keys().hasAll(['id','userId','kind','name','phone','address','status','createdAt'])
+        && request.resource.data.id == uid && request.resource.data.userId == uid
+        && request.resource.data.kind in ['store','service','courier']
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.createdAt is number
+        && request.resource.data.name is string && request.resource.data.name.size() <= 120
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 30
+        && request.resource.data.address is string && request.resource.data.address.size() <= 200
+        && (!('business' in request.resource.data) || (request.resource.data.business is string && request.resource.data.business.size() <= 120))
+        && (!('activity' in request.resource.data) || (request.resource.data.activity is string && request.resource.data.activity.size() <= 120))
+        && (!('marketerCode' in request.resource.data) || (request.resource.data.marketerCode is string && request.resource.data.marketerCode.size() <= 64))
+        && (!('vehicle' in request.resource.data) || (request.resource.data.vehicle is string && request.resource.data.vehicle.size() <= 50))
+        && (!('notes' in request.resource.data) || (request.resource.data.notes is string && request.resource.data.notes.size() <= 400));
+      allow update: if isSuper() && only(['status','reviewedAt','reviewedBy'])
+        && request.resource.data.status in ['APPROVED','REJECTED'] && resource.data.status == 'PENDING';
+      allow delete: if signedIn() && (isSuper() || (uid == request.auth.uid && resource.data.status == 'REJECTED'));
+    }
+
+    match /serviceSchedules/{mid} {
+      allow read: if signedIn();
+      allow create, update: if ownsMerchant(mid) && svcProvider(mid)
+        && request.resource.data.keys().hasOnly(['merchantId','slotMinutes','closedDates','days','updatedAt','capacity','grades','gradeDays'])
+        && request.resource.data.merchantId == mid
+        && request.resource.data.slotMinutes in [15,20,30,45,60]
+        && request.resource.data.closedDates is list && request.resource.data.closedDates.size() <= 60
+        && request.resource.data.days is map
+        && (!('grades' in request.resource.data) || (request.resource.data.grades is list && request.resource.data.grades.size() <= 14))
+        && (!('gradeDays' in request.resource.data) || (request.resource.data.gradeDays is map && request.resource.data.gradeDays.size() <= 14))
+        && (!('capacity' in request.resource.data) || (request.resource.data.capacity is int && request.resource.data.capacity >= 1 && request.resource.data.capacity <= 20));
+      allow delete: if isAdmin();
+    }
+    match /bookedSlots/{sid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && svcOn()
+        && request.resource.data.keys().hasOnly(['merchantId','date','time','active','customerId','seat'])
+        && validSlotFields(request.resource.data) && sid == slotKey(request.resource.data)
+        && request.resource.data.active == true && request.resource.data.customerId == request.auth.uid
+        && svcProvider(request.resource.data.merchantId);
+      allow update: if signedIn() && svcOn() && (
+        // re-book a freed slot
+        (resource.data.active == false && request.resource.data.keys().hasOnly(['merchantId','date','time','active','customerId','seat'])
+          && request.resource.data.active == true && request.resource.data.customerId == request.auth.uid
+          && request.resource.data.merchantId == resource.data.merchantId && request.resource.data.date == resource.data.date
+          && request.resource.data.time == resource.data.time
+          && request.resource.data.get('seat', 1) == resource.data.get('seat', 1))
+        // free it: the customer who holds it or the provider
+        || (resource.data.active == true && request.resource.data.active == false && only(['active'])
+          && (resource.data.customerId == request.auth.uid || ownsMerchant(resource.data.merchantId))));
+      allow delete: if isAdmin();
+    }
+    match /bookings/{sid} {
+      allow read: if signedIn() && (isAdmin() || resource.data.customerId == request.auth.uid || ownsMerchant(resource.data.merchantId));
+      allow create: if signedIn() && svcOn()
+        && request.resource.data.keys().hasOnly(['merchantId','merchantName','merchantPhone','customerId','customerName','customerPhone','date','time','slotMinutes','note','status','createdAt','updatedAt','seat'])
+        && validSlotFields(request.resource.data) && sid == slotKey(request.resource.data)
+        && request.resource.data.customerId == request.auth.uid && request.resource.data.status == 'PENDING'
+        && request.resource.data.note is string && request.resource.data.note.size() <= 300
+        && request.resource.data.customerName is string && request.resource.data.customerName.size() <= 80
+        && request.resource.data.customerPhone is string && request.resource.data.customerPhone.size() <= 20
+        && svcProvider(request.resource.data.merchantId)
+        && getAfter(/databases/$(database)/documents/bookedSlots/$(sid)).data.active == true
+        && getAfter(/databases/$(database)/documents/bookedSlots/$(sid)).data.customerId == request.auth.uid;
+      allow update: if signedIn() && svcOn() && (
+        // provider answers
+        (ownsMerchant(resource.data.merchantId) && resource.data.status in ['PENDING','ACCEPTED']
+          && only(['status','updatedAt']) && request.resource.data.status in ['ACCEPTED','REJECTED','DONE','NO_SHOW'])
+        // customer cancels
+        || (resource.data.customerId == request.auth.uid && resource.data.status in ['PENDING','ACCEPTED']
+          && only(['status','updatedAt']) && request.resource.data.status == 'CANCELLED')
+        // new customer re-books a freed slot
+        || (resource.data.status in ['REJECTED','CANCELLED'] && request.resource.data.status == 'PENDING'
+          && request.resource.data.customerId == request.auth.uid
+          && request.resource.data.merchantId == resource.data.merchantId && request.resource.data.date == resource.data.date
+          && request.resource.data.time == resource.data.time && request.resource.data.note.size() <= 300
+          && request.resource.data.get('seat', 1) == resource.data.get('seat', 1)
+          && request.resource.data.keys().hasOnly(['merchantId','merchantName','merchantPhone','customerId','customerName','customerPhone','date','time','slotMinutes','note','status','createdAt','updatedAt','seat'])
+          && getAfter(/databases/$(database)/documents/bookedSlots/$(sid)).data.active == true
+          && getAfter(/databases/$(database)/documents/bookedSlots/$(sid)).data.customerId == request.auth.uid));
+      allow delete: if isAdmin();
+    }
+    match /publicMerchantProfiles/{mid} {
+      allow get: if isAdmin() || ownsMerchant(mid) || (
+        publicLive(get(/databases/$(database)/documents/merchants/$(mid)).data)
+        && publicMatches(resource.data,get(/databases/$(database)/documents/merchants/$(mid)).data,mid));
+      allow list: if isAdmin();
+      allow create, update: if (isSuper() || ownsMerchant(mid))
+        && publicLive(getAfter(/databases/$(database)/documents/merchants/$(mid)).data)
+        && publicMatches(request.resource.data,getAfter(/databases/$(database)/documents/merchants/$(mid)).data,mid);
+      allow delete: if isSuper();
+    }
+
+    // ===== باقي المجموعات =====
+    match /deliveryAgents/{id} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || (signedIn() && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.status == 'PENDING');
+      allow update: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid && !touches(['status','ownerId']))
+        || (signedIn() && validRatingBump());
+      allow delete: if isAdmin();
+    }
+    match /addresses/{id}       { allow read, write: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid); }
+    // v11: الطلبات الأسبوعية لصاحبها والإدارة بس.
+    match /recurringOrders/{id} {
+      allow read: if signedIn() && (isAdmin() || resource.data.get('customerId','') == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.customerId == request.auth.uid;
+      allow update: if signedIn() && resource.data.get('customerId','') == request.auth.uid && request.resource.data.customerId == request.auth.uid;
+      allow delete: if signedIn() && (isAdmin() || resource.data.get('customerId','') == request.auth.uid);
+    }
+    // v11: التجميعات. المفتوحة تتشاف للكل (من غير تليفونات ولا عناوين)، وبيانات كل مشارك في members لمنشئ التجميعة بس.
+    match /groupBuys/{id} {
+      allow read: if signedIn() && (isAdmin() || resource.data.get('status','') == 'OPEN'
+        || resource.data.get('initiatorId','') == request.auth.uid || request.auth.uid in resource.data.get('participantIds',[]));
+      allow create: if signedIn() && request.resource.data.initiatorId == request.auth.uid && request.resource.data.status == 'OPEN'
+        && request.resource.data.participantIds == [request.auth.uid];
+      allow update: if signedIn() && (isAdmin()
+        || (resource.data.initiatorId == request.auth.uid && only(['status','finalizedAt','subOrderIds']) && request.resource.data.status in ['SUCCEEDED','FAILED'])
+        || (resource.data.status == 'OPEN' && only(['participants','participantIds'])
+          && !(request.auth.uid in resource.data.participantIds)
+          && request.resource.data.participantIds == resource.data.participantIds.concat([request.auth.uid]))
+        || (resource.data.status == 'OPEN' && only(['status']) && request.resource.data.status == 'FAILED'
+          && resource.data.expiresAt < request.time.toMillis()));
+      allow delete: if signedIn() && (isAdmin() || resource.data.initiatorId == request.auth.uid);
+      match /members/{uid} {
+        allow read: if signedIn() && (request.auth.uid == uid || isAdmin()
+          || get(/databases/$(database)/documents/groupBuys/$(id)).data.initiatorId == request.auth.uid);
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.auth.uid in getAfter(/databases/$(database)/documents/groupBuys/$(id)).data.participantIds
+          && request.resource.data.keys().hasOnly(['customerId','customerName','phone','quantity','addressId','addressText','joinedAt'])
+          && request.resource.data.customerId == request.auth.uid;
+        allow update, delete: if isAdmin();
+      }
+    }
+    // v12: usedCount يزيد 1 بس مع طلب جديد بنفس الكوبون (lastOrderId)، ويقل 1 بس مع إلغاء جزء فعلي (lastRestoreSub) لسه مش مسجّل إنه اترجّع.
+    match /coupons/{id} {
+      allow read: if signedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn() && only(['usedCount','lastOrderId'])
+          && request.resource.data.usedCount == resource.data.get('usedCount',0) + 1
+          && (resource.data.get('maxUses',0) == 0 || resource.data.get('usedCount',0) < resource.data.maxUses)
+          && !exists(/databases/$(database)/documents/orders/$(request.resource.data.lastOrderId))
+          && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.lastOrderId)).data.customerId == request.auth.uid
+          && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.lastOrderId)).data.get('couponCode','') == id)
+        || (signedIn() && only(['usedCount','lastRestoreSub'])
+          && request.resource.data.usedCount == resource.data.get('usedCount',0) - 1
+          && resource.data.get('usedCount',0) > 0
+          && get(/databases/$(database)/documents/subOrders/$(request.resource.data.lastRestoreSub)).data.get('discountRestored',false) != true
+          && getAfter(/databases/$(database)/documents/subOrders/$(request.resource.data.lastRestoreSub)).data.get('discountRestored',false) == true
+          && getAfter(/databases/$(database)/documents/orders/$(getAfter(/databases/$(database)/documents/subOrders/$(request.resource.data.lastRestoreSub)).data.parentOrderId)).data.get('couponCode','') == id);
+    }
+    match /referrals/{id} {
+      allow read: if signedIn();
+      // عميل جديد بيسجّل مين دعاه: مستند بنفس رقم حسابه، بحالة PENDING، وبحقول ثابتة.
+      allow create: if signedIn() && request.auth.uid == id
+        && request.resource.data.keys().hasOnly(['refereeId','referrerId','status','createdAt'])
+        && request.resource.data.refereeId == id
+        && request.resource.data.referrerId is string
+        && request.resource.data.status == 'PENDING';
+      // تحويل المكافأة بيحصل بس لما تاجر أو مندوب يسلّم أول طلب مكتمل للعميل المُحال:
+      // من PENDING لـ REWARDED مع وقت المكافأة، ومفيش أي تعديل تاني.
+      allow update: if isAdmin()
+        || (signedIn() && (me().get('merchantId','') != '' || me().get('deliveryAgentId','') != '')
+          && resource.data.status == 'PENDING'
+          && request.resource.data.status == 'REWARDED'
+          && only(['status','rewardedAt']));
+      allow delete: if isAdmin();
+    }
+    // ===== التسجيل بالدعوة فقط =====
+    function inviteLimit(){ return get(/databases/$(database)/documents/settings/app).data.get('inviteLimit',10); }
+    // كود الدعوة: 6 حروف من آخر uid صاحبه. أي حد يقدر يقرأ كود واحد (get) عشان يتحقق قبل التسجيل، مفيش list.
+    match /inviteCodes/{code} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['ownerId','ownerName','used','createdAt'])
+        && request.resource.data.ownerId == request.auth.uid
+        && code == request.auth.uid[request.auth.uid.size()-6:].upper()
+        && request.resource.data.used == 0;
+      // العدّ بيزيد 1 بس، ومع استخدام جديد مسجَّل لنفس الحساب في نفس الدفعة، وفي حدود العدد المسموح.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used'])
+        && request.resource.data.used == resource.data.used + 1
+        && resource.data.used < inviteLimit()
+        && !exists(/databases/$(database)/documents/inviteUses/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/inviteUses/$(request.auth.uid)).data.code == code
+        && code != request.auth.uid[request.auth.uid.size()-6:].upper();
+    }
+    // استخدام واحد لكل حساب، ومينفعش يتعدّل أو يتمسح.
+    match /inviteUses/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['code','ownerId','ownerName','createdAt'])
+        && get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.code)).data.ownerId == request.resource.data.ownerId
+        && request.resource.data.ownerId != uid;
+      allow update, delete: if false;
+    }
+    // قائمة الانتظار: أي حد يضيف اسم ورقم، الأدمن بس يقرا.
+    match /waitlist/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['name','phone','createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 60
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 20;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+    match /ratings/{id} {
+      function validRating(rid){
+        let d = request.resource.data;
+        let sub = get(/databases/$(database)/documents/subOrders/$(d.subOrderId)).data;
+        return d.keys().hasOnly(['id','subOrderId','parentOrderId','customerId','merchantId','merchantRating','agentId','agentRating','productRatings','comment','createdAt'])
+          && rid == 'rate_' + d.subOrderId && d.id == rid && d.customerId == request.auth.uid
+          && sub.get('customerId','') == request.auth.uid && sub.get('status','') == 'DELIVERED'
+          && sub.get('merchantId','') == d.merchantId
+          && d.merchantRating is int && d.merchantRating >= 1 && d.merchantRating <= 5
+          && (d.get('agentRating',null) == null || (d.agentRating is int && d.agentRating >= 1 && d.agentRating <= 5))
+          && d.get('productRatings',[]) is list && d.get('productRatings',[]).size() <= 50
+          && d.get('comment','') is string && d.get('comment','').size() <= 1000;
+      }
+      allow read: if signedIn() && (isAdmin() || resource.data.get('customerId','') == request.auth.uid
+        || resource.data.get('merchantId','') == me().get('merchantId','-'));
+      allow create: if signedIn() && validRating(id);
+      allow update: if isAdmin() || (ownsMerchant(resource.data.get('merchantId',''))
+        && only(['merchantReply','merchantReplyAt'])
+        && request.resource.data.merchantReply is string && request.resource.data.merchantReply.size() <= 300);
+      allow delete: if isAdmin();
+    }
+    match /settlements/{id}     { allow read: if signedIn(); allow write: if isAdmin(); }
+    // v12: الإشعار لصاحبه بس (عميل/تاجر/مندوب/إدارة). أي مسجّل يقدر يبعت إشعار بشكل ثابت، بس مش يقرا أو يعدّل أو يمسح إشعار غيره.
+    function notifTarget(d){
+      let t = d.get('targetType','');
+      let tid = d.get('targetId','');
+      return (t == 'CUSTOMER' && tid == request.auth.uid)
+        || (t == 'MERCHANT' && tid != '' && me().get('merchantId','') == tid)
+        || (t == 'DELIVERY' && tid != '' && me().get('deliveryAgentId','') == tid)
+        || (t == 'MARKETER' && tid == request.auth.uid)
+        || (t == 'ADMIN' && isAdmin());
+    }
+    match /notifications/{id} {
+      allow read, delete: if signedIn() && (isAdmin() || notifTarget(resource.data));
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['targetType','targetId','title','message','relatedOrderId','isRead','createdAt'])
+        && request.resource.data.get('targetType','') in ['CUSTOMER','MERCHANT','DELIVERY','ADMIN','MARKETER']
+        && request.resource.data.get('targetId','') is string && request.resource.data.get('targetId','').size() <= 128
+        && request.resource.data.get('title','') is string && request.resource.data.get('title','').size() <= 150
+        && request.resource.data.get('message','') is string && request.resource.data.get('message','').size() <= 600
+        && request.resource.data.get('isRead',null) == false
+        && request.resource.data.get('createdAt',null) is number;
+      allow update: if signedIn() && (isAdmin() || notifTarget(resource.data)) && only(['isRead']);
+    }
+    match /auditLogs/{id}       { allow read: if isSuper(); allow create: if isAdmin(); allow update, delete: if false; }
+    // ===== مساعد على بابك (الدعم الذكي) =====
+    // أسئلة المساعد وأجوبته: قراءة للكل (الزائر على صفحة البداية بيستخدمها)، والكتابة لإدارة الموقع بس.
+    match /supportFaq/{id} {
+      allow read: if true;
+      allow write: if isSuper();
+    }
+    // سؤال ملقاش إجابة: المسجّل يسجّله بنفسه، والزائر بس لو سجّل اسمه ورقمه الأول (سجل الزائر موجود).
+    match /supportUnanswered/{id} {
+      function validMiss(){
+        return request.resource.data.keys().hasOnly(['question','role','uid','leadPhone','createdAt'])
+          && request.resource.data.question is string
+          && request.resource.data.question.size() >= 2
+          && request.resource.data.question.size() <= 300
+          && request.resource.data.role is string
+          && request.resource.data.role.size() <= 20
+          && request.resource.data.createdAt == request.time;
+      }
+      allow read, delete: if isAdmin();
+      allow create: if validMiss() && (
+        (signedIn() && request.resource.data.get('uid','') == request.auth.uid)
+        || (!signedIn() && request.resource.data.get('leadPhone','') is string
+            && exists(/databases/$(database)/documents/supportGuestLeads/$(request.resource.data.leadPhone)))
+      );
+      allow update: if false;
+    }
+    // زائر سجّل اسمه ورقمه من صفحة البداية. الـ id هو الرقم الموحّد نفسه (2010xxxxxxxxx) فمفيش تكرار ولا سجل تاني لنفس الرقم.
+    match /supportGuestLeads/{id} {
+      allow read, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(['name','phone','createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.phone is string
+        && request.resource.data.phone.matches('^\\+?(20)?0?1[0-9]{9}$')
+        && request.resource.data.phone == id
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+    }
+  }
+}
