@@ -12,7 +12,7 @@ assert.match(idx, /expirySweepMerchant\(mId, S\.myMerchant\)/);
 assert.match(idx, /expirySweepMarketer\(uid_, S\.mkMerchants\)/);
 assert.match(idx, /where\('targetType','==','MARKETER'\), where\('targetId','==',uid_\)/);
 // الملف في الكاش وفي الـ SHELL، والنسخة اتحركت
-assert.match(sw, /'\/sub-expiry\.js'/); assert.match(sw, /CACHE='alababak-services-v81'/);
+assert.match(sw, /'\/sub-expiry\.js'/); assert.match(sw, /CACHE='alababak-services-v82'/);
 assert.match(tg, /export function expirySync/);
 // الـ Worker مش بيحتاج تغيير قواعد، والكرون بيشغل التنبيهات
 assert.match(readFileSync('worker/worker.js', 'utf8'), /runExpiryCron\(env\)/);
