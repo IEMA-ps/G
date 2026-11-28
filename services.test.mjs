@@ -103,6 +103,20 @@ for(const [type,fs] of Object.entries(S.TYPE_FIELDS)){
 assert.throws(()=>S.typeNote('مدرسين',[]));
 assert.equal(S.typeNote('حلاقة رجالي',['قص شعر','في البيت','']),'الخدمة: قص شعر\nالمكان: في البيت');
 assert.equal(S.typeNote('عيادات',['متابعة','']),'نوع الزيارة: متابعة');
-assert.equal(S.typeFieldsHTML('مدرسين',x=>x),'');
+// المدرسين: السنة الدراسية إجبارية وبتظهر في أول سطر من note (للمدرس في الحجز والإشعار والجدول)
+assert.ok(S.typeFieldsHTML('مدرسين',x=>x).includes('السنة الدراسية'));
+assert.throws(()=>S.typeNote('مدرسين',['','رياضيات']));
+assert.throws(()=>S.typeNote('مدرسين',['الصف العاشر']));
+assert.equal(S.typeNote('مدرسين',['ثانوي - الصف الثاني','']),'السنة الدراسية: ثانوي - الصف الثاني');
+assert.equal(S.typeNote('مدرسين',['إعدادي - الصف الأول','رياضيات']),'السنة الدراسية: إعدادي - الصف الأول\nالمادة أو ملاحظة (اختياري): رياضيات');
+// التقويم الشهري: السبت أول يوم في الأسبوع، الأيام المتاحة بس قابلة للاختيار
+assert.deepEqual(S.monthGrid('2026-11')[0].slice(0,3),[null,'2026-11-01','2026-11-02']);
+assert.equal(S.monthGrid('2026-11').flat().filter(Boolean).length,30);
+assert.equal(S.addMonths('2026-12',1),'2027-01');assert.equal(S.addMonths('2026-01',-1),'2025-12');
+{const h=S.bookingPanelHTML({m:{id:'m1'},schedule:sch,booked:new Set(),date:'2026-11-24',time:'',profile:{},month:'2026-12'},x=>x,ms);
+ assert.ok(h.includes('ديسمبر 2026')&&h.includes("pickBookMonth('m1','2026-11')"));
+ assert.ok(h.includes("pickBookDate('m1','2026-12-01')")); // الثلاثاء مفتوح
+ assert.ok(!h.includes("pickBookDate('m1','2026-12-04')")); // الجمعة مقفول
+ assert.ok(!S.bookingPanelHTML({m:{id:'m1'},schedule:sch,booked:new Set(),date:'2026-11-24',time:'',profile:{}},x=>x,ms).includes("pickBookMonth('m1','2026-10')"));} // مفيش رجوع قبل شهر النهاردة
 const mvHtml=S.bookingPanelHTML({m:{id:'m1',activityType:'نقل أثاث وونش'},schedule:S.normalizeSchedule(S.defaultSchedule()),booked:new Set(),date:'2026-11-28',time:'11:00',profile:{},repeat:'once'},x=>x,Date.parse('2026-11-26T10:00:00+02:00'));
 assert.ok(mvHtml.includes('bkF2')&&!mvHtml.includes('bkNote')&&!mvHtml.includes('bkProblem'));
