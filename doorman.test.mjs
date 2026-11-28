@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import * as D from './doorman.js';
+assert.equal(D.codeOf('ABC234'),'BW-ABC234');
+assert.ok(D.isCode(' bw-abc234 '));assert.ok(!D.isCode('WL-ABC234'));assert.ok(!D.isCode('BW-ABC'));assert.ok(!D.isCode(''));assert.ok(!D.isCode(null));
+assert.equal(D.idOf('bw-abc234'),'ABC234');assert.equal(D.idOf('x'),'');
+const id=D.newId();assert.match(id,/^[A-Z2-9]{6}$/);assert.ok(D.isCode(D.codeOf(id)));
+assert.deepEqual(D.recordFor({firstName:'أحمد',lastName:'علي',phone:'0100'},'u1','ABC234',5),{id:'ABC234',ownerId:'u1',name:'أحمد علي',phone:'0100',code:'BW-ABC234',status:'ACTIVE',createdAt:5});
+assert.deepEqual(D.cleanLoc(null),{building:'',floor:'',apt:''});
+assert.equal(D.cleanLoc({building:' 5 ',floor:3}).floor,'3');
+assert.equal(D.cleanLoc({apt:'x'.repeat(99)}).apt.length,40);
+const r=D.residentDoc({firstName:'س'},'r1','ABC234',{building:'2'},9);
+assert.deepEqual(Object.keys(r).sort(),['apt','building','createdAt','doormanId','floor','name','phone','residentId']);
+assert.equal(D.linkFor('ABC234'),'https://3alababk.com/register?ref=BW-ABC234');
+assert.ok(D.enabled({doormenEnabled:true}));assert.ok(!D.enabled({}));assert.ok(!D.enabled({doormenEnabled:'true'}));assert.ok(!D.enabled(null));
+assert.deepEqual(D.sortResidents([{building:'10',apt:'1',name:'a'},{building:'2',apt:'1',name:'b'}]).map(x=>x.building),['2','10']);
+console.log('doorman tests passed');

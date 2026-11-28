@@ -61,6 +61,15 @@ service cloud.firestore {
       return !(resource.data.get('waitlisted',false) == true && request.resource.data.get('waitlisted',false) != true)
         || !get(/databases/$(database)/documents/settings/app).data.get('inviteOnly',false);
     }
+    // v16 (البواب): الساكن يربط نفسه ببواب مرة واحدة بس، ببواب شغال مش هو نفسه، وفي نفس العملية اللي بتكتب سجله في doormanResidents.
+    function boundDoormanOk(){
+      return !touches(['boundDoormanId']) || (resource.data.get('boundDoormanId',null) == null
+        && request.resource.data.boundDoormanId is string
+        && get(/databases/$(database)/documents/doormen/$(request.resource.data.boundDoormanId)).data.get('status','') == 'ACTIVE'
+        && get(/databases/$(database)/documents/doormen/$(request.resource.data.boundDoormanId)).data.get('ownerId','') != request.auth.uid
+        && existsAfter(/databases/$(database)/documents/doormanResidents/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/doormanResidents/$(request.auth.uid)).data.doormanId == request.resource.data.boundDoormanId);
+    }
     function safeReferralCodeUpdate(){
       return !touches(['referralCode']) || (resource.data.get('referralCode',null) in [null,'']
         && request.resource.data.referralCode == 'MK-'+request.auth.uid.upper());
@@ -405,11 +414,11 @@ service cloud.firestore {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if (isSuper() && (!programEnabled() || request.resource.data.get('role','') != 'MARKETER')) || validSelfUser(uid);
       allow update: if (isSuper() && (!programEnabled() || promotionHasProof(uid)))
-        || (isAdmin() && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','referralCode']))
+        || (isAdmin() && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','referralCode','doormanId','boundDoormanId']))
         || (signedIn() && request.auth.uid == uid
-          && !touches(['role','adminRole','merchantId','deliveryAgentId','marketerPercent','loyaltyPoints','inviteCredit',
+          && !touches(['role','adminRole','merchantId','deliveryAgentId','doormanId','marketerPercent','loyaltyPoints','inviteCredit',
                        'deliverySubStartedAt','deliverySubUntil','deliverySubUsedPeriod',
-                       'banned','bannedAt','bannedBy','bannedReason']) && safeReferralCodeUpdate() && waitlistKept())
+                       'banned','bannedAt','bannedBy','bannedReason']) && safeReferralCodeUpdate() && waitlistKept() && boundDoormanOk())
         // اشتراك التوصيل (PR #142): العميل يسجّل بس استخدام الفترة الحالية (رقم أكبر من السابق ومش أكبر من الفترة الحالية) والاشتراك ساري.
         || (signedIn() && request.auth.uid == uid && only(['deliverySubUsedPeriod'])
           && resource.data.get('deliverySubUntil',0) > request.time.toMillis()
@@ -938,6 +947,24 @@ service cloud.firestore {
         && request.resource.data.phone == id
         && request.resource.data.createdAt == request.time;
       allow update: if false;
+    }
+    // ===== البوابين (v16): البواب = حساب عميل + سجل في doormen. الإدارة العليا بس هي اللي تعيّنه. =====
+    match /doormen/{id} {
+      allow read: if signedIn();
+      allow write: if isSuper();
+    }
+    // سجل الساكن عند بوابه. بيقراه الساكن نفسه وبوابه والإدارة بس، ومفيش ساكن يشوف سكان تانيين.
+    match /doormanResidents/{rid} {
+      allow read: if signedIn() && (isAdmin() || request.auth.uid == rid
+        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('doormanId','-') == resource.data.doormanId);
+      allow create: if signedIn() && request.auth.uid == rid
+        && request.resource.data.keys().hasOnly(['residentId','doormanId','name','phone','building','floor','apt','createdAt'])
+        && request.resource.data.residentId == rid
+        && request.resource.data.doormanId is string
+        && get(/databases/$(database)/documents/doormen/$(request.resource.data.doormanId)).data.get('status','') == 'ACTIVE'
+        && get(/databases/$(database)/documents/doormen/$(request.resource.data.doormanId)).data.get('ownerId','') != rid;
+      allow update: if signedIn() && request.auth.uid == rid && only(['building','floor','apt']);
+      allow delete: if isSuper();
     }
   }
 }
