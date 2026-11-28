@@ -671,6 +671,7 @@ import * as PushClient from '/push-client.js';
 import * as CartReminder from '/cart-reminder.js?v=cr-1';
 import * as TelegramNotify from '/telegram-notify.js?v=tg-5';
 import * as SubExpiry from '/sub-expiry.js?v=exp-1';
+import * as SubCancel from '/sub-cancel.js?v=cancel-1';
 import { PASSWORD_HINT, passwordError, passwordChecklist, generateAccountPassword } from '/password-policy.js?v=policy-1';
 import { requestMessage, requestForm } from '/support-requests.js?v=svc-join-2';
 import * as SupportChat from '/support-chat.js?v=support-4';
@@ -1814,7 +1815,11 @@ async function activateSubscriptionCore(subId, sub){
   const pct = SubExpiry.commissionPercent(basePct, tierBonus, SubExpiry.isRenewal(m)); // التجديد = نص النسبة
   const marketerAmount = marketerId ? roundMoney(sub.price*pct/100) : 0;
   await setDoc(doc(db,'subscriptions',subId), { ...sub, status:'APPROVED', approvedAt:nowMs(), approvedBy:S.user.uid, endsAt, marketerId, marketerPercent: marketerId?pct:0, marketerAmount,...(Program.enabled()?{marketerBasePercent:marketerId?basePct:0,marketerBaseAmount:marketerId?roundMoney(sub.price*basePct/100):0}:{}) }, {merge:true});
-  await updateDoc(doc(db,'merchants',m.id), { subPlanId:sub.planId, subPlanName:sub.planName, subEndsAt:endsAt });
+  // لو التاجر على نظام الباقات الجديد (المتجر ظاهر للعامة)، نحدّث نسخة الظهور العام في نفس العملية عشان تاريخ الانتهاء ميتفرقش (زي باقة "تجربة شهر" القديمة).
+  const mPatch={ subPlanId:sub.planId, subPlanName:sub.planName, subEndsAt:endsAt }, mMerged={...m,...mPatch};
+  const mb=writeBatch(db); mb.update(doc(db,'merchants',m.id), mPatch);
+  if(MerchantPlans.isNewMerchant(mMerged) && m.status==='ACTIVE' && endsAt>nowMs() && ['PROFILE','ORDERING'].includes(mMerged.subPlanType)) mb.set(doc(db,'publicMerchantProfiles',m.id), publicMerchantData(mMerged));
+  await mb.commit();
   try{ await pushNotification('MERCHANT', m.id, 'تم تفعيل اشتراكك ✅', `${sub.planName} حتى ${fmtDay(endsAt)}`); }catch(e){}
   await logAudit('اعتماد اشتراك', `${m.businessName} — ${sub.planName} — ${sub.price}`);
 }
@@ -1830,6 +1835,53 @@ window.rejectSubscription = async (subId)=>{
   await updateDoc(doc(db,'subscriptions',subId), { status:'REJECTED', rejectedAt:nowMs() });
   try{ await pushNotification('MERCHANT', sub.merchantId, 'تم رفض طلب الاشتراك', 'كلّم الإدارة عشان تعرف السبب.'); }catch(e){}
   UI.toast('تم رفض الطلب');
+};
+/* اشتراكات التاجر: كل الاشتراكات (ساري/منتهي/قيد المراجعة/مرفوض/ملغي) وإلغاء أي واحد منها (إدارة الموقع بس، بعد تأكيد). */
+const SUB_STATE_LABEL={ACTIVE:['ساري','var(--success)'],EXPIRED:['منتهي','var(--ink-soft)'],PENDING:['قيد المراجعة','var(--warning,#b7791f)'],REJECTED:['مرفوض','var(--danger)'],CANCELED:['ملغي','var(--danger)']};
+window.openMerchantSubs = (mid)=>{
+  const m=S.allMerchants.find(x=>x.id===mid); if(!m) return;
+  const list=SubCancel.subsOf(S.allSubs,mid), now=nowMs();
+  const rows=list.map(x=>{
+    const st=SubCancel.subState(x,now), [lbl,col]=SUB_STATE_LABEL[st]||['',''];
+    const dates=x.status==='APPROVED'?`${x.approvedAt?fmtDay(x.approvedAt)+' ← ':''}${fmtDay(x.endsAt)}`:(x.createdAt?fmtDay(x.createdAt):'');
+    return `<div class="card" style="margin-bottom:8px;padding:12px">
+      <div class="row-between"><b style="font-size:14px">${esc(x.planName||'اشتراك')}</b><span class="status-pill" style="color:${col};background:rgba(84,61,46,.08)">${lbl}</span></div>
+      <div style="font-size:12.5px;color:var(--ink-soft);margin:6px 0 0;line-height:1.8">${dates?`المدة: ${dates}<br>`:''}${x.price!=null?`السعر: ${fmtMoney(x.price)}`:''}${x.marketerAmount>0?` · عمولة المسوّق: ${fmtMoney(x.marketerAmount)}`:''}${x.canceledAt?`<br>اتلغى: ${fmtDay(x.canceledAt)}`:''}</div>
+      ${SubCancel.canCancel(x)&&isSuperAdmin()?`<button class="btn btn-danger btn-sm" style="width:auto;margin-top:8px" onclick="openCancelSub('${esc(x._id||x.id)}')"><i class="fa-solid fa-ban"></i> إلغاء الاشتراك</button>`:''}
+    </div>`;}).join('');
+  UI.openModal(`<div class="modal-head"><h3>اشتراكات «${esc(m.businessName)}»</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    ${S.allSubsReady===true?'':'<p class="hint-box">لسه بيحمّل الاشتراكات، افتحها تاني بعد ثواني.</p>'}
+    <button class="btn btn-primary" style="margin-bottom:12px" onclick="openGrantSub('${mid}')"><i class="fa-solid fa-plus"></i> تفعيل اشتراك جديد</button>
+    ${rows||'<p style="color:var(--ink-soft)">مفيش اشتراكات للتاجر ده لسه.</p>'}`);
+};
+window.openCancelSub = (subId)=>{
+  if(!isSuperAdmin()){ UI.toast('لإدارة الموقع فقط'); return; }
+  const x=(S.allSubs||[]).find(y=>(y._id||y.id)===subId); if(!x||!SubCancel.canCancel(x)) return;
+  const m=S.allMerchants.find(y=>y.id===x.merchantId); if(!m) return;
+  const cur=x.status==='APPROVED'&&Number(x.endsAt)===Number(m.subEndsAt);
+  UI.openModal(`<div class="modal-head"><h3>تأكيد إلغاء الاشتراك</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="hint-box" style="margin-bottom:14px;line-height:1.9">هتلغي اشتراك <b>${esc(x.planName||'')}</b> للتاجر «${esc(m.businessName)}»${x.status==='APPROVED'?` (ينتهي ${fmtDay(x.endsAt)})`:' (لسه قيد المراجعة)'}.${cur?'<br>ده الاشتراك الشغال دلوقتي: التاجر هيرجع لاشتراكه الساري التاني لو موجود، أو يبقى بدون اشتراك.':''}${x.marketerAmount>0?'<br>عمولة المسوّق على الاشتراك ده مش هتتحسب بعد الإلغاء. لو اتدفعت قبل كده التطبيق مش بيرجّعها.':''}<br>الإلغاء مينفعش يتراجع منه.</div>
+    <div style="display:flex;gap:8px"><button class="btn btn-danger" style="flex:1" onclick="confirmCancelSub('${esc(subId)}',this)">أيوه، إلغاء الاشتراك</button><button class="btn btn-ghost" style="width:auto" onclick="openMerchantSubs('${x.merchantId}')">رجوع</button></div>`);
+};
+window.confirmCancelSub = async (subId,btn)=>{
+  if(!isSuperAdmin()){ UI.toast('لإدارة الموقع فقط'); return; }
+  const x=(S.allSubs||[]).find(y=>(y._id||y.id)===subId); if(!x||!SubCancel.canCancel(x)){ UI.toast('الاشتراك ده مينفعش يتلغى'); return; }
+  const m=S.allMerchants.find(y=>y.id===x.merchantId); if(!m) return;
+  if(btn) btn.disabled=true;
+  try{
+    const sub={...x,id:x._id||x.id}, patch=SubCancel.merchantPatchAfterCancel(m,(S.allSubs||[]).map(y=>({...y,id:y._id||y.id})),sub);
+    const b=writeBatch(db);
+    b.update(doc(db,'subscriptions',sub.id),SubCancel.cancelFields(S.user.uid,nowMs()));
+    if(patch){
+      b.update(doc(db,'merchants',m.id),patch);
+      const merged={...m,...patch};
+      if(MerchantPlans.isNewMerchant(merged)&&Number(merged.subEndsAt)>nowMs()&&['PROFILE','ORDERING'].includes(merged.subPlanType)) b.set(doc(db,'publicMerchantProfiles',m.id),publicMerchantData(merged));
+    }
+    await b.commit();
+    try{ await logAudit('إلغاء اشتراك',`${m.businessName} — ${x.planName||''} — ${sub.id}`); }catch(e){}
+    try{ TelegramNotify.expirySync([m.id]); }catch(e){}
+    UI.toast('تم إلغاء الاشتراك ✅'); openMerchantSubs(m.id);
+  }catch(e){ if(btn) btn.disabled=false; UI.toast('⚠️ '+(e.message||e)); }
 };
 window.openGrantSub = (mid)=>{
   const m = S.allMerchants.find(x=>x.id===mid); const plans=(S.plans||[]).filter(p=>p.active!==false); if(!m) return;
@@ -5487,7 +5539,7 @@ function renderAdminMerchants(providersOnly){
         <div class="mcard-tools">
           ${isSuperAdmin()?`<button class="btn btn-ghost" onclick="openMerchantActivity('${m.id}')"><i class="fa-solid fa-tags"></i> نوع النشاط</button>`:''}
           <button class="btn btn-ghost" onclick="openStoreShare('${m.id}')"><i class="fa-solid fa-qrcode"></i> رابط المتجر وQR</button>
-          <button class="btn btn-ghost" onclick="openGrantSub('${m.id}')"><i class="fa-solid fa-gem"></i> اشتراك</button>
+          <button class="btn btn-ghost" onclick="openMerchantSubs('${m.id}')"><i class="fa-solid fa-gem"></i> اشتراك</button>
           <button class="btn btn-ghost" onclick="openMerchantAccount('${m.id}')"><i class="fa-solid fa-key"></i> يوزر وباسورد</button>
           <button class="btn btn-ghost" onclick="openLinkMerchantUser('${m.id}')"><i class="fa-solid fa-link"></i> ربط حساب</button>
           <button class="btn btn-danger" onclick="removeMerchant('${m.id}')"><i class="fa-solid fa-trash"></i> حذف</button>

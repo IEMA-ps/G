@@ -1,0 +1,33 @@
+// Cancel subscription writes against the published-rules candidate (v16). Needs the Firestore emulator on 127.0.0.1:8092.
+import {readFileSync} from 'node:fs';
+import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
+import {doc,setDoc,updateDoc,writeBatch} from 'firebase/firestore';
+const rules=readFileSync(new URL(process.env.RULES||'./firestore.v16.proposed.rules',import.meta.url),'utf8');
+const env=await initializeTestEnvironment({projectId:'demo-cancel',firestore:{host:'127.0.0.1',port:8092,rules}});
+let n=0;const ok=async(p,m)=>{try{await assertSucceeds(p);n++;}catch(e){console.error('FAIL (should work):',m,e.message.slice(0,200));process.exitCode=1;}};
+const no=async(p,m)=>{try{await assertFails(p);n++;}catch(e){console.error('FAIL (should be denied):',m);process.exitCode=1;}};
+const seed=async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore();const S=(p,id,d)=>setDoc(doc(db,p,id),d);
+  await S('settings','app',{});
+  await S('users','sup',{role:'ADMIN',adminRole:'SUPER'});await S('users','staff',{role:'ADMIN',adminRole:'STAFF'});await S('users','mer',{role:'MERCHANT',merchantId:'m1'});
+  await S('merchants','m1',{id:'m1',businessName:'x',status:'ACTIVE',subscriptionModel:'MERCHANT_V2',subPlanType:'PROFILE',subPlanId:'p2',subPlanName:'سنوي',subEndsAt:2000});
+  await S('publicMerchantProfiles','m1',{id:'m1',businessName:'x',status:'ACTIVE',subEndsAt:2000,subPlanType:'PROFILE',publishedAt:1});
+  await S('subscriptions','s1',{id:'s1',merchantId:'m1',status:'APPROVED',endsAt:2000,planName:'سنوي',price:100});
+  await S('subscriptions','s0',{id:'s0',merchantId:'m1',status:'PENDING',planName:'شهري',price:10});});};
+const cache={};const U=id=>cache[id]??=env.authenticatedContext(id).firestore();
+await seed();
+const cancel={status:'CANCELED',canceledAt:5,canceledBy:'sup'};
+const sd=U('sup');let b=writeBatch(sd);b.update(doc(sd,'subscriptions','s1'),cancel);b.update(doc(sd,'merchants','m1'),{subEndsAt:0});
+await ok(b.commit(),'super admin cancels running sub and resets merchant end date (batch)');
+await ok(updateDoc(doc(U('sup'),'merchants','m1'),{subPlanId:'p1',subPlanName:'شهري',subEndsAt:1500}),'super admin falls back to previous sub');
+await ok(updateDoc(doc(U('sup'),'subscriptions','s0'),cancel),'super admin cancels a pending sub');
+await no(updateDoc(doc(U('staff'),'subscriptions','s1'),cancel),'staff admin cannot cancel');
+await no(updateDoc(doc(U('staff'),'merchants','m1'),{subEndsAt:0}),'staff admin cannot change merchant sub end date');
+await no(updateDoc(doc(U('mer'),'subscriptions','s1'),cancel),'merchant cannot cancel his own sub');
+await no(updateDoc(doc(U('mer'),'merchants','m1'),{subEndsAt:99999999}),'merchant cannot extend himself');
+// mirror: same batch updates the merchant end date and the public profile (legacy-plan approval on a new-model merchant)
+const later=Date.now()+3e9;
+const sd2=U('sup');let b2=writeBatch(sd2);b2.update(doc(sd2,'merchants','m1'),{subEndsAt:later});b2.set(doc(sd2,'publicMerchantProfiles','m1'),{id:'m1',businessName:'x',status:'ACTIVE',subEndsAt:later,subPlanType:'PROFILE',publishedAt:2});
+await ok(b2.commit(),'super admin extends merchant and public mirror in one batch');
+await no(updateDoc(doc(U('sup'),'publicMerchantProfiles','m1'),{subEndsAt:later+1}),'mirror alone out of sync with merchant is rejected (why the batch is needed)');
+console.log('passed',n);
+await env.cleanup();
