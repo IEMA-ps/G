@@ -1210,8 +1210,15 @@ async function bootAuthUser(user) {
   if(!finalSnap.exists()) throw new Error('profile-missing-after-create');
   S.profile = finalSnap.data();
   if(isBanned(S.profile)){
+    // بنحتفظ بالاسم والإيميل قبل تسجيل الخروج عشان رسالة الدعم تتجهز لوحدها (من غير uid ولا أي بيانات حساسة)
+    const bannedWho = { name:((S.profile.firstName||'')+' '+(S.profile.lastName||'')).trim(), email:String(S.profile.email||user.email||'') };
     await signOut(auth); resetSession(); showSignedOut();
-    UI.openModal(`<div class="modal-head"><h3>الحساب محظور</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="line-height:1.9">${esc(BANNED_MESSAGE)}</p>`);
+    window.__bannedWho = bannedWho;
+    let bsHref = '';
+    try{ const st = await getDoc(doc(db,'settings','app')); bsHref = st.exists() ? bannedSupportHref(st.data().supportWhatsapp, bannedWho) : ''; }catch(e){ bsHref = ''; }
+    if(!bsHref) bsHref = bannedSupportHref(S.settings.supportWhatsapp, bannedWho);
+    window.__bannedHref = bsHref;
+    UI.openModal(`<div class="modal-head"><h3>الحساب محظور</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div><p style="line-height:1.9">${esc(BANNED_MESSAGE)}</p>${bsHref?`<button class="btn btn-primary" style="width:100%;margin-top:12px;background:var(--whatsapp)" onclick="openBannedSupport()"><i class="fa-brands fa-whatsapp"></i> كلّم الدعم الفني</button>`:''}`);
     return;
   }
   RefCodes.ensureMine({doc,getDoc,setDoc},db,user.uid,S.profile).catch(e=>console.warn('referral code mirror',e&&e.code));
@@ -2620,6 +2627,12 @@ window.waLink = waLink;
 /* ================= SHELL / ROUTER ================= */
 function unreadCount(){ return S.notifications.filter(n=>!n.isRead).length; }
 
+// رسالة الدعم لصاحب حساب محظور (مسجَّل خروج): اسمه وإيميله بس، على واتساب الدعم الفني.
+function bannedSupportHref(num, who){
+  const msg = 'مرحبًا، حسابي على على بابك اتحظر وعايز أعرف السبب وأرجّعه.' + (who&&who.name?'\nالاسم: '+who.name:'') + (who&&who.email?'\nالإيميل: '+who.email:'');
+  return MerchantPlans.supportHref(num, msg) || '';
+}
+window.openBannedSupport = ()=>{ if(window.__bannedHref) window.open(window.__bannedHref,'_blank','noopener'); };
 window.openSupport = (msg)=>{
   if(smartSupportOn()){ openSupportChat(msg); return; }
   const href=MerchantPlans.supportHref(S.settings.supportWhatsapp,msg||'مرحبًا، أحتاج مساعدة');
