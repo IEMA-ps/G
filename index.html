@@ -52,8 +52,15 @@ img{max-width:100%; display:block;}
 .hidden{display:none !important;}
 
 /* ---------- loading ---------- */
-#loadingScreen{position:fixed; inset:0; background:var(--teal-deep); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; z-index:999;}
-#loadingScreen .brand{font-size:30px; font-weight:800; color:#fff; letter-spacing:.5px;}
+#loadingScreen{position:fixed; inset:0; background:var(--paper); z-index:999; overflow:hidden; display:flex; flex-direction:column; max-width:480px; margin:0 auto;}
+#loadingScreen .sk-hdr{background:var(--teal-deep); height:92px; padding:16px; display:flex; align-items:flex-start; justify-content:space-between; flex:none;}
+#loadingScreen .sk-b{background:linear-gradient(90deg,#e6e0d6 0%,#f3eee6 50%,#e6e0d6 100%); background-size:200% 100%; animation:skShimmer 1.4s ease-in-out infinite;}
+#loadingScreen .sk-row{display:flex; gap:8px; padding:14px 14px 0;}
+#loadingScreen .sk-card{display:flex; gap:12px; background:#fff; border-radius:16px; padding:12px; margin:12px 14px 0;}
+@keyframes skShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){#loadingScreen .sk-b{animation:none}}
+#loadingScreen .brand{font-size:19px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;}
+#loadingScreen .brand img{height:26px;}
 #loadingScreen .brand i{color:var(--gold); margin-inline-start:8px;}
 .spinner{width:30px; height:30px; border:3px solid rgba(255,255,255,.25); border-top-color:var(--gold); border-radius:50%; animation:spin .8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
@@ -504,7 +511,7 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
 .password-hint{font-size:12px;line-height:1.85;color:var(--ink-soft);margin:8px 0}.password-checks{list-style:none;padding:0;margin:8px 0 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11.5px;line-height:1.8}.password-checks li{border-radius:8px;padding:5px 7px;background:var(--paper)}.password-checks .met{color:var(--success)}.password-checks .missing{color:var(--ink-soft)}.password-error{color:var(--danger);font-size:12px;line-height:1.8}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .location-picker{border:1px solid var(--line);border-radius:14px;padding:12px;margin:12px 0;min-width:0}.location-picker legend{font-size:13px;font-weight:700;padding:0 5px}.location-picker select,.location-picker input{width:100%;min-width:0;max-width:100%}.location-picker [hidden]{display:none!important}.location-note{font-size:11.5px;line-height:1.8;color:var(--ink-soft);margin:6px 0}.location-picker .field{margin-bottom:10px}
 </style>
-<link rel="stylesheet" href="/brand.css?v=modals1">
+<link rel="stylesheet" href="/brand.css?v=splash1">
 <script src="/brand.js" defer></script>
 <link rel="stylesheet" href="/admin-panel.css?v=admin-3">
 </head>
@@ -512,9 +519,11 @@ body:has(#authScreen:not(.hidden)) .support-btn{bottom:16px;}
 
 <div id="appRoot">
 
-  <div id="loadingScreen">
-    <div class="brand"><img src="/logo-reverse.svg" alt=""> على بابك</div>
-    <div class="spinner"></div>
+  <div id="loadingScreen" role="status" aria-busy="true" aria-label="جاري التحميل">
+    <div class="sk-hdr"><div class="brand"><img src="/logo-reverse.svg" alt=""> على بابك</div></div>
+    <div style="padding:14px 14px 0"><div class="sk-b" style="height:44px;border-radius:14px"></div></div>
+    <div class="sk-row"><div class="sk-b" style="flex:1;height:34px;border-radius:17px"></div><div class="sk-b" style="flex:1;height:34px;border-radius:17px"></div><div class="sk-b" style="flex:1;height:34px;border-radius:17px"></div><div class="sk-b" style="flex:1;height:34px;border-radius:17px"></div></div>
+    <div class="sk-card"><div class="sk-b" style="width:72px;height:72px;border-radius:14px"></div><div style="flex:1;display:flex;flex-direction:column;gap:9px;padding-top:4px"><div class="sk-b" style="height:14px;width:70%;border-radius:7px"></div><div class="sk-b" style="height:11px;width:45%;border-radius:6px"></div><div class="sk-b" style="height:11px;width:55%;border-radius:6px"></div></div></div><div class="sk-card"><div class="sk-b" style="width:72px;height:72px;border-radius:14px"></div><div style="flex:1;display:flex;flex-direction:column;gap:9px;padding-top:4px"><div class="sk-b" style="height:14px;width:70%;border-radius:7px"></div><div class="sk-b" style="height:11px;width:45%;border-radius:6px"></div><div class="sk-b" style="height:11px;width:55%;border-radius:6px"></div></div></div><div class="sk-card"><div class="sk-b" style="width:72px;height:72px;border-radius:14px"></div><div style="flex:1;display:flex;flex-direction:column;gap:9px;padding-top:4px"><div class="sk-b" style="height:14px;width:70%;border-radius:7px"></div><div class="sk-b" style="height:11px;width:45%;border-radius:6px"></div><div class="sk-b" style="height:11px;width:55%;border-radius:6px"></div></div></div><div class="sk-card"><div class="sk-b" style="width:72px;height:72px;border-radius:14px"></div><div style="flex:1;display:flex;flex-direction:column;gap:9px;padding-top:4px"><div class="sk-b" style="height:14px;width:70%;border-radius:7px"></div><div class="sk-b" style="height:11px;width:45%;border-radius:6px"></div><div class="sk-b" style="height:11px;width:55%;border-radius:6px"></div></div></div>
   </div>
 
   <div id="authScreen" class="hidden">
@@ -647,7 +656,7 @@ import {
   updatePassword, reauthenticateWithCredential, EmailAuthProvider, GoogleAuthProvider, signInWithPopup, deleteUser
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import {
-  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocFromCache, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   collection, query, where, orderBy, onSnapshot, serverTimestamp,
   writeBatch, runTransaction, increment, limit, startAfter, documentId, deleteField
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
@@ -664,6 +673,7 @@ import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-5'
 import * as Services from '/services.js?v=svc-6';
 import * as Doorman from '/doorman.js?v=bw-1';
 import * as Shop from '/shop.js?v=shop-1';
+import * as FastBoot from '/fast-boot.js?v=fast-1';
 import * as OrderMoney from '/order-money.js?v=money-1';
 import * as StoreHours from '/store-hours.js?v=hours-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
@@ -1177,6 +1187,7 @@ window.Auth = Auth;
 let authEpoch = 0;
 function resetSession(){
   clearSubs();
+  FastBoot.clear(localStorage);
   window.MarketerTools?.reset();
   Object.keys(S).forEach(key=>delete S[key]);
   Object.assign(S, JSON.parse(JSON.stringify(INITIAL_STATE)));
@@ -1201,6 +1212,41 @@ function showSignedOut(){
   if(new URLSearchParams(location.search).has('team'))getDoc(doc(db,'settings','app')).then(d=>{if(!auth.currentUser&&d.exists()){S.settings=FeatureFlags.withPermanent({...S.settings,...d.data()});drawTeam();}}).catch(()=>{});
   try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
 }
+function openAppShell(user){
+  S.role = (S.profile.role||'CUSTOMER').toLowerCase();
+  S.realRole = S.role; S.shopping = false;
+  if(RoleMode.canShop(S.realRole)){ S.role='customer'; S.shopping=true; }
+  loadCart();
+  loadWishlist();
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('appShell').classList.remove('hidden');
+  S.tab = routeFromLocation(location,S.role) || defaultTabForRole();
+  try{const current=routeURL(S.tab,S.role,location.search);seedHistory(routeURL(defaultTabForRole(),S.role,location.search),current);history.replaceState({...history.state,tab:S.tab},'',current);}catch(e){}
+  window.Program?.subscribe();
+  subscribeShared();
+  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); loadDoorman(); }
+  if(S.role==='merchant') subscribeMerchant();
+  if(S.role==='marketer') subscribeMarketer();
+  if(S.role==='delivery') subscribeDeliveryAgent();
+  if(S.role==='admin') subscribeAdmin();
+  renderShell();
+}
+// بدء سريع: لو عندنا نسخة حساب في كاش Firestore (وعدّى عليها أقل من 7 أيام، ومش أدمن)، نفتح بيها فورًا ونتأكد من السيرفر في الخلفية.
+async function verifyFastBoot(user,epoch,cached){
+  try{
+    const fresh=await getDoc(doc(db,'users',user.uid));
+    if(epoch!==authEpoch||auth.currentUser?.uid!==user.uid) return;
+    if(fresh.exists()&&FastBoot.profileOk(fresh.data(),isBanned)&&FastBoot.sameAccess(cached,fresh.data())){
+      S.profile={...S.profile,...fresh.data()}; FastBoot.stamp(localStorage,user.uid,fresh.data().role,Date.now()); render(); return;
+    }
+  }catch(e){ if(!FastBoot.isAccessError(e)) return; }
+  // الدور أو الربط أو الحظر اتغير (أو الحساب اتقفل): نفتح من الأول من السيرفر، ومن غير النسخة المحفوظة.
+  FastBoot.clear(localStorage);
+  Auth.noFast=true;
+  try{ await bootAuthUser(user); }catch(e){ showAccountLoadFailure(e); }
+  finally{ Auth.noFast=false; }
+}
 async function bootAuthUser(user) {
   const googleSignupCode=Auth.googleReferralCode||new URLSearchParams(location.search).get('marketer')||'';
   S.showAllStores=false;
@@ -1212,6 +1258,18 @@ async function bootAuthUser(user) {
   document.getElementById('verifyScreen').classList.add('hidden');
   let bootStage='profile-read';
   try{
+  if(!Auth.noFast && FastBoot.eligible(localStorage,user.uid,Date.now())){
+    let cs=null; try{ cs=await getDocFromCache(doc(db,'users',user.uid)); }catch(e){}
+    if(cs&&cs.exists()&&FastBoot.profileOk(cs.data(),isBanned)){
+      if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
+      S.profile=cs.data();
+      bootStage='app-open-fast';
+      openAppShell(user);
+      document.getElementById('accountRecovery').classList.add('hidden');
+      verifyFastBoot(user,epoch,cs.data());
+      return;
+    }
+  }
   const psnap = await getDoc(doc(db,'users',user.uid));
   if(!psnap.exists()){
     if(!user.providerData?.some(provider=>provider.providerId==='google.com')) throw new Error('profile-needs-admin-repair');
@@ -1268,24 +1326,8 @@ async function bootAuthUser(user) {
     try{ await updateDoc(doc(db,'users',user.uid),{waitlisted:false}); S.profile.waitlisted=false; }catch(e){}
   }
   bootStage='app-open';
-  S.role = (S.profile.role||'CUSTOMER').toLowerCase();
-  S.realRole = S.role; S.shopping = false;
-  if(RoleMode.canShop(S.realRole)){ S.role='customer'; S.shopping=true; }
-  loadCart();
-  loadWishlist();
-  document.getElementById('authScreen').classList.add('hidden');
-  document.getElementById('loadingScreen').classList.add('hidden');
-  document.getElementById('appShell').classList.remove('hidden');
-  S.tab = routeFromLocation(location,S.role) || defaultTabForRole();
-  try{const current=routeURL(S.tab,S.role,location.search);seedHistory(routeURL(defaultTabForRole(),S.role,location.search),current);history.replaceState({...history.state,tab:S.tab},'',current);}catch(e){}
-  window.Program?.subscribe();
-  subscribeShared();
-  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); loadDoorman(); }
-  if(S.role==='merchant') subscribeMerchant();
-  if(S.role==='marketer') subscribeMarketer();
-  if(S.role==='delivery') subscribeDeliveryAgent();
-  if(S.role==='admin') subscribeAdmin();
-  renderShell();
+  openAppShell(user);
+  FastBoot.stamp(localStorage,user.uid,S.profile.role,Date.now());
   document.getElementById('accountRecovery').classList.add('hidden');
   }catch(e){
     if(epoch!==authEpoch || auth.currentUser?.uid!==user.uid) return;
