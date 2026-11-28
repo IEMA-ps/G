@@ -6334,9 +6334,9 @@ window.saveAutoApproveSwitch = async ()=>{
   UI.toast(autoApproveOrders?'الطلبات هتروح للتاجر مباشرة ✅':'الطلبات هترجع لمراجعة الإدارة');
 };
 window.showWaitlist = ()=>{
-  const list=(S.allUsers||[]).filter(u=>u.waitlisted===true).sort((a,b)=>(a.waitlistedAt||0)-(b.waitlistedAt||0));
+  const list=(S.allUsers||[]).filter(u=>u.waitlisted===true).sort((a,b)=>(a.waitlistCode?0:1)-(b.waitlistCode?0:1)||(a.waitlistedAt||0)-(b.waitlistedAt||0));
   const rows=list.map(u=>{ const t=u.waitlistedAt?new Date(u.waitlistedAt).toLocaleString('ar-EG',{timeZone:'Africa/Cairo'}):'';
-    return `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(((u.firstName||'')+' '+(u.lastName||'')).trim())}</b><a dir="ltr" href="${waLink(u.phone||'','')}" target="_blank" rel="noopener">${esc(u.phone||'')}</a></div><div dir="ltr" style="font-size:12px;color:var(--ink-soft);margin:4px 0 0;text-align:right">${esc(u.email||'')}</div><div style="font-size:12px;color:var(--ink-soft);margin:2px 0 8px">${esc(t)}</div><button class="btn btn-primary btn-sm" style="width:auto" onclick="activateWaitlisted('${esc(u._id)}')">تفعيل وإرسال رسالة</button></div>`; }).join('');
+    return `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(((u.firstName||'')+' '+(u.lastName||'')).trim())}</b><a dir="ltr" href="${waLink(u.phone||'','')}" target="_blank" rel="noopener">${esc(u.phone||'')}</a></div><div dir="ltr" style="font-size:12px;color:var(--ink-soft);margin:4px 0 0;text-align:right">${esc(u.email||'')}</div><div style="font-size:12px;color:var(--ink-soft);margin:2px 0 8px">${esc(t)}</div>${u.waitlistCode?`<div style="font-size:13px;margin:0 0 8px;padding:6px 8px;border-radius:8px;background:var(--success-tint,#e8f7ee)">معاه كود دعوة: <b dir="ltr">${esc(u.waitlistCode)}</b> (جاهز للتفعيل)</div>`:''}<button class="btn btn-primary btn-sm" style="width:auto" onclick="activateWaitlisted('${esc(u._id)}')">تفعيل وإرسال رسالة</button></div>`; }).join('');
   UI.openModal(`<div class="modal-head"><h3>قائمة الانتظار (${list.length})</h3><button class="modal-close" onclick="UI.closeModal()"><i class="fa-solid fa-xmark"></i></button></div>${S.allUsersReady===true?'':'<p class="hint-box">لسه بيحمّل المستخدمين، افتحها تاني بعد ثواني.</p>'}${rows||'<p>مفيش حد في الانتظار.</p>'}`);
 };
 // تفعيل: بيشيل علامة الانتظار، وبعدين رسالة تليجرام (لو مربوط) ورابط واتساب.
@@ -6353,6 +6353,8 @@ window.activateWaitlisted = async uid=>{
 window.showPendingScreen = ()=>{
   ['authScreen','loadingScreen','appShell','verifyScreen','accountRecovery'].forEach(i=>document.getElementById(i)?.classList.add('hidden'));
   document.getElementById('pendingScreen')?.classList.remove('hidden');
+  const pm=document.getElementById('pendingMsg');
+  if(pm&&S.profile?.waitlistCode&&!pm.textContent) pm.textContent='طلب التفعيل بالكود اتبعت للإدارة وبانتظار موافقتهم. هنبعتلك رسالة أول ما يتفعّل.';
 };
 window.recheckPending = async ()=>{
   const m=document.getElementById('pendingMsg');
@@ -6365,8 +6367,15 @@ window.activateWithCode = async ()=>{
   try{
     const inv=await lookupAnyInvite(code);
     if(!inv||inv.full){ m.textContent=inv&&inv.full?'الكود ده خلّص دعواته.':'الكود مش صحيح.'; return; }
-    if(inv.kind==='friend'){ try{ await redeemInvite(S.user.uid, inv, S.profile?.firstName||''); }catch(e){ console.error('invite redeem failed', e); } }
-    await updateDoc(doc(db,'users',S.user.uid),{waitlisted:false}); location.reload();
+    if(inv.kind==='friend' && S.profile?.waitlistCode!==code){ try{ await redeemInvite(S.user.uid, inv, S.profile?.firstName||''); }catch(e){ console.error('invite redeem failed', e); } }
+    try{ await updateDoc(doc(db,'users',S.user.uid),{waitlisted:false}); location.reload(); return; }
+    catch(e){
+      // قواعد v16: المستخدم مينفعش يشيل علامة الانتظار بنفسه. الكود صحيح، فنسجّله والإدارة تفعّل الحساب.
+      if(!(e&&e.code==='permission-denied')) throw e;
+      await updateDoc(doc(db,'users',S.user.uid),{waitlistCode:code,waitlistCodeAt:nowMs()});
+      if(S.profile) S.profile.waitlistCode=code;
+      m.textContent='الكود صحيح ✅ طلب التفعيل اتبعت للإدارة. حسابك هيتفعّل بعد موافقتهم وهنبعتلك رسالة.';
+    }
   }catch(e){ m.textContent='تعذّر التفعيل، جرّب بعد شوية.'; }
 };
 window.saveDeliverySubSettings = async ()=>{
