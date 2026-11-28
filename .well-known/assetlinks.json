@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.alababk.app",
+        "sha256_cert_fingerprints": ["9C:55:20:F2:44:E1:F0:84:73:0C:97:61:59:21:91:AC:62:C1:EF:68:CF:77:EA:26:59:0F:CC:09:8B:72:46:31"]
+      }
+    }]
