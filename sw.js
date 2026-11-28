@@ -1,5 +1,5 @@
 // Cache only public local app files. Never cache Firebase data, auth requests or external resources.
-const CACHE='alababak-services-v90';
+const CACHE='alababak-services-v91';
 const SHELL=['/terms.html','/privacy.html','/doorman.js','/shop.js','/terms-consent.js','/terms-consent.css','/marketer-benefits.js','/services.js','/store-points.js','/cart-reminder.js','/delivery-sub.js','/ad-slots.js','/store-hours.js','/favorites.js','/marketer-contest.js','/marketer-insights.js','/order-timeline.js','/merchant-ratings.js','/feature-flags.js','/product-paste.js','/product-paste-ui.js','/store-photo.js','/push-client.js','/broadcast-audience.js','/order-tx.js','/order-money.js','/order-points-tx.js','/delivery-batch.js','/admin-panel.js','/admin-panel.css','/shared-catalog.js','/shared-catalog-ui.js','/shared-catalog.css','/product-list.js','/product-sheet.js','/product-sheet-ui.js','/product-list.css','/marketer-program.js','/marketer-program-ui.js','/referral-report.js','/navigation-history.js','/store-link-codes.js','/store-sharing.js','/store-types.js','/app-routes.js','/nearby-stores.js','/egypt-locations.js','/egypt-locations-data.js','/password-policy.js','/founding-merchants.js','/sub-expiry.js','/sub-cancel.js','/member-roles.js','/member-ban.js','/member-id.js','/referral-codes.js','/role-mode.js','/support-requests.js','/support-chat.js','/support-faq-extra.js','/telegram-notify.js','/auth-policy.js','/store.html','/merchant-plans.js','/','/index.html','/manifest.webmanifest','/icon-192.png','/icon-512.png','/maskable-512.png','/apple-touch-icon.png','/icon.svg','/qrcode.js','/marketer-tools.js','/marketing-config.js','/pwa-install.js','/brand.css','/brand.js','/logo.svg','/logo-reverse.svg'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(u=>new Request(u,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('alababak-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
@@ -11,6 +11,16 @@ self.addEventListener('fetch',event=>{
   return;
  }
  if(!SHELL.includes(url.pathname)) return;
+ // ملفات JS/CSS اللي ليها ?v= (النسخة جوه الرابط): نرجّعها من الكاش فورًا ونحدّثها في الخلفية، من غير ما كل فتحة تستنى السيرفر.
+ if(/^\?v=[\w.-]+$/.test(url.search) && /\.(js|css)$/.test(url.pathname)){
+  event.respondWith(caches.open(CACHE).then(async cache=>{
+   const hit=await cache.match(req);
+   const net=fetch(req,{cache:'no-cache'}).then(res=>{if(res.ok)cache.put(req,res.clone());return res;});
+   if(hit){event.waitUntil(net.catch(()=>{}));return hit;}
+   return net.catch(()=>caches.match(req));
+  }));
+  return;
+ }
  // Network-first prevents an old HTML/new module mix during updates.
  event.respondWith(fetch(req,{cache:'no-cache'}).then(res=>{if(res.ok){const copy=res.clone();event.waitUntil(caches.open(CACHE).then(c=>c.put(req,copy)));}return res;}).catch(()=>caches.match(req)));
 });
