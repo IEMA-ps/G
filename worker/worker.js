@@ -6,6 +6,8 @@
 // الأسرار (wrangler secret put): BOT_TOKEN, WEBHOOK_SECRET (APP_SECRET اتلغى: كان ظاهر في كود الموقع. كل المسارات دلوقتي بتوكن Firebase والدور بيتحدد من Firestore)
 // KV binding: TG_LINKS
 
+import {merchantStage, marketerStage, merchantAlert, marketerAlert, MERCHANT_STAGES, MARKETER_STAGES} from '../sub-expiry.js';
+
 const TG_API = 'https://api.telegram.org';
 const JWKS_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 const CODE_TTL_SECONDS = 900; // كود الربط صالح 15 دقيقة
@@ -866,6 +868,88 @@ async function handleBroadcast(request, env) {
   return json({ok: true, total: chatIds.size, sent, blocked, failed});
 }
 
+
+// ---------- تنبيهات انتهاء الاشتراك ----------
+// الأدمن بيبعت معرّفات المتاجر (بعد اعتماد اشتراك أو مزامنة جماعية). بنقرا المتجر من Firestore بتوكن الأدمن ونخزن مرآة صغيرة:
+// {merchantId, name, endsAt, marketerId, sent:{مرحلة: وقت}}. الكرون بيبعت تنبيه التاجر (7/3/1 يوم قبل + يوم الانتهاء)
+// وتنبيه المسوّق (بعد الانتهاء بـ 3 و10 أيام لو مفيش تجديد). كل مرحلة مرة واحدة لكل تاريخ انتهاء، ولو الانتهاء اتغير (تجديد) بنبدأ من الأول.
+const EXP_PREFIX = 'exp:';
+const EXP_TTL_SECONDS = 90 * 86400;
+const EXP_ID = /^[A-Za-z0-9_\-]{1,64}$/;
+async function handleExpirySync(request, env) {
+  const r = await requireCaller(request, env);
+  if (r.err) return r.err;
+  if (r.caller.role !== 'ADMIN') return json({error: 'forbidden'}, 403);
+  if (!(await rateLimit(env, 'expsync', r.caller.uid, 60, 600))) return json({error: 'too many requests'}, 429);
+  const body = await request.json().catch(() => null);
+  const ids = body && Array.isArray(body.merchantIds) ? body.merchantIds.filter(x => typeof x === 'string' && EXP_ID.test(x)).slice(0, 20) : [];
+  if (!ids.length) return json({error: 'bad request'}, 400);
+  let stored = 0, cleared = 0, skipped = 0;
+  for (const id of ids) {
+    const m = await internals.fsGetDoc(env, r.caller.token, 'merchants/' + id);
+    if (!m) { skipped++; continue; }
+    const endsAt = Number(m.subEndsAt) || 0;
+    if (!endsAt) { await env.TG_LINKS.delete(EXP_PREFIX + id); cleared++; continue; }
+    let prev = {};
+    try { prev = JSON.parse(await env.TG_LINKS.get(EXP_PREFIX + id) || '{}'); } catch {}
+    const marketerId = typeof m.marketerId === 'string' && EXP_ID.test(m.marketerId) ? m.marketerId : null;
+    const entry = {merchantId: id, name: String(m.businessName || '').slice(0, 60), endsAt, marketerId, sent: prev.endsAt === endsAt ? (prev.sent || {}) : {}};
+    await env.TG_LINKS.put(EXP_PREFIX + id, JSON.stringify(entry), {expirationTtl: EXP_TTL_SECONDS});
+    stored++;
+  }
+  return json({ok: true, stored, cleared, skipped});
+}
+async function expirySendUid(env, uid, title, message) {
+  let rec = {};
+  try { rec = JSON.parse(await env.TG_LINKS.get(uidKey(uid)) || '{}'); } catch {}
+  let tg = false;
+  if (rec.chatId) {
+    const r = await internals.tgSend(env, rec.chatId, title + '\n\n' + message);
+    if (tgBlocked(r)) await internals.removeChatEverywhere(env, rec.chatId);
+    tg = tgOk(r);
+  }
+  let pushed = 0;
+  try { pushed = (await internals.pushFanOut(env, ['uid:' + uid], title, message)).pushed; } catch {}
+  return tg || pushed > 0;
+}
+async function runExpiryCron(env, now = Date.now()) {
+  if (!cartHourOk(now)) return {sent: 0}; // مفيش تنبيهات بالليل (9ص-10م القاهرة)
+  const keys = [];
+  let cursor;
+  do {
+    const res = await env.TG_LINKS.list(cursor ? {prefix: EXP_PREFIX, cursor} : {prefix: EXP_PREFIX});
+    for (const k of res.keys || []) keys.push(k.name);
+    cursor = res.list_complete === false ? res.cursor : null;
+  } while (cursor);
+  let sent = 0;
+  for (const key of keys) {
+    let e = null;
+    try { e = JSON.parse(await env.TG_LINKS.get(key) || 'null'); } catch {}
+    if (!e || !e.endsAt) continue;
+    e.sent = e.sent || {};
+    let dirty = false;
+    const ms = merchantStage(e.endsAt, now);
+    if (ms && !e.sent[ms]) {
+      // نعلّم المرحلة وكل اللي قبلها (متأخرين في المزامنة = تنبيه واحد بس) قبل الإرسال عشان الفشل ما يكررش
+      for (const st of MERCHANT_STAGES.slice(0, MERCHANT_STAGES.indexOf(ms) + 1)) e.sent[st] = now;
+      dirty = true;
+      await env.TG_LINKS.put(key, JSON.stringify(e), {expirationTtl: EXP_TTL_SECONDS});
+      const a = merchantAlert(ms, e.endsAt);
+      const chatId = await env.TG_LINKS.get('m:' + e.merchantId);
+      if (chatId) { const r = await internals.tgSend(env, chatId, a.title + '\n\n' + a.message); if (tgBlocked(r)) await internals.removeChatEverywhere(env, chatId); else if (tgOk(r)) sent++; }
+      try { const p = await internals.pushFanOut(env, ['m:' + e.merchantId], a.title, a.message); if (p && p.pushed > 0 && !chatId) sent++; } catch {}
+    }
+    const ks = e.marketerId ? marketerStage(e.endsAt, now) : null;
+    if (ks && !e.sent[ks]) {
+      for (const st of MARKETER_STAGES.slice(0, MARKETER_STAGES.indexOf(ks) + 1)) e.sent[st] = now;
+      await env.TG_LINKS.put(key, JSON.stringify(e), {expirationTtl: EXP_TTL_SECONDS});
+      const a = marketerAlert(ks, e.name, e.endsAt);
+      if (await expirySendUid(env, e.marketerId, a.title, a.message)) sent++;
+    }
+  }
+  return {sent};
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === 'OPTIONS') return new Response(null, {status: 204});
@@ -881,13 +965,14 @@ async function route(request, env) {
   if (url.pathname === '/push/unsubscribe' && request.method === 'POST') return handlePushUnsubscribe(request, env);
   if (url.pathname === '/reminders/sync' && request.method === 'POST') return handleReminderSync(request, env);
   if (url.pathname === '/reminders/prefs' && request.method === 'POST') return handleReminderPrefs(request, env);
+  if (url.pathname === '/expiry/sync' && request.method === 'POST') return handleExpirySync(request, env);
   if (url.pathname === '/cart/sync' && request.method === 'POST') return handleCartSync(request, env);
   if (url.pathname === '/broadcast' && request.method === 'POST') return handleBroadcast(request, env);
   return json({error: 'not found'}, 404);
 }
 
 // للاختبار المحلي: نقدر نستبدل التحقق والإرسال ببدائل وهمية.
-const internals = {fsGetDoc, runCartCron, cartMessage, summaryHourFor, verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
+const internals = {fsGetDoc, runCartCron, runExpiryCron, cartMessage, summaryHourFor, verifyFirebaseIdToken, tgSend, removeChatEverywhere, runCron, cairoToEpoch, fmtTimeAr, getVapid, vapidJwt, encryptPushPayload, pushSendOnce, pushFanOut, pushHash};
 export const _internals = internals;
 
 export default {
@@ -904,5 +989,6 @@ export default {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(internals.runCron(env));
     ctx.waitUntil(internals.runCartCron(env));
+    ctx.waitUntil(internals.runExpiryCron(env));
   }
 };
