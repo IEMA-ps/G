@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import * as H from './shop.js';
+assert.ok(H.isCode(' st-abc234 '));assert.ok(!H.isCode('BW-ABC234'));assert.ok(!H.isCode('ST-AB'));assert.ok(!H.isCode(null));
+assert.match(H.newCode(),/^ST-[A-Z2-9]{6}$/);
+assert.equal(H.linkFor('st-abc234'),'https://3alababk.com/?shop=ST-ABC234');
+assert.equal(H.codeFromSearch('?shop=st-abc234&x=1'),'ST-ABC234');assert.equal(H.codeFromSearch('?shop=nope'),'');assert.equal(H.codeFromSearch(''),'');
+assert.deepEqual(H.cleanServices([{name:' قص ',minutes:30,price:50},{name:'قص',minutes:20},{name:'',minutes:10},{name:'x',minutes:2},{name:'y',minutes:999},{name:'دقن',minutes:'15'}]),[{name:'قص',minutes:30},{name:'دقن',minutes:15}]);
+assert.equal(H.cleanServices(null).length,0);
+assert.equal(H.cleanServices(Array.from({length:30},(_,i)=>({name:'s'+i,minutes:10}))).length,12);
+assert.equal(H.cleanServices([{name:'x'.repeat(99),minutes:10}])[0].name.length,40);
+assert.equal(H.durationLabel(30),'30 دقيقة');assert.equal(H.durationLabel(60),'ساعة');assert.equal(H.durationLabel(75),'ساعة و15 دقيقة');assert.equal(H.durationLabel(120),'ساعتين');assert.equal(H.durationLabel(0),'');
+assert.ok(!('price' in H.chairRequest('b','s','st-abc234','n',1)));
+assert.equal(H.chairRequest('b','s','st-abc234','n',1).status,'PENDING');
+const cs=[{shopId:'s',status:'ACTIVE'},{shopId:'s',status:'PENDING'},{shopId:'t',status:'ACTIVE'}];
+assert.equal(H.activeChairs(cs,'s').length,1);assert.equal(H.pendingChairs(cs,'s').length,1);
+assert.ok(H.enabled({shopsEnabled:true}));assert.ok(!H.enabled({}));
+console.log('shop tests passed');
