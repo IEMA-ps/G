@@ -680,6 +680,40 @@ service cloud.firestore {
       allow delete: if signedIn() && (isSuper() || (uid == request.auth.uid && resource.data.status == 'REJECTED'));
     }
 
+    // ===== المحلات والكراسي (حلاق/صالون): كود فريق للمحل + طلب انضمام يوافق عليه صاحب المحل + خدمات بالاسم والمدة (من غير أسعار). مقفولة بـ settings.shopsEnabled =====
+    function shopsOn(){ return get(/databases/$(database)/documents/settings/app).data.get('shopsEnabled',false) == true; }
+    match /shops/{mid} {
+      allow read: if signedIn();
+      allow create, update: if shopsOn() && ownsMerchant(mid) && svcProvider(mid)
+        && request.resource.data.keys().hasOnly(['merchantId','code','status','updatedAt'])
+        && request.resource.data.merchantId == mid
+        && request.resource.data.code is string && request.resource.data.code.matches('ST-[A-Z0-9]{6}')
+        && request.resource.data.status in ['ACTIVE','DISABLED']
+        && (resource == null || request.resource.data.code == resource.data.code);
+      allow delete: if isAdmin();
+    }
+    match /shopChairs/{bid} {
+      allow read: if signedIn();
+      allow create: if shopsOn() && ownsMerchant(bid) && svcProvider(bid)
+        && request.resource.data.keys().hasOnly(['barberId','shopId','code','name','status','requestedAt'])
+        && request.resource.data.barberId == bid && request.resource.data.shopId is string && request.resource.data.shopId != bid
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.get('status','') == 'ACTIVE'
+        && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.get('code','-') == request.resource.data.code;
+      allow update: if shopsOn() && ownsMerchant(resource.data.shopId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','decidedAt'])
+        && request.resource.data.status == 'ACTIVE';
+      allow delete: if ownsMerchant(bid) || ownsMerchant(resource.data.shopId) || isAdmin();
+    }
+    match /serviceItems/{mid} {
+      allow read: if signedIn();
+      allow create, update: if shopsOn() && ownsMerchant(mid) && svcProvider(mid)
+        && request.resource.data.keys().hasOnly(['merchantId','items','updatedAt'])
+        && request.resource.data.merchantId == mid
+        && request.resource.data.items is list && request.resource.data.items.size() <= 12;
+      allow delete: if isAdmin();
+    }
     match /serviceSchedules/{mid} {
       allow read: if signedIn();
       allow create, update: if ownsMerchant(mid) && svcProvider(mid)
