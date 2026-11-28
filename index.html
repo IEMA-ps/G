@@ -659,6 +659,7 @@ import {seedHistory,previousOr} from '/navigation-history.js?v=back-1';
 import {publicStoreUrl as namedStoreUrl,installStoreShare} from '/store-sharing.js?v=share-1';installStoreShare();
 import {typePicker,typeLabel,installStoreTypes} from '/store-types.js?v=types-5';installStoreTypes();
 import * as Services from '/services.js?v=svc-6';
+import * as Doorman from '/doorman.js?v=bw-1';
 import * as OrderMoney from '/order-money.js?v=money-1';
 import * as StoreHours from '/store-hours.js?v=hours-1';
 import * as OrderTx from '/order-tx.js?v=money-1';
@@ -1093,7 +1094,9 @@ const Auth = {
 
       // معالجة كود دعوة الصديق لو العميل الجديد دخل واحد
       const referralInput = document.getElementById('regReferral').value.trim().toUpperCase();
-      if(inv && !inv.full){
+      if(Doorman.isCode(referralInput)){
+        try{ if(!await doormanBind(cred.user.uid,referralInput,{})) UI.toast('كود البواب مش شغال، ممكن تربط حسابك بيه من البروفايل.'); }catch(e){ console.error('doorman bind failed', e); }
+      } else if(inv && !inv.full){
         try{ await window.InviteGate.redeem(cred.user.uid, inv, first); }catch(e){ console.error('invite redeem failed', e); }
       } else if(referralInput && !referralInput.startsWith('WL-')){
         try{
@@ -1109,8 +1112,8 @@ const Auth = {
         }catch(e){ console.error('referral code lookup failed', e); }
       }
 
-      try{ if(!inv && /^[A-Z0-9-]{4,64}$/.test(referralInput) && !referralInput.startsWith('WL-')) localStorage.setItem('bk_signup_code',referralInput); }catch(e){}
-      await window.Program?.recordSignup(referralInput.startsWith('WL-')?'':(referralInput||new URLSearchParams(location.search).get('marketer')||''));
+      try{ if(!inv && /^[A-Z0-9-]{4,64}$/.test(referralInput) && !referralInput.startsWith('WL-') && !Doorman.isCode(referralInput)) localStorage.setItem('bk_signup_code',referralInput); }catch(e){}
+      await window.Program?.recordSignup((referralInput.startsWith('WL-')||Doorman.isCode(referralInput))?'':(referralInput||new URLSearchParams(location.search).get('marketer')||''));
 
       try{
         await sendEmailVerification(cred.user); Auth.verificationSentAt = Date.now();
@@ -1273,7 +1276,7 @@ async function bootAuthUser(user) {
   try{const current=routeURL(S.tab,S.role,location.search);seedHistory(routeURL(defaultTabForRole(),S.role,location.search),current);history.replaceState({...history.state,tab:S.tab},'',current);}catch(e){}
   window.Program?.subscribe();
   subscribeShared();
-  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); }
+  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); loadDoorman(); }
   if(S.role==='merchant') subscribeMerchant();
   if(S.role==='marketer') subscribeMarketer();
   if(S.role==='delivery') subscribeDeliveryAgent();
@@ -1409,6 +1412,86 @@ function subscribeShared(){
   }));
 }
 
+
+/* ===== البواب: حساب عميل عليه doormanId، والسكان بيتربطوا بكوده ===== */
+const doormanOn=()=>Doorman.enabled(S.settings);
+async function doormanBind(uid,rawCode,loc){
+  const id=Doorman.idOf(rawCode); if(!id) return false;
+  const dm=await getDoc(doc(db,'doormen',id));
+  if(!dm.exists()||dm.data().status!=='ACTIVE'||dm.data().ownerId===uid) return false;
+  const me=await getDoc(doc(db,'users',uid)); if(!me.exists()||me.data().boundDoormanId) return false;
+  const b=writeBatch(db);
+  b.update(doc(db,'users',uid),{boundDoormanId:id});
+  b.set(doc(db,'doormanResidents',uid),Doorman.residentDoc(me.data(),uid,id,loc,nowMs()));
+  await b.commit(); return true;
+}
+function loadDoorman(){
+  S.doorman=null;S.doormanBound=null;S.doormanResidents=[];
+  const p=S.profile||{};
+  if(p.doormanId){
+    getDoc(doc(db,'doormen',p.doormanId)).then(d=>{S.doorman=d.exists()?d.data():null;render();}).catch(()=>{});
+    S.unsubs.push(onSnapshot(query(collection(db,'doormanResidents'),where('doormanId','==',p.doormanId)),snap=>{S.doormanResidents=Doorman.sortResidents(snap.docs.map(d=>d.data()));render();},()=>{}));
+  }
+  if(p.boundDoormanId){
+    getDoc(doc(db,'doormen',p.boundDoormanId)).then(d=>{S.doormanBound=d.exists()?d.data():null;render();}).catch(()=>{});
+    getDoc(doc(db,'doormanResidents',S.user.uid)).then(d=>{S.myResidency=d.exists()?d.data():null;render();}).catch(()=>{});
+  }
+}
+function doormanCard(){
+  if(!doormanOn()||S.role!=='customer'||!S.profile) return '';
+  const p=S.profile, dm=S.doorman;
+  if(p.doormanId&&dm){
+    const link=Doorman.linkFor(dm.id);
+    const rows=(S.doormanResidents||[]).map(r=>`<div class="row-between" style="padding:8px 0;border-top:1px solid var(--line,#eee)"><div><b style="font-size:13px">${esc(r.name)}</b><div style="font-size:12px;color:var(--ink-soft)" dir="ltr">${esc(r.phone)}</div></div><div style="font-size:12px;text-align:end">${[r.building&&'عمارة '+esc(r.building),r.floor&&'دور '+esc(r.floor),r.apt&&'شقة '+esc(r.apt)].filter(Boolean).join(' · ')||'—'}</div></div>`).join('');
+    return `<div class="card" style="margin-bottom:16px"><h3><i class="fa-solid fa-building-user"></i> حساب البواب</h3><p style="font-size:13px;line-height:1.8;margin:8px 0">شارك الكود أو الرابط مع السكان. كل ساكن بيسجل بيه بيتربط بيك.</p><div class="admin-code" dir="ltr" style="margin-bottom:8px">${esc(dm.code)}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" style="width:auto" onclick="copyText('${esc(link)}')"><i class="fa-regular fa-copy"></i> نسخ الرابط</button><a class="btn btn-ghost btn-sm" style="width:auto" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('سجّل في على بابك واتربط بيّا: '+link)}"><i class="fa-brands fa-whatsapp"></i> مشاركة واتساب</a></div><h4 style="margin:14px 0 4px">السكان (${(S.doormanResidents||[]).length})</h4>${rows||'<p style="font-size:12.5px;color:var(--ink-soft);margin:6px 0">لسه مفيش سكان اتربطوا.</p>'}</div>`;
+  }
+  if(p.boundDoormanId){
+    const b=S.doormanBound,l=S.myResidency||{};
+    return `<div class="card" style="margin-bottom:16px"><h3><i class="fa-solid fa-building-user"></i> البواب بتاعك</h3>${b?`<p style="margin:8px 0;font-size:13.5px"><b>${esc(b.name)}</b> <span dir="ltr" style="color:var(--ink-soft)">${esc(b.phone)}</span></p>`:''}<div style="display:flex;gap:6px;margin:8px 0"><input id="dmBuilding" style="flex:1;min-width:0;width:auto" placeholder="العمارة" value="${esc(l.building||'')}"><input id="dmFloor" style="flex:1;min-width:0;width:auto" placeholder="الدور" value="${esc(l.floor||'')}"><input id="dmApt" style="flex:1;min-width:0;width:auto" placeholder="الشقة" value="${esc(l.apt||'')}"></div><button class="btn btn-primary btn-sm" style="width:auto" onclick="saveDoormanLoc()">حفظ العنوان</button><p style="font-size:11.5px;color:var(--ink-soft);margin:8px 0 0">البواب بس هو اللي بيشوف عنوانك. مفيش ساكن بيشوف ساكن تاني.</p></div>`;
+  }
+  return `<div class="card" style="margin-bottom:16px"><h3><i class="fa-solid fa-building-user"></i> ربط ببواب</h3><p style="font-size:13px;margin:8px 0">لو البواب عندك على على بابك، اكتب كوده.</p><div style="display:flex;gap:6px;margin:8px 0"><input id="dmCode" style="flex:1;min-width:0" dir="ltr" placeholder="BW-XXXXXX" style="text-transform:uppercase"></div><div style="display:flex;gap:6px;margin:8px 0"><input id="dmBuilding" style="flex:1;min-width:0;width:auto" placeholder="العمارة"><input id="dmFloor" style="flex:1;min-width:0;width:auto" placeholder="الدور"><input id="dmApt" style="flex:1;min-width:0;width:auto" placeholder="الشقة"></div><button class="btn btn-primary btn-sm" style="width:auto" onclick="bindMyDoorman()">ربط</button></div>`;
+}
+window.bindMyDoorman=async()=>{
+  const code=(document.getElementById('dmCode')?.value||'').trim().toUpperCase();
+  if(!Doorman.isCode(code)){UI.toast('الكود مش صحيح');return;}
+  const loc={building:document.getElementById('dmBuilding')?.value,floor:document.getElementById('dmFloor')?.value,apt:document.getElementById('dmApt')?.value};
+  try{ if(await doormanBind(S.user.uid,code,loc)){ S.profile={...S.profile,boundDoormanId:Doorman.idOf(code)}; loadDoorman(); UI.toast('تم الربط ✅'); } else UI.toast('الكود مش شغال أو حسابك مربوط قبل كده'); }
+  catch(e){ UI.toast('تعذّر الربط، حاول تاني.'); }
+};
+window.saveDoormanLoc=async()=>{
+  const loc=Doorman.cleanLoc({building:document.getElementById('dmBuilding')?.value,floor:document.getElementById('dmFloor')?.value,apt:document.getElementById('dmApt')?.value});
+  try{ await updateDoc(doc(db,'doormanResidents',S.user.uid),loc); S.myResidency={...(S.myResidency||{}),...loc}; UI.toast('تم الحفظ ✅'); }catch(e){ UI.toast('تعذّر الحفظ، حاول تاني.'); }
+};
+window.assignDoorman=async uid=>{
+  if(!isSuperAdmin()) return;
+  const m=await getDoc(doc(db,'users',uid)); if(!m.exists()||m.data().role!=='CUSTOMER'||m.data().doormanId){UI.toast('مينفعش تعيينه بواب');return;}
+  if(!confirm('تعيين هذا العميل بواب؟ هيتعمله كود ورابط لربط السكان.')) return;
+  const id=Doorman.newId();
+  const b=writeBatch(db);
+  b.set(doc(db,'doormen',id),Doorman.recordFor(m.data(),uid,id,nowMs()));
+  b.update(doc(db,'users',uid),{doormanId:id});
+  b.set(doc(db,'referralCodes',Doorman.codeOf(id)),{uid});
+  try{ await b.commit(); await logAudit('تعيين بواب',uid); UI.toast('تم التعيين ✅ الكود: '+Doorman.codeOf(id)); }catch(e){ UI.toast('تعذّر التعيين'); }
+};
+window.removeDoorman=async uid=>{
+  if(!isSuperAdmin()) return;
+  const m=await getDoc(doc(db,'users',uid)); const id=m.exists()&&m.data().doormanId; if(!id) return;
+  if(!confirm('إلغاء صفة البواب؟ السكان المربوطين بيفضلوا في سجلاتهم لكن الكود بيقف.')) return;
+  const b=writeBatch(db);
+  b.update(doc(db,'doormen',id),{status:'DISABLED'});
+  b.update(doc(db,'users',uid),{doormanId:deleteField()});
+  b.delete(doc(db,'referralCodes',Doorman.codeOf(id)));
+  try{ await b.commit(); await logAudit('إلغاء بواب',uid); UI.toast('تم إلغاء البواب'); }catch(e){ UI.toast('تعذّر الإلغاء'); }
+};
+window.toggleDoormen=async on=>{
+  if(!isSuperAdmin()) return;
+  try{ await setDoc(doc(db,'settings','app'),{doormenEnabled:!!on},{merge:true}); S.settings={...S.settings,doormenEnabled:!!on}; await logAudit('تبديل ميزة البواب',String(!!on)); render(); UI.toast(on?'ميزة البواب اتفعلت':'ميزة البواب اتقفلت'); }catch(e){ UI.toast('تعذّر الحفظ'); }
+};
+function doormenAdminHTML(){
+  if(!isSuperAdmin()) return '';
+  const on=doormanOn();
+  return `<div class="card" style="margin-bottom:14px"><div class="row-between"><div><b>ميزة البواب</b><div style="font-size:12px;color:var(--ink-soft)">${on?'شغالة: زرار التعيين وكارت البواب ظاهرين.':'مقفولة: مفيش حاجة ظاهرة للمستخدمين.'}</div></div><button class="btn ${on?'btn-ghost':'btn-primary'} btn-sm" style="width:auto" onclick="toggleDoormen(${!on})">${on?'قفل':'تفعيل'}</button></div></div>`;
+}
 function subscribeCustomer(){
   S.myMemberRequest=null;
   S.unsubs.push(onSnapshot(doc(db,'memberRequests',S.user.uid), d=>{ S.myMemberRequest=d.exists()?d.data():null; render(); }, ()=>{}));
@@ -2998,7 +3081,7 @@ window.switchRoleMode = (toCustomer)=>{
   S.searchQuery = '';
   recomputeMerchants();
   subscribeShared();
-  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); }
+  if(S.role==='customer'){ subscribeCustomer(); subscribeRoleBadge(); loadDoorman(); }
   if(S.role==='merchant') subscribeMerchant();
   if(S.role==='marketer') subscribeMarketer();
   if(S.role==='delivery') subscribeDeliveryAgent();
@@ -4490,6 +4573,7 @@ function renderProfile(){
   return `
     ${roleSwitchCard()}
     ${bookingsProfileCard()}
+    ${doormanCard()}
     <div class="card" style="margin-bottom:16px"><h3>اشتغل مسوّق مع على بابك</h3><p style="line-height:1.9;margin:10px 0">عرّف التجار بعلى بابك وساعدهم يبدأوا، وتابع شغلك ورصيدك من حسابك.</p><ul style="line-height:2;padding-inline-start:22px;margin:0 0 10px;font-size:13px"><li>كود ورابط خاصين بيك تشاركهم مع التجار.</li><li>عمولة عن كل اشتراك مدفوع تعتمده إدارة الموقع ويتسجل بكودك.</li><li>مستويات بتزود نسبتك كل ما محلاتك النشطة تكتر.</li><li>حافز إضافي في أول مهلة بعد تعيينك لو حققت هدفها.</li></ul><p style="font-size:12px;line-height:1.8;color:var(--ink-soft);margin-bottom:12px">الشغل بالعمولة حسب المعتمد، مش مرتب ثابت ولا ضمان دخل معين. التعيين بيتم بعد مراجعة إدارة الموقع.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openJoinRequest('marketer')">قدّم طلب انضمام كمسوّق</button><button class="btn btn-ghost" style="flex:1;min-width:140px" onclick="go('marketerBenefits')">التفاصيل والشروط</button></div></div>
     ${Program.joinButton()}${Program.candidate()}
     <div class="card" style="text-align:center;padding:24px">
@@ -6548,7 +6632,7 @@ window.searchAdminMembers=value=>{
 };
 function renderAdminUsers(){
   const search=S.aUserSearch||'',q=search.trim().toLocaleLowerCase();
-  const head=memberRequestsHTML()+memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
+  const head=memberRequestsHTML()+doormenAdminHTML()+memberOverview(S.allUsers,S.allUsersReady===true)+`<div class="admin-view-switch"><button aria-pressed="${S.aUserView!=='codes'}" onclick="S.aUserView='members';renderMain()">قائمة الأعضاء</button><button aria-pressed="${S.aUserView==='codes'}" onclick="S.aUserView='codes';renderMain()">عملاء ومسوقو كل كود</button></div><label class="admin-search" for="adminMemberSearch">${S.aUserView==='codes'?'ابحث باسم المسوق أو كوده':'ابحث بالاسم أو الكود أو بيانات التواصل'}<input type="search" id="adminMemberSearch" value="${esc(search)}" oninput="searchAdminMembers(this.value)" placeholder="اكتب للبحث..."></label>`;
   if(S.allUsersError)return head+`<section class="card" role="alert">${esc(S.allUsersError)}</section>`;
   if(S.aUserView==='codes')return head+acquisitionHTML({users:S.allUsers,usersReady:S.allUsersReady===true,attributions:isSuperAdmin()?S.adminAttributions||[]:[],status:S.adminAttributionStatus||'loading',search},esc);
   if(S.allUsersReady!==true)return head+'<section class="card" role="status">جاري تحميل الأعضاء...</section>';
@@ -6573,13 +6657,15 @@ function renderAdminUsers(){
             <div class="admin-code" dir="ltr">${esc(u.referralCode||'')}</div>
             ${u.role==='CUSTOMER'&&S.settings.deliverySubOn?`<div style="margin-top:6px;font-size:12px">${DeliverySub.subPeriod(u,nowMs())>=0?'<span style="color:var(--success)">اشتراك توصيل حتى '+new Date(u.deliverySubUntil).toLocaleDateString('ar-EG')+'</span> ':''}<button class="btn btn-ghost btn-sm" style="width:auto;font-size:11px;padding:4px 8px" onclick="activateDeliverySub('${u._id}')"><i class="fa-solid fa-crown"></i> ${DeliverySub.subPeriod(u,nowMs())>=0?'تمديد':'تفعيل'} اشتراك التوصيل</button></div>`:''}
           </div>
-          <span class="badge-chip">${roleLabel}</span>${isBanned(u)?'<span class="badge-chip" style="background:var(--danger-tint);color:var(--danger);margin-inline-start:4px">محظور</span>':''}
+          <span class="badge-chip">${roleLabel}</span>${u.doormanId?'<span class="badge-chip" style="margin-inline-start:4px">بواب</span>':''}${isBanned(u)?'<span class="badge-chip" style="background:var(--danger-tint);color:var(--danger);margin-inline-start:4px">محظور</span>':''}
         </div>
         ${isBanned(u)&&u.bannedReason?`<div style="font-size:12px;color:var(--ink-soft);margin-top:6px">سبب الحظر: ${esc(u.bannedReason)}</div>`:''}
         ${canManageAdmins&&canBan(true,u,S.user.uid)?`<div style="margin-top:8px">${isBanned(u)?`<button class="btn btn-ghost btn-sm" style="width:auto" onclick="unbanMember('${u._id}')"><i class="fa-solid fa-unlock"></i> فك الحظر</button>`:`<button class="btn btn-danger btn-sm" style="width:auto" onclick="banMember('${u._id}')"><i class="fa-solid fa-ban"></i> حظر العضو</button>`}</div>`:''}
         ${canManageAdmins ? `<div class="member-role-actions" style="display:flex;gap:4px;flex-wrap:nowrap;margin-top:8px">
           ${u.role==='CUSTOMER' && !u.merchantId && !u.deliveryAgentId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT')"><i class="fa-solid fa-store"></i> تعيين تاجر</button><button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','DELIVERY')"><i class="fa-solid fa-motorcycle"></i> تعيين مندوب</button>${Services.servicesEnabled(S.settings)?`<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openAssignMemberRole('${u._id}','MERCHANT','service')"><i class="fa-solid fa-calendar-check"></i> مقدم خدمة</button>`:''}` : ''}
           ${u.role==='CUSTOMER' || !u.role ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="makeMarketer('${u._id}')"><i class="fa-solid fa-bullhorn"></i> تعيين كمسوّق</button>` : ''}
+          ${doormanOn()&&u.role==='CUSTOMER'&&!u.doormanId&&!u.boundDoormanId ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="assignDoorman('${u._id}')"><i class="fa-solid fa-building-user"></i> تعيين بواب</button>` : ''}
+          ${doormanOn()&&u.doormanId ? `<button class="btn btn-danger btn-sm" style="width:auto" onclick="removeDoorman('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء البواب</button>` : ''}
           ${u.role==='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="openMarketerRate('${u._id}')"><i class="fa-solid fa-percent"></i> نسبته ${mkRate(u)}%</button><button class="btn btn-danger btn-sm" style="width:auto" onclick="removeMarketer('${u._id}')"><i class="fa-solid fa-user-minus"></i> إلغاء المسوّق</button>` : ''}
           ${(u.role==='MERCHANT'||u.role==='DELIVERY') ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="resetMemberToCustomer('${u._id}')"><i class="fa-solid fa-rotate-left"></i> تغيير الصفة لعميل</button>` : ''}
           ${u.role!=='ADMIN' && u.role!=='MARKETER' ? `<button class="btn btn-ghost btn-sm" style="width:auto;flex:1;min-width:0;padding:8px 3px;font-size:10px;white-space:nowrap;gap:2px" onclick="promoteToAdmin('${u._id}')"><i class="fa-solid fa-user-shield"></i> أدمن مساعد</button>` : ''}
